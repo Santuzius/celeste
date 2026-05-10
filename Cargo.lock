@@ -762,6 +762,7 @@ dependencies = [
  "glob",
  "iced",
  "icondata",
+ "icondata_core",
  "keyring",
  "ksni",
  "libc",

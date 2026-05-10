@@ -18,6 +18,8 @@ use iced::theme;
 use ksni::Icon;
 use resvg::{tiny_skia, usvg};
 
+use crate::icons::CLOUD_SYNC_OUTLINE;
+
 /// Tone used for icons placed against dark panels (the icon itself
 /// is light).
 const LIGHT_TONE: &str = "#e6e6e6";
@@ -73,7 +75,7 @@ impl IconSet {
         Self {
             synced: ThemedIcon::from(icondata::TbCloudCheckOutline),
             auth_needed: ThemedIcon::from(icondata::TbCloudLockOutline),
-            syncing: ThemedIcon::from(icondata::AiSyncOutlined),
+            syncing: ThemedIcon::from(CLOUD_SYNC_OUTLINE),
             warning: ThemedIcon::from(icondata::TbCloudExclamationOutline),
             paused: ThemedIcon::from(icondata::TbCloudPauseOutline),
         }

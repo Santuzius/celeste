@@ -1,6 +1,7 @@
 pub mod app;
 pub mod branding;
 pub mod domain;
+pub mod icons;
 pub mod infrastructure;
 pub mod screens;
 pub mod services;

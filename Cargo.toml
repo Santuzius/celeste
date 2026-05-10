@@ -27,6 +27,12 @@ icondata = { version = "0.7", default-features = false, features = [
     "box-icons",
     "tabler-icons",
 ] }
+# Direct handle on the `IconData` struct so we can stitch a Tabler
+# cloud body together with refresh-arrow tips into a custom static —
+# the facade re-exports the `Icon` alias but not the underlying
+# struct. Already a transitive dep of `icondata`, so this adds nothing
+# new to the build.
+icondata_core = "0.1"
 ksni = "0.3.4"
 libc = "0.2"
 # Rasterise tray SVGs to ARGB32 at startup so KDE's symbolic-icon
