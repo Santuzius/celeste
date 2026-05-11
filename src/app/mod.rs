@@ -156,6 +156,9 @@ pub struct CelesteApp {
     /// the [`Message::TrayReady`] handshake can seed the tray with
     /// the current value before the next change fires.
     system_theme: iced_theme::Mode,
+    /// What the user is about to delete, set while the confirmation
+    /// dialog is open. `None` when no dialog is showing.
+    pending_delete: Option<remote_page::PendingDelete>,
     /// Id of the live main window, or `None` when hidden-to-tray. We
     /// run as an `iced::daemon`: the runtime stays alive with no
     /// windows, and the tray's "Open Celeste" entry opens (or focuses)
@@ -192,6 +195,7 @@ impl CelesteApp {
             stderr_capture: stderr_capture::handle(),
             tray_tx: None,
             system_theme: iced_theme::Mode::None,
+            pending_delete: None,
             window_id: None,
         };
         let load = Task::perform(
@@ -262,9 +266,14 @@ impl CelesteApp {
             Message::AddRemoteResult(Err(msg)) => self.handle_add_remote_result_err(msg),
             Message::Remote(remote_page::Msg::Back) => self.handle_remote_back(),
             Message::Remote(remote_page::Msg::RefreshNow(id)) => self.handle_refresh_now(id),
+            Message::Remote(remote_page::Msg::RequestDeleteRemote(id, name)) => {
+                self.handle_request_delete_remote(id, name)
+            }
             Message::Remote(remote_page::Msg::DeleteRemote(id, name)) => {
                 self.handle_delete_remote(id, name)
             }
+            Message::Remote(remote_page::Msg::ConfirmDelete) => self.handle_confirm_delete(),
+            Message::Remote(remote_page::Msg::CancelDelete) => self.handle_cancel_delete(),
             Message::Remote(remote_page::Msg::Reauthenticate(id, name)) => {
                 self.handle_reauthenticate(id, name)
             }
@@ -279,6 +288,9 @@ impl CelesteApp {
                 self.handle_draft_remote_path_changed(s)
             }
             Message::Remote(remote_page::Msg::AddSyncDir) => self.handle_add_sync_dir(),
+            Message::Remote(remote_page::Msg::RequestDeleteSyncDir(local, remote)) => {
+                self.handle_request_delete_sync_dir(local, remote)
+            }
             Message::Remote(remote_page::Msg::DeleteSyncDir(local, remote)) => {
                 self.handle_delete_sync_dir(local, remote)
             }
@@ -359,6 +371,7 @@ impl CelesteApp {
                     (draft_local, draft_remote),
                     eta,
                     needs_reauth,
+                    self.pending_delete.as_ref(),
                 )
                 .map(Message::Remote)
             }

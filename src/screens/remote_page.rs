@@ -3,8 +3,11 @@
 use std::{collections::HashMap, time::Duration};
 
 use iced::{
-    widget::{button, column, container, row, rule, scrollable, text_editor, text_input, Space},
-    Alignment, Element, Length,
+    widget::{
+        button, center, column, container, opaque, row, rule, scrollable, stack,
+        text_editor, text_input, Space,
+    },
+    Alignment, Background, Color, Element, Length,
 };
 
 use crate::{
@@ -40,8 +43,20 @@ pub enum Msg {
     DraftLocalPathChanged(String),
     DraftRemotePathChanged(String),
     AddSyncDir,
+    /// User clicked the Delete button on a sync_dir card. Opens the
+    /// confirmation dialog; the actual delete fires on
+    /// [`Msg::ConfirmDelete`].
+    RequestDeleteSyncDir(String, String),
     DeleteSyncDir(String, String),
+    /// User clicked the Delete remote button in the header. Opens the
+    /// confirmation dialog; the actual delete fires on
+    /// [`Msg::ConfirmDelete`].
+    RequestDeleteRemote(RemoteId, String),
     DeleteRemote(RemoteId, String),
+    /// Dialog OK pressed — execute the pending delete.
+    ConfirmDelete,
+    /// Dialog Cancel pressed — drop the pending delete.
+    CancelDelete,
     ToggleExclusions(SyncDirId),
     DraftExclusionChanged(SyncDirId, String),
     AddExclusion(SyncDirId),
@@ -50,6 +65,16 @@ pub enum Msg {
     /// Read-only log editor swallows edits but forwards scroll/select
     /// actions so users can drag through history.
     LogEditorAction(SyncDirId, text_editor::Action),
+}
+
+/// What the user is about to delete, pending OK/Cancel on the
+/// confirmation dialog. Stored at the app level and threaded into
+/// [`view`] so the dialog can render the right description and dispatch
+/// the matching delete on confirm.
+#[derive(Debug, Clone)]
+pub enum PendingDelete {
+    Remote(RemoteId, String),
+    SyncDir { local: String, remote: String },
 }
 
 pub fn view<'a>(
@@ -64,6 +89,7 @@ pub fn view<'a>(
     draft: (&'a str, &'a str),
     next_sync_eta: Option<(Duration, bool)>,
     needs_reauth: bool,
+    pending_delete: Option<&'a PendingDelete>,
 ) -> Element<'a, Msg> {
     let countdown: Element<'a, Msg> = match next_sync_eta {
         Some((remaining, in_backoff)) => {
@@ -108,7 +134,7 @@ pub fn view<'a>(
         button(text("Reauthenticate"))
             .on_press(Msg::Reauthenticate(remote.id, remote.name.clone())),
         button(text("Delete remote"))
-            .on_press(Msg::DeleteRemote(remote.id, remote.name.clone())),
+            .on_press(Msg::RequestDeleteRemote(remote.id, remote.name.clone())),
     ]
     .spacing(ROW_SPACING)
     .align_y(Alignment::Center);
@@ -180,7 +206,7 @@ pub fn view<'a>(
             container(text(path_label).size(SYNC_DIR_FONT_SIZE))
                 .width(Length::Fill),
             button(text(excl_label).size(12)).on_press(Msg::ToggleExclusions(sd.id)),
-            button(text("Delete").size(12)).on_press(Msg::DeleteSyncDir(
+            button(text("Delete").size(12)).on_press(Msg::RequestDeleteSyncDir(
                 sd.local_path.clone(),
                 sd.remote_path.clone(),
             )),
@@ -274,7 +300,76 @@ pub fn view<'a>(
         .push(rule::horizontal(1))
         .push(settings_panel);
 
-    container(page).padding(PAGE_PADDING).into()
+    let base: Element<'a, Msg> = container(page).padding(PAGE_PADDING).into();
+
+    // Overlay the confirmation dialog on top of the page when a delete
+    // is pending. The dimmed backdrop is wrapped in `opaque` so clicks
+    // outside the dialog don't leak through to the page underneath.
+    match pending_delete {
+        Some(pending) => stack![base, confirm_delete_overlay(pending)].into(),
+        None => base,
+    }
+}
+
+/// Render the dimmed backdrop + centered OK/Cancel confirmation card
+/// for a pending delete.
+fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg> {
+    let (title, body) = match pending {
+        PendingDelete::Remote(_id, name) => (
+            "Delete remote?",
+            format!(
+                "Are you sure you want to delete the remote \"{name}\"? \
+                 All sync directories for this remote will be removed and \
+                 syncing will stop. Local files are preserved."
+            ),
+        ),
+        PendingDelete::SyncDir { local, remote } => {
+            let remote_display = if remote.is_empty() { "/" } else { remote.as_str() };
+            (
+                "Delete sync directory?",
+                format!(
+                    "Are you sure you want to delete the sync directory \
+                     \"{local}\" → \"{remote_display}\"? Local and remote \
+                     files are preserved; only the link between them is \
+                     removed."
+                ),
+            )
+        }
+    };
+
+    let dialog = container(
+        column![
+            text(title).size(18),
+            text(body).size(13),
+            row![
+                Space::new().width(Length::Fill),
+                button(text("Cancel")).on_press(Msg::CancelDelete),
+                button(text("OK")).on_press(Msg::ConfirmDelete),
+            ]
+            .spacing(ROW_SPACING),
+        ]
+        .spacing(SECTION_SPACING),
+    )
+    .padding(16)
+    .max_width(420.0)
+    .style(container::bordered_box);
+
+    let backdrop_style = |_theme: &iced::Theme| container::Style {
+        background: Some(Background::Color(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5,
+        })),
+        ..container::Style::default()
+    };
+
+    opaque(
+        container(center(dialog))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(backdrop_style),
+    )
 }
 
 /// Build the exclusion panel for one sync_dir card.

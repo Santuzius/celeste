@@ -8,7 +8,7 @@ use crate::{
         ports::BackendClient,
         remote::{ProviderKind, Remote, RemoteId},
     },
-    screens::add_remote,
+    screens::{add_remote, remote_page},
 };
 
 use super::super::{map_domain_provider_to_add_remote, CelesteApp, Message};
@@ -360,6 +360,52 @@ impl CelesteApp {
         } else {
             self.start_sync(id)
         }
+    }
+
+    /// Handle [`remote_page::Msg::RequestDeleteRemote`] — open the
+    /// OK/Cancel dialog. The actual delete is deferred until the user
+    /// presses OK ([`Message::Remote(remote_page::Msg::ConfirmDelete)`]).
+    pub(in crate::app) fn handle_request_delete_remote(
+        &mut self,
+        id: RemoteId,
+        name: String,
+    ) -> Task<Message> {
+        self.pending_delete = Some(remote_page::PendingDelete::Remote(id, name));
+        Task::none()
+    }
+
+    /// Handle [`remote_page::Msg::RequestDeleteSyncDir`] — open the
+    /// OK/Cancel dialog. The actual delete is deferred until the user
+    /// presses OK ([`Message::Remote(remote_page::Msg::ConfirmDelete)`]).
+    pub(in crate::app) fn handle_request_delete_sync_dir(
+        &mut self,
+        local: String,
+        remote: String,
+    ) -> Task<Message> {
+        self.pending_delete =
+            Some(remote_page::PendingDelete::SyncDir { local, remote });
+        Task::none()
+    }
+
+    /// Handle [`remote_page::Msg::ConfirmDelete`] — execute the
+    /// pending delete (if any) and clear the dialog state.
+    pub(in crate::app) fn handle_confirm_delete(&mut self) -> Task<Message> {
+        match self.pending_delete.take() {
+            Some(remote_page::PendingDelete::Remote(id, name)) => {
+                self.handle_delete_remote(id, name)
+            }
+            Some(remote_page::PendingDelete::SyncDir { local, remote }) => {
+                self.handle_delete_sync_dir(local, remote)
+            }
+            None => Task::none(),
+        }
+    }
+
+    /// Handle [`remote_page::Msg::CancelDelete`] — drop the pending
+    /// delete and close the dialog without acting.
+    pub(in crate::app) fn handle_cancel_delete(&mut self) -> Task<Message> {
+        self.pending_delete = None;
+        Task::none()
     }
 
     /// Handle [`remote_page::Msg::DeleteRemote`] — drop in-memory
