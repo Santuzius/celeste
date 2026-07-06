@@ -88,6 +88,7 @@ fn main() {
         .allowlist_function("ProtonDrive_Login")
         .allowlist_function("ProtonDrive_Logout")
         .allowlist_function("ProtonDrive_SaveSession")
+        .allowlist_function("ProtonDrive_SaveSessionIfRotated")
         .allowlist_function("ProtonDrive_ResumeSession")
         .allowlist_function("ProtonDrive_RootLinkID")
         .allowlist_function("ProtonDrive_ListDirectory")

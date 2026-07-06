@@ -305,6 +305,34 @@ func ProtonDrive_SaveSession(paramsJSON *C.char) *C.char {
 	return okResult(nil)
 }
 
+// ProtonDrive_SaveSessionIfRotated writes the session blob to `path`
+// only when the access/refresh tokens have rotated since the last
+// save, so the caller can cheaply poll after each sync pass and skip
+// the keyring write when nothing changed. Input JSON is
+// `{"uid":"...","path":"..."}`; result data is `{"saved": bool}`.
+//
+//export ProtonDrive_SaveSessionIfRotated
+func ProtonDrive_SaveSessionIfRotated(paramsJSON *C.char) *C.char {
+	var p struct {
+		UID  string `json:"uid"`
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(C.GoString(paramsJSON)), &p); err != nil {
+		return errResult(err)
+	}
+	sess, err := drive.Lookup(p.UID)
+	if err != nil {
+		return errResult(err)
+	}
+	saved, err := sess.SaveIfRotated(p.Path)
+	if err != nil {
+		return errResult(err)
+	}
+	return okResult(struct {
+		Saved bool `json:"saved"`
+	}{Saved: saved})
+}
+
 // ProtonDrive_ResumeSession reads a saved credential blob from disk
 // and rehydrates a session. Input JSON is `{"path":"..."}`; result
 // data is the `drive.ReusableCredential` of the resumed session so

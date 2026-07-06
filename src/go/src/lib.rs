@@ -142,6 +142,27 @@ pub mod proton {
         Ok(())
     }
 
+    /// Persist the named session's credential blob to `path` only when
+    /// the tokens have rotated (via a background refresh) since the
+    /// last save. Returns `true` when a fresh blob was written — the
+    /// caller then re-stores it in the keyring; `false` means nothing
+    /// changed and no file was touched. Cheap to call after every sync
+    /// pass.
+    pub fn save_session_if_rotated(uid: &str, path: &Path) -> Result<bool, String> {
+        #[derive(serde::Deserialize)]
+        struct Saved {
+            saved: bool,
+        }
+        let out = call_json::<_, Saved>(
+            |payload| unsafe { ffi::ProtonDrive_SaveSessionIfRotated(payload) },
+            &serde_json::json!({
+                "uid": uid,
+                "path": path.to_string_lossy(),
+            }),
+        )?;
+        Ok(out.saved)
+    }
+
     /// Rehydrate a session from a credential blob previously written
     /// by `save_session`. Returns the credential so the caller can
     /// pick up the `uid`.

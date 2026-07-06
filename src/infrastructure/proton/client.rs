@@ -276,6 +276,26 @@ impl BackendClient for NativeProtonClient {
     fn remote_type(&self, _remote: &str) -> Result<Option<String>, String> {
         Ok(Some("native-proton".to_owned()))
     }
+
+    /// Re-persist the session blob if the access/refresh tokens rotated
+    /// during this pass. The upstream client silently refreshes on a
+    /// 401 and Proton issues a new one-time-use refresh token; writing
+    /// it back to the keyring here is what lets the session survive a
+    /// restart instead of demanding a fresh 2FA login the next day.
+    /// `remote` is the keyring account name the client is registered
+    /// under. Non-fatal on error: the live session already holds the
+    /// new tokens, so we only log and let the next rotation retry.
+    fn checkpoint_session(&self, remote: &str) {
+        match crate::services::auth::persist_proton_session_if_rotated(remote, &self.uid) {
+            Ok(true) => eprintln!(
+                "celeste: native-proton session for '{remote}' re-persisted after token rotation.",
+            ),
+            Ok(false) => {}
+            Err(err) => eprintln!(
+                "celeste: failed to re-persist rotated proton session for '{remote}': {err}",
+            ),
+        }
+    }
 }
 
 /// Placeholder adapter for native-proton remotes whose session couldn't

@@ -107,6 +107,20 @@ pub fn resume_session_from_keyring(
     };
     let tmp = TempBlob::write(&blob)?;
     let cred = celeste_go::proton::resume_session(tmp.path())?;
+
+    // Resuming an expired access token forces an immediate token
+    // refresh inside `resume_session`, rotating the refresh token. If
+    // the user quits before the first sync pass checkpoints it, the
+    // stored blob would still carry the now-consumed token and the next
+    // launch would be pushed into a 2FA re-login. Persist the rotation
+    // now so a resume alone is enough to keep the session alive. Best
+    // effort: a keyring hiccup here shouldn't block the resume — the
+    // sync-pass checkpoint is the backstop.
+    if let Err(err) = persist_session_if_rotated(remote_name, &cred.uid) {
+        eprintln!(
+            "celeste: could not persist post-resume token rotation for '{remote_name}': {err}",
+        );
+    }
     Ok(Some(cred))
 }
 
@@ -126,6 +140,28 @@ fn persist_session_to_keyring(remote_name: &str, uid: &str) -> Result<(), String
         .map_err(|e| format!("reading proton session tempfile: {e}"))?;
     secrets::store(&secrets::proton_account(remote_name), &blob)?;
     Ok(())
+}
+
+/// Re-persist the session for `remote_name` to the keyring **only if**
+/// its tokens rotated since the last save. Proton hands back a new,
+/// one-time-use refresh token on every background refresh; without
+/// writing that back, the stored blob's refresh token is invalidated on
+/// first use and the next launch is forced into a full 2FA re-login.
+///
+/// Returns `Ok(true)` when a rotated blob was written, `Ok(false)` when
+/// nothing changed (the common case — cheap enough to call after every
+/// sync pass). Callers should treat errors as non-fatal: the running
+/// session still holds the fresh tokens in memory; only persistence
+/// lagged, and the next rotation re-arms the check.
+pub fn persist_session_if_rotated(remote_name: &str, uid: &str) -> Result<bool, String> {
+    let tmp = TempBlob::reserve()?;
+    if !celeste_go::proton::save_session_if_rotated(uid, tmp.path())? {
+        return Ok(false);
+    }
+    let blob = std::fs::read_to_string(tmp.path())
+        .map_err(|e| format!("reading proton session tempfile: {e}"))?;
+    secrets::store(&secrets::proton_account(remote_name), &blob)?;
+    Ok(true)
 }
 
 /// Tempfile under `$XDG_RUNTIME_DIR` (falling back to the system temp

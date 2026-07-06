@@ -108,4 +108,7 @@ impl BackendClient for ClientRouter {
     fn remote_type(&self, remote: &str) -> Result<Option<String>, String> {
         self.pick(remote).remote_type(remote)
     }
+    fn checkpoint_session(&self, remote: &str) {
+        self.pick(remote).checkpoint_session(remote);
+    }
 }

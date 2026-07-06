@@ -81,6 +81,17 @@ type Session struct {
 	// Reusable credential blob. Safe to persist — the saltedKeyPass
 	// is the only crypto-sensitive piece and base64 of that was the
 	// storage format Bridge used.
+	//
+	// AccessToken / RefreshToken rotate underneath us: on a 401 the
+	// upstream client silently refreshes and Proton hands back a NEW
+	// (one-time-use) refresh token. The AuthHandler registered in
+	// Login/Resume writes the rotated pair back here and flips
+	// `rotated`, so a later SaveIfRotated re-persists them. Guarded by
+	// authMu because refreshes fire from arbitrary API-call goroutines
+	// (including the concurrent listings in proton-ext) while
+	// protonextAuth / AsCredential read the same fields.
+	authMu        sync.RWMutex
+	rotated       bool
 	UID           string
 	AccessToken   string
 	RefreshToken  string
@@ -196,6 +207,7 @@ func Login(ctx context.Context, p LoginParams) (*Session, error) {
 		krCache:       make(map[string]*crypto.KeyRing),
 		warnedGhosts:  make(map[string]struct{}),
 	}
+	sess.registerAuthHandler()
 	if err := sess.bootstrapDrive(ctx); err != nil {
 		sess.Close()
 		return nil, err
@@ -216,12 +228,6 @@ func Resume(ctx context.Context, cred ReusableCredential) (*Session, error) {
 		proton.WithTransport(newProtonHTTPTransport()),
 	)
 	c := m.NewClient(cred.UID, cred.AccessToken, cred.RefreshToken)
-	userKR, addrKRs, addrs, _, err := unlockAccount(ctx, c, nil, saltedKeyPass)
-	if err != nil {
-		c.Close()
-		m.Close()
-		return nil, err
-	}
 	sess := &Session{
 		m:             m,
 		c:             c,
@@ -229,13 +235,27 @@ func Resume(ctx context.Context, cred ReusableCredential) (*Session, error) {
 		AccessToken:   cred.AccessToken,
 		RefreshToken:  cred.RefreshToken,
 		SaltedKeyPass: cred.SaltedKeyPass,
-		userKR:        userKR,
-		addrKRs:       addrKRs,
-		addrs:         addrs,
 		linkCache:     make(map[string]proton.Link),
 		krCache:       make(map[string]*crypto.KeyRing),
 		warnedGhosts:  make(map[string]struct{}),
 	}
+	// Attach the refresh callback before the first API call. On resume
+	// the stored access token is frequently already expired, so
+	// unlockAccount's GetUser triggers an immediate refresh — and that
+	// rotation is exactly the one we must capture. Registering it after
+	// unlockAccount would drop the newly-issued refresh token and
+	// re-invalidate the persisted blob on the very first resume.
+	sess.registerAuthHandler()
+
+	userKR, addrKRs, addrs, _, err := unlockAccount(ctx, c, nil, saltedKeyPass)
+	if err != nil {
+		sess.Close()
+		return nil, err
+	}
+	sess.userKR = userKR
+	sess.addrKRs = addrKRs
+	sess.addrs = addrs
+
 	if err := sess.bootstrapDrive(ctx); err != nil {
 		sess.Close()
 		return nil, err
@@ -297,8 +317,11 @@ type ReusableCredential struct {
 	SaltedKeyPass string `json:"salted_key_pass"`
 }
 
-// AsCredential returns the persistable subset of the session.
+// AsCredential returns the persistable subset of the session. Read
+// under authMu so a rotation in flight can't tear the token pair.
 func (s *Session) AsCredential() ReusableCredential {
+	s.authMu.RLock()
+	defer s.authMu.RUnlock()
 	return ReusableCredential{
 		UID:           s.UID,
 		AccessToken:   s.AccessToken,
@@ -308,14 +331,33 @@ func (s *Session) AsCredential() ReusableCredential {
 }
 
 // protonextAuth bundles the credential headers protonext needs to make
-// HTTP calls against the Proton API. Refreshed on every call so an
-// AuthHandler-driven token rotation is picked up by the next request.
+// HTTP calls against the Proton API. Read under authMu so a concurrent
+// AuthHandler-driven token rotation is picked up cleanly by the next
+// request rather than racing the field write.
 func (s *Session) protonextAuth() protonext.Auth {
+	s.authMu.RLock()
+	defer s.authMu.RUnlock()
 	return protonext.Auth{
 		UID:         s.UID,
 		AccessToken: s.AccessToken,
 		AppVersion:  AppVersion,
 	}
+}
+
+// registerAuthHandler wires the upstream client's post-refresh callback
+// to mirror rotated tokens back onto the Session and mark it dirty. The
+// upstream client rotates its own c.acc/c.ref internally; without this
+// the persisted blob keeps the original refresh token, which Proton
+// invalidates on first use — the "must re-enter 2FA every day" bug.
+// Called once from Login and Resume before any Drive API traffic.
+func (s *Session) registerAuthHandler() {
+	s.c.AddAuthHandler(func(auth proton.Auth) {
+		s.authMu.Lock()
+		defer s.authMu.Unlock()
+		s.AccessToken = auth.AccessToken
+		s.RefreshToken = auth.RefreshToken
+		s.rotated = true
+	})
 }
 
 // Save writes the session's reusable credential to `path`. Permissions
@@ -326,6 +368,47 @@ func (s *Session) Save(path string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
+}
+
+// SaveIfRotated writes the credential to `path` only when the tokens
+// have rotated since the last save, clearing the dirty flag on a
+// successful write. Returns whether a write happened so the caller can
+// skip re-storing an unchanged blob in the OS keyring every sync pass.
+// The flag is cleared only after the file is written; if the caller's
+// downstream persistence fails the in-memory tokens still carry the
+// running session, and the next rotation re-arms the flag.
+func (s *Session) SaveIfRotated(path string) (bool, error) {
+	s.authMu.Lock()
+	if !s.rotated {
+		s.authMu.Unlock()
+		return false, nil
+	}
+	cred := ReusableCredential{
+		UID:           s.UID,
+		AccessToken:   s.AccessToken,
+		RefreshToken:  s.RefreshToken,
+		SaltedKeyPass: s.SaltedKeyPass,
+	}
+	s.authMu.Unlock()
+
+	data, err := json.MarshalIndent(cred, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return false, err
+	}
+
+	// Clear the flag only if no newer rotation slipped in while we were
+	// writing — otherwise the just-landed (newer) token pair would be
+	// dropped until the next rotation. Leaving `rotated` set makes the
+	// next SaveIfRotated re-persist the current pair.
+	s.authMu.Lock()
+	if s.AccessToken == cred.AccessToken && s.RefreshToken == cred.RefreshToken {
+		s.rotated = false
+	}
+	s.authMu.Unlock()
+	return true, nil
 }
 
 // LoadCredential reads a credential blob from disk. Caller passes it

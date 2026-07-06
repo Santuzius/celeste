@@ -223,5 +223,13 @@ pub trait BackendClient: Send + Sync {
     /// `"dropbox"`, `"protondrive"`, `"webdav"`, etc. Returns `Ok(None)`
     /// when the remote name isn't in rclone's config.
     fn remote_type(&self, remote: &str) -> Result<Option<String>, String>;
+
+    /// Persist any session state that mutated during a sync pass (e.g.
+    /// a rotated auth token) so it survives a restart. Called by the
+    /// sync engine at the end of each pass. Default is a no-op —
+    /// rclone-backed remotes keep their credentials in `rclone.conf`
+    /// and have nothing per-pass to checkpoint; the native Proton
+    /// client overrides this to re-persist rotated refresh tokens.
+    fn checkpoint_session(&self, _remote: &str) {}
 }
 

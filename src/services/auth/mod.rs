@@ -16,7 +16,8 @@ pub mod webdav;
 // keep working without forcing every caller to spell out the submodule.
 pub use oauth::{add_oauth_remote, reauth_oauth_remote, OAuthProvider};
 pub use proton::{
-    add_proton_drive_remote, forget_session as forget_proton_session, reauth_proton_drive_remote,
+    add_proton_drive_remote, forget_session as forget_proton_session,
+    persist_session_if_rotated as persist_proton_session_if_rotated, reauth_proton_drive_remote,
     resume_session_from_keyring as resume_proton_session,
 };
 pub use webdav::{add_webdav_remote, WebDavVendor};

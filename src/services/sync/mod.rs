@@ -162,6 +162,12 @@ where
         cancel,
     );
 
+    // Checkpoint any auth-token rotation that happened during listing or
+    // apply so it lands in the keyring before the process can exit. A
+    // no-op for rclone backends; the native Proton client re-persists a
+    // rotated refresh token here. Cheap when nothing rotated.
+    client.checkpoint_session(&remote.name);
+
     if is_cancelled() {
         emit_status(tr::tr!("Sync cancelled."));
         return Outcome::Aborted;
