@@ -8,15 +8,27 @@
 # Celeste
 Celeste is a GUI file synchronization client
 
+> [!NOTE]
+> Built and tested only on Linux
+
 Used components:
 - [rclone](https://rclone.org/) for Google Drive
 - [go-proton-api](https://github.com/ProtonMail/go-proton-api) for Proton Drive
 - [iced](https://iced.rs/) for GUI
 
+## Screenshots
+Remotes selection:
+![](doc/img/Screenshot_1.png)
+Remote page:
+![](doc/img/Screenshot_2.png)
+
 ## Features
 - Two-way sync
 - Connecting to multiple cloud providers at the same time
-- Ability to add multiple local directories to the sync
+- Ability to add multiple local directories to the same remote
+- All credentials are stored at rest in the native Linux keyring
+- Background operation: when the window is closed, only the taskbar icon is displayed
+- Light/dark theme
 
 ## Supported cloud providers
 - Google Drive
@@ -70,4 +82,4 @@ sudo nixos-rebuild switch --impure
 sudo nixos-rebuild switch --flake .#<host> --impure
 ```
 
-The package uses the pre-built `libceleste_native.a` shipped in `native-go/` (the Nix sandbox has no network access, so `go build` is skipped). To refresh that archive, enter the dev shell and rebuild — cargo's `native-go/build.rs` will regenerate it on the next non-Nix build.
+The package uses the pre-built `libceleste_go.a` in `src/go/` (the Nix sandbox has no network access, so `go build` is skipped). That archive is gitignored: cargo's `src/go/build.rs` compiles it and mirrors `libceleste_go.{a,h}` into `src/go/` on any non-Nix build. To refresh it, enter the dev shell and run a plain `cargo build` before packaging.
