@@ -36,12 +36,16 @@ Remote page:
 - [iced](https://iced.rs/) for GUI
 
 ## Why not also add other providers?
+- As the sole maintainer I don't have enough time for this.
 - Some of them already have a good Linux integration:
   - [OneDrive](https://abraunegg.github.io)
   - [Dropbox](https://www.dropbox.com/install-linux)
   - [Nextcloud](https://nextcloud.com/install/)
   - etc.
-- Other are not of my interest.
+
+## Why not publish Celeste in Flatpak or similar?
+- This would be my first publication, so I don't have any experience getting it done quickly yet.
+- That's why I don't have enough time for it.
 
 ## Building
 The project ships a `shell.nix` that provides a stable Rust toolchain, Go, and all runtime libraries (Wayland/Vulkan/X11, OpenSSL, rclone). From the repo root:
