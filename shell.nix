@@ -18,10 +18,10 @@ pkgs.mkShell {
     libxkbcommon
     vulkan-loader
     wayland
-    xorg.libX11
-    xorg.libXcursor
-    xorg.libXi
-    xorg.libXrandr
+    libx11
+    libxcursor
+    libxi
+    libxrandr
     fontconfig
     openssl
     rclone
@@ -39,10 +39,10 @@ pkgs.mkShell {
       libxkbcommon
       vulkan-loader
       wayland
-      xorg.libX11
-      xorg.libXcursor
-      xorg.libXi
-      xorg.libXrandr
+      libx11
+      libxcursor
+      libxi
+      libxrandr
       fontconfig
     ];
 }
