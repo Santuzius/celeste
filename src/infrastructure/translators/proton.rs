@@ -55,10 +55,82 @@ impl EventTranslator for ProtonTranslator {
             || lower.contains("broken pipe")
             || lower.contains("eof")
             || lower.contains("timeout")
+            // Connectivity failures reaching Proton at all. go-proton-api
+            // wraps these as `NetError` ("received no response from API",
+            // "network error while communicating with API"); the Go
+            // dialer supplies the rest. Without these, a laptop that
+            // suspended or booted before DNS came up reports an
+            // unclassified error instead of a retryable one.
+            || lower.contains("no such host")
+            || lower.contains("dial tcp")
+            || lower.contains("network is unreachable")
+            || lower.contains("no route to host")
+            || lower.contains("connection refused")
+            || lower.contains("received no response from api")
+            || lower.contains("network error while communicating with api")
         {
             return BackendEvent::TransientNetwork;
         }
 
         BackendEvent::Other(msg.to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The exact string go-proton-api produces when Celeste starts
+    /// before DNS is up (autostart, or resume-from-suspend). Resuming a
+    /// session needs an HTTPS round-trip, so this used to reach the
+    /// startup resume path and get mistaken for a dead session —
+    /// costing the user a full 2FA login for a perfectly valid one.
+    const DNS_FAILURE: &str = "received no response from API: Get \
+        \"https://mail.proton.me/api/core/v4/users\": dial tcp: \
+        lookup mail.proton.me: no such host";
+
+    #[test]
+    fn connectivity_failures_are_transient_not_auth() {
+        for msg in [
+            DNS_FAILURE,
+            "network error while communicating with API: connection refused",
+            "dial tcp 1.2.3.4:443: connect: network is unreachable",
+            "dial tcp 1.2.3.4:443: connect: no route to host",
+        ] {
+            assert_eq!(
+                ProtonTranslator.classify(Operation::List, msg),
+                BackendEvent::TransientNetwork,
+                "should be retryable: {msg}",
+            );
+            assert!(
+                !ProtonTranslator.is_auth_failure(msg),
+                "must never demand reauth: {msg}",
+            );
+        }
+    }
+
+    #[test]
+    fn revoked_sessions_still_route_to_reauth() {
+        for msg in [
+            "failed to refresh auth, de-auth: Code=10013",
+            "Code=401 unauthorized",
+            "invalid refresh token",
+        ] {
+            assert_eq!(
+                ProtonTranslator.classify(Operation::Auth, msg),
+                BackendEvent::AuthExpired,
+                "should demand reauth: {msg}",
+            );
+            assert!(ProtonTranslator.is_auth_failure(msg));
+        }
+    }
+
+    #[test]
+    fn keyring_faults_are_not_auth_failures() {
+        // Secret-Service transport hiccups surface through the same
+        // resume path; they're recoverable, not a dead session.
+        let msg = "keyring read failed: Platform secure storage failure: \
+                   Crypto error: Unpad Error";
+        assert!(!ProtonTranslator.is_auth_failure(msg));
     }
 }

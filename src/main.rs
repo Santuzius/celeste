@@ -182,7 +182,7 @@ fn hydrate_rclone_config(rclone_config: &std::path::Path) {
 /// clear "Reauthenticate" message rather than falling through to
 /// rclone (which would error with an opaque config-lookup failure).
 fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
-    use crate::infrastructure::proton::client::DisabledProtonClient;
+    use crate::infrastructure::proton::client::{DisabledProtonClient, PendingProtonClient};
     let remotes = util::await_future(repo.list_remotes()).unwrap_or_default();
     for remote in remotes {
         if remote.backend != Backend::NativeProton {
@@ -224,9 +224,15 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                     Arc::new(DisabledProtonClient::new(reason)),
                 );
             }
-            Err(err) => {
+            // A genuine auth failure is the only kind the user can act
+            // on. Everything else — no network yet (autostart before DNS
+            // is up, resume-from-suspend), a transient keyring fault —
+            // must NOT latch into a reauth prompt: resuming needs an
+            // HTTPS round-trip, so a cold-boot race would otherwise cost
+            // the user a full 2FA login for a session that was fine.
+            Err(err) if crate::app::is_auth_failure(&err) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' could not be resumed ({err}). Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' has expired ({err}). Click Reauthenticate on the remote page to log in again.",
                     remote.name,
                 );
                 eprintln!("celeste: {reason}");
@@ -234,6 +240,17 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                 router.register(
                     remote.name.clone(),
                     Arc::new(DisabledProtonClient::new(reason)),
+                );
+            }
+            Err(err) => {
+                let reason = format!(
+                    "Proton Drive session for '{}' not resumed yet ({err}). Retrying automatically — no action needed.",
+                    remote.name,
+                );
+                eprintln!("celeste: {reason}");
+                router.register(
+                    remote.name.clone(),
+                    Arc::new(PendingProtonClient::new(remote.name.clone(), reason)),
                 );
             }
         }

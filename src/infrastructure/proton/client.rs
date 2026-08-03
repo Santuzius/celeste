@@ -298,6 +298,184 @@ impl BackendClient for NativeProtonClient {
     }
 }
 
+/// Adapter for a native-proton remote whose session couldn't be resumed
+/// at startup for a *recoverable* reason — no network yet (Celeste
+/// autostarting before DNS is up, or a suspend/resume), or a transient
+/// keyring failure. Resuming needs an HTTPS round-trip (`GetUser`), so
+/// those conditions are indistinguishable from a dead session at the
+/// call site unless we classify the error.
+///
+/// Rather than parking the remote behind a reauth prompt the user can't
+/// act on, this retries the resume on demand (rate-limited by
+/// [`RESUME_RETRY_COOLDOWN`]) and promotes itself to a live
+/// [`NativeProtonClient`] the moment it succeeds. A genuine auth
+/// failure discovered on retry latches into the reauth message instead.
+pub struct PendingProtonClient {
+    remote_name: String,
+    state: std::sync::Mutex<PendingState>,
+}
+
+/// Minimum gap between resume attempts. A failing pass calls into the
+/// client repeatedly; without a cooldown each one would re-dial Proton
+/// and re-read the keyring.
+const RESUME_RETRY_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(30);
+
+enum PendingState {
+    /// Not resumed yet. `reason` is what callers see until the next
+    /// attempt is due; `last_attempt` is None before the first retry.
+    Waiting {
+        last_attempt: Option<std::time::Instant>,
+        reason: String,
+    },
+    Live(NativeProtonClient),
+}
+
+impl PendingProtonClient {
+    /// `reason` is the initial startup failure, surfaced to callers
+    /// until the first retry is due.
+    pub fn new(remote_name: String, reason: String) -> Self {
+        Self {
+            remote_name,
+            state: std::sync::Mutex::new(PendingState::Waiting {
+                last_attempt: None,
+                reason,
+            }),
+        }
+    }
+
+    /// Return the live client, attempting a resume if one is due.
+    /// Errors carry the reason callers should see. The lock is held
+    /// across the resume so concurrent callers don't each open a
+    /// duplicate Go-side session.
+    fn resolve(&self) -> Result<NativeProtonClient, String> {
+        let mut state = self.state.lock().map_err(|_| {
+            format!("Proton Drive session state for '{}' is poisoned; restart Celeste.", self.remote_name)
+        })?;
+
+        match &*state {
+            PendingState::Live(client) => return Ok(client.clone()),
+            PendingState::Waiting { last_attempt, reason } => {
+                if let Some(at) = last_attempt
+                    && at.elapsed() < RESUME_RETRY_COOLDOWN
+                {
+                    return Err(reason.clone());
+                }
+            }
+        }
+
+        let now = std::time::Instant::now();
+        match crate::services::auth::resume_proton_session(&self.remote_name) {
+            Ok(Some(cred)) => {
+                eprintln!(
+                    "celeste: native-proton session for '{}' resumed on retry.",
+                    self.remote_name,
+                );
+                let client = NativeProtonClient::new(cred.uid);
+                *state = PendingState::Live(client.clone());
+                Ok(client)
+            }
+            // Blob genuinely absent, or the retry surfaced a real auth
+            // failure — no amount of waiting fixes either.
+            Ok(None) => {
+                let reason = format!(
+                    "Proton Drive session for '{}' not found in keyring. Click Reauthenticate on the remote page to log in again.",
+                    self.remote_name,
+                );
+                *state = PendingState::Waiting {
+                    last_attempt: Some(now),
+                    reason: reason.clone(),
+                };
+                Err(reason)
+            }
+            Err(err) if crate::app::is_auth_failure(&err) => {
+                let reason = format!(
+                    "Proton Drive session for '{}' has expired ({err}). Click Reauthenticate on the remote page to log in again.",
+                    self.remote_name,
+                );
+                *state = PendingState::Waiting {
+                    last_attempt: Some(now),
+                    reason: reason.clone(),
+                };
+                Err(reason)
+            }
+            Err(err) => {
+                let reason = format!(
+                    "Proton Drive session for '{}' not resumed yet ({err}). Retrying automatically — no action needed.",
+                    self.remote_name,
+                );
+                *state = PendingState::Waiting {
+                    last_attempt: Some(now),
+                    reason: reason.clone(),
+                };
+                Err(reason)
+            }
+        }
+    }
+}
+
+impl BackendClient for PendingProtonClient {
+    fn stat(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<RemoteItem>, String> {
+        self.resolve()?.stat(remote, path, cancel)
+    }
+    fn list(
+        &self,
+        remote: &str,
+        path: &str,
+        recursive: bool,
+        filter: ListFilter,
+        cancel: &Cancel,
+    ) -> Result<Vec<RemoteItem>, String> {
+        self.resolve()?.list(remote, path, recursive, filter, cancel)
+    }
+    fn mkdir(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
+        self.resolve()?.mkdir(remote, path, cancel)
+    }
+    fn delete_file(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
+        self.resolve()?.delete_file(remote, path, cancel)
+    }
+    fn purge(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
+        self.resolve()?.purge(remote, path, cancel)
+    }
+    fn copy_to_remote(
+        &self,
+        local_path: &str,
+        remote: &str,
+        remote_path: &str,
+        cancel: &Cancel,
+    ) -> Result<(), String> {
+        self.resolve()?
+            .copy_to_remote(local_path, remote, remote_path, cancel)
+    }
+    fn copy_to_local(
+        &self,
+        local_path: &str,
+        remote: &str,
+        remote_path: &str,
+        cancel: &Cancel,
+    ) -> Result<(), String> {
+        self.resolve()?
+            .copy_to_local(local_path, remote, remote_path, cancel)
+    }
+    fn delete_config(&self, _remote: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn create_config(&self, _payload_json: String) -> Result<(), String> {
+        Err("native-proton client does not accept rclone-style create_config payloads".to_owned())
+    }
+    fn remote_type(&self, _remote: &str) -> Result<Option<String>, String> {
+        Ok(Some("native-proton".to_owned()))
+    }
+    /// Only meaningful once live — don't let a checkpoint drive a
+    /// resume attempt of its own.
+    fn checkpoint_session(&self, remote: &str) {
+        if let Ok(state) = self.state.lock()
+            && let PendingState::Live(client) = &*state
+        {
+            client.checkpoint_session(remote);
+        }
+    }
+}
+
 /// Placeholder adapter for native-proton remotes whose session couldn't
 /// be resumed at startup (blob missing, refresh token expired, etc.).
 /// Registered on the [`ClientRouter`] so the sync engine's calls fail
