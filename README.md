@@ -11,16 +11,9 @@ Celeste is a GUI file synchronization client
 > [!NOTE]
 > Built and tested only on Linux
 
-Used components:
-- [rclone](https://rclone.org/) for Google Drive
-- [go-proton-api](https://github.com/ProtonMail/go-proton-api) for Proton Drive
-- [iced](https://iced.rs/) for GUI
-
-## Screenshots
-Remotes selection:
-![](doc/img/Screenshot_1.png)
-Remote page:
-![](doc/img/Screenshot_2.png)
+## Supported cloud providers
+- Google Drive
+- Proton Drive
 
 ## Features
 - Two-way sync
@@ -30,17 +23,29 @@ Remote page:
 - Background operation: when the window is closed, only the taskbar icon is displayed
 - Light/dark theme
 
-## Supported cloud providers
-- Google Drive
-- Proton Drive
+## Screenshots
+Remotes selection:
+![](doc/img/Screenshot_1.png)
+Remote page:
+![](doc/img/Screenshot_2.png)
+
+## Used components:
+- [rclone](https://rclone.org/) for Google Drive
+  - integration of other [rclone](https://rclone.org/)-supported drives is possible, but not implemented
+- [go-proton-api](https://github.com/ProtonMail/go-proton-api) for Proton Drive
+- [iced](https://iced.rs/) for GUI
 
 ## Why not also add other providers?
+- As the sole maintainer I don't have enough time for this.
 - Some of them already have a good Linux integration:
   - [OneDrive](https://abraunegg.github.io)
   - [Dropbox](https://www.dropbox.com/install-linux)
   - [Nextcloud](https://nextcloud.com/install/)
   - etc.
-- Other are not of my interest.
+
+## Why not publish Celeste in Flatpak or similar?
+- This would be my first publication, so I don't have any experience getting it done quickly yet.
+- That's why I don't have enough time for it.
 
 ## Building
 The project ships a `shell.nix` that provides a stable Rust toolchain, Go, and all runtime libraries (Wayland/Vulkan/X11, OpenSSL, rclone). From the repo root:
