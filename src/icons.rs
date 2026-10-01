@@ -1,11 +1,29 @@
-//! Custom icondata glyphs we stitch together from upstream paths.
+//! icondata helpers: the SVG document builder shared by the in-app
+//! icons (`widgets::icon`) and the tray pixmaps
+//! (`infrastructure::tray::icons`), plus custom glyphs stitched together
+//! from upstream paths.
 //!
 //! `icondata` ships every icon as a `pub static IconData` with raw
-//! inner-SVG path data plus paint metadata. Both consumers in this
-//! crate (`widgets::run_state_icon` for in-app badges and
-//! `infrastructure::tray::icons` for the tray pixmaps) accept any
-//! `icondata::Icon`, so a hand-rolled static slots in transparently
-//! beside the upstream ones.
+//! inner-SVG path data plus paint metadata, so a hand-rolled static
+//! slots in transparently beside the upstream ones.
+
+/// Wrap an icon's inner path data in a complete `<svg>` document painted
+/// in `color`. The icon's own paint metadata is respected: Tabler outline
+/// icons declare `fill="none"` and rely on `stroke="currentColor"` plus a
+/// 2-px round stroke, while fill-based packs ship their geometry inside
+/// the path data and only need a flat fill.
+pub fn svg_document(icon: icondata::Icon, color: &str) -> String {
+    let view_box = icon.view_box.unwrap_or("0 0 24 24");
+    let fill = icon.fill.unwrap_or("currentColor").replace("currentColor", color);
+    let stroke = icon.stroke.unwrap_or("none").replace("currentColor", color);
+    let stroke_width = icon.stroke_width.unwrap_or("1");
+    let stroke_linecap = icon.stroke_linecap.unwrap_or("butt");
+    let stroke_linejoin = icon.stroke_linejoin.unwrap_or("miter");
+    let data = icon.data;
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}" stroke-linecap="{stroke_linecap}" stroke-linejoin="{stroke_linejoin}">{data}</svg>"##,
+    )
+}
 
 /// Tabler-style "cloud sync" outline. The cloud body is the
 /// `TbCloudCancelOutline` outer path verbatim (its trailing

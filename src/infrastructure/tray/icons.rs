@@ -83,24 +83,7 @@ impl IconSet {
 }
 
 fn rasterise_icon(icon: icondata::Icon, color: &str) -> Vec<Icon> {
-    // Respect the icon's own paint metadata. Tabler outline icons
-    // declare `fill="none"` and rely on `stroke="currentColor"` plus
-    // a 2-px round stroke; forcing `fill=color` fills the cloud body
-    // into a solid blob and dropping the stroke geometry gives the
-    // remaining lines flat caps and 1-px width. The default fallbacks
-    // mirror the Ant Design icons in `run_state_icon.rs`, which ship
-    // their geometry inside the path data and only need a flat fill.
-    let view_box = icon.view_box.unwrap_or("0 0 24 24");
-    let fill = icon.fill.unwrap_or("currentColor").replace("currentColor", color);
-    let stroke = icon.stroke.unwrap_or("none").replace("currentColor", color);
-    let stroke_width = icon.stroke_width.unwrap_or("1");
-    let stroke_linecap = icon.stroke_linecap.unwrap_or("butt");
-    let stroke_linejoin = icon.stroke_linejoin.unwrap_or("miter");
-    let data = icon.data;
-    let svg_doc = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}" stroke-linecap="{stroke_linecap}" stroke-linejoin="{stroke_linejoin}">{data}</svg>"##,
-    );
-    rasterise(svg_doc.as_bytes())
+    rasterise(crate::icons::svg_document(icon, color).as_bytes())
 }
 
 fn rasterise(svg_bytes: &[u8]) -> Vec<Icon> {

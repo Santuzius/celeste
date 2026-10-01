@@ -151,7 +151,8 @@ where
             actions.len()
         ));
     }
-    applier::apply(
+    let total = actions.len();
+    let failed = applier::apply(
         actions,
         &snapshot,
         remote,
@@ -186,6 +187,15 @@ where
         ));
         emit_state(RunState::Warning);
         return Outcome::Degraded;
+    }
+    // Close the pass in the log, but only when something happened —
+    // an idle pass every few seconds would bury the useful lines.
+    if total > 0 {
+        emit_status(if failed == 0 {
+            tr::tr!("Done — {} changes synced.", total)
+        } else {
+            tr::tr!("Done — {} of {} changes synced, {} failed.", total - failed, total, failed)
+        });
     }
     emit_state(RunState::Synced);
     Outcome::Synced

@@ -287,7 +287,7 @@ fn cancellation_between_snapshot_and_apply_stops_the_pass() {
 
     // Cancel-on-first-call: the cancel check fires true right after
     // Snapshot::build, before plan/apply.
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::AtomicBool;
     let cancel = std::sync::Arc::new(AtomicBool::new(true));
     let outcome = run(
         &r,

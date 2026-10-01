@@ -63,31 +63,21 @@ nix-shell --run 'cargo run --release'
 
 No global `rustup`, `go`, or system headers are required — everything is pulled in by the shell.
 
-## Installing on Nix
-The Nix derivation lives in a sibling repository — [`celeste-nix`](https://github.com/Santuzius/celeste-nix) — so that the source tree and packaging can evolve independently. The package reads the Celeste checkout as its build source, so both repos must be cloned locally:
-
-```sh
-git clone https://github.com/Santuzius/celeste        ~/Git/celeste
-git clone https://github.com/Santuzius/celeste-nix    ~/Git/celeste-nix
-```
-
-Then reference the package from your Nix config, e.g.:
+## Installing on NixOS
+Celeste ships a flake. Add it as an input — this one line is all you need in `inputs`:
 
 ```nix
-# configuration.nix (or any module)
-{ pkgs, ... }: {
-  environment.systemPackages = [
-    (pkgs.callPackage /home/<you>/Git/celeste-nix { })
-  ];
-}
+celeste.url = "github:Santuzius/celeste";
 ```
 
-Because the package points at an absolute path outside the Nix store, rebuild with `--impure`:
+Then enable it through the NixOS module (installs Celeste, its menu entry and an autostart entry that starts it in the tray):
 
-```sh
-sudo nixos-rebuild switch --impure
-# or, for flakes:
-sudo nixos-rebuild switch --flake .#<host> --impure
+```nix
+# flake.nix outputs, inside nixosSystem { modules = [ … ]; }
+inputs.celeste.nixosModules.default
+{ programs.celeste.enable = true; }   # programs.celeste.autostart = false; to skip autostart
 ```
 
-The package uses the pre-built `libceleste_go.a` in `src/go/` (the Nix sandbox has no network access, so `go build` is skipped). That archive is gitignored: cargo's `src/go/build.rs` compiles it and mirrors `libceleste_go.{a,h}` into `src/go/` on any non-Nix build. To refresh it, enter the dev shell and run a plain `cargo build` before packaging.
+Alternatively add `inputs.celeste.packages.${system}.default` to `environment.systemPackages`, use `overlays.default`, or try it without installing: `nix run github:Santuzius/celeste`. Pin a release with `github:Santuzius/celeste/v0.17.0`.
+
+The package builds everything in the Nix sandbox, including the Go archive (vendored Go modules) — no `--impure` needed. When `src/go/go.mod` or `go.sum` change, update `vendorHash` in `nix/package.nix`; when the `src/go/proton-api` submodule moves, update its pinned `rev` and `hash` there.

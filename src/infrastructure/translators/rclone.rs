@@ -28,8 +28,16 @@ impl EventTranslator for RcloneTranslator {
             || lower.contains("code=401")
             || lower.contains("status=401")
             || lower.contains(" 401 ")
+            // Google API wording, e.g. "googleapi: Error 401: Request had
+            // invalid authentication credentials … Reason: authError".
+            || lower.contains("error 401")
+            || lower.contains("reason: autherror")
+            || lower.contains("invalid authentication credentials")
             || lower.contains("unauthenticated")
             || lower.contains("unauthorized")
+            // OAuth refresh token revoked or expired (e.g. Google
+            // Drive app in "testing" mode drops tokens after 7 days).
+            || lower.contains("invalid_grant")
         {
             return BackendEvent::AuthExpired;
         }
@@ -64,5 +72,27 @@ impl EventTranslator for RcloneTranslator {
         }
 
         BackendEvent::Other(msg.to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn revoked_oauth_token_routes_to_reauth() {
+        let msg = "couldn't fetch token: invalid_grant: maybe token expired? - try refreshing with \"rclone config reconnect gdrive:\"";
+        assert!(RcloneTranslator.is_auth_failure(msg));
+    }
+
+    #[test]
+    fn revoked_google_access_routes_to_reauth() {
+        let msg = "error in ListJSON: couldn't list directory: googleapi: Error 401: Request had invalid authentication credentials. Expected OAuth 2 access token, login cookie or other valid authentication credential. See https://developers.google.com/identity/sign-in/web/devconsole-project.\nMore details:\nReason: authError, Message: Invalid Credentials";
+        assert!(RcloneTranslator.is_auth_failure(msg));
+    }
+
+    #[test]
+    fn plain_network_errors_are_not_auth_failures() {
+        assert!(!RcloneTranslator.is_auth_failure("dial tcp: lookup www.googleapis.com: no such host"));
     }
 }

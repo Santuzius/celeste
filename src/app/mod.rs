@@ -8,12 +8,17 @@
 //! because they are descendants of this module.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
 
-use iced::{stream, theme as iced_theme, window, Element, Subscription, Task, Theme};
+use iced::{
+    stream,
+    theme as iced_theme,
+    widget::{container, row, stack},
+    window, Element, Length, Size, Subscription, Task, Theme,
+};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -21,11 +26,12 @@ use crate::{
         events::SyncEvent,
         ports::Repository,
         remote::{ProviderKind, Remote, RemoteId},
-        run_state::AppState,
+        run_state::{AppState, RunState},
         sync::{SyncDir, SyncDirExclusion, SyncDirId},
     },
     infrastructure::{
         client_router::ClientRouter,
+        single_instance,
         stderr_capture::{self, CaptureHandle},
         tray::{self, TrayAction, TrayUpdate},
     },
@@ -49,6 +55,10 @@ pub enum Message {
     SyncDirsLoaded(RemoteId, Vec<SyncDir>),
     AllSyncDirsRefreshed(Vec<SyncDir>),
     ExclusionsLoaded(SyncDirId, Vec<SyncDirExclusion>),
+    /// Result of the desktop folder chooser (`None` = cancelled / no portal).
+    LocalPathPicked(Option<String>),
+    /// An add-sync-dir attempt finished; `Err` carries the message shown under the form.
+    SyncDirAdded(RemoteId, Result<(), String>),
     PolicySaved,
     SyncStarted(RemoteId),
     SyncFinished(RemoteId, PassVerdict),
@@ -76,6 +86,8 @@ pub enum Message {
     /// the next "Open Celeste" creates a fresh window instead of
     /// targeting the dead one.
     WindowClosed(window::Id),
+    /// Escape pressed outside a text field — closes the topmost dialog / panel.
+    Escape,
 }
 
 /// Aggregate outcome across every sync_dir of one remote's pass. The
@@ -108,10 +120,15 @@ pub struct CelesteApp {
     /// Accumulated log lines per sync_dir, capped at
     /// [`remote_page::MAX_LOG_LINES`] so a long-running session doesn't
     /// grow unbounded.
-    sync_dir_log_lines: HashMap<SyncDirId, Vec<String>>,
-    /// Read-only [`text_editor::Content`] mirror of the log lines, kept
-    /// in sync so the remote-page editor can borrow it directly.
+    sync_dir_log_lines: HashMap<SyncDirId, VecDeque<log::LogLine>>,
+    /// Read-only [`text_editor::Content`] mirror of the log lines — only
+    /// for logs the user has expanded, since each one holds a fully
+    /// shaped text buffer. Dropped again on collapse / window close.
     sync_dir_log_content: HashMap<SyncDirId, iced::widget::text_editor::Content>,
+    /// Google Drive remotes still on rclone's retiring shared OAuth client.
+    shared_oauth_client: std::collections::HashSet<RemoteId>,
+    /// Error from the last add-sync-dir attempt, shown under the form.
+    add_sync_dir_error: Option<String>,
     /// Hierarchical run-state machine: per-dir states, auth-failure
     /// bookkeeping, and backoff counters. Replaces the former flat
     /// `sync_dir_status`, `auth_failed_remotes`, `consecutive_degraded`,
@@ -152,6 +169,8 @@ pub struct CelesteApp {
     /// handshake has landed; remains `None` if the session has no
     /// StatusNotifier host.
     tray_tx: Option<mpsc::Sender<TrayUpdate>>,
+    /// Last status pushed to the tray, to skip redundant pushes.
+    last_tray_status: Option<tray::TrayStatus>,
     /// Last system colour-scheme value reported by iced. Cached so
     /// the [`Message::TrayReady`] handshake can seed the tray with
     /// the current value before the next change fires.
@@ -171,8 +190,9 @@ impl CelesteApp {
     fn new(
         repo: Arc<dyn Repository>,
         rclone: Arc<ClientRouter>,
+        show_window: bool,
     ) -> (Self, Task<Message>) {
-        let state = Self {
+        let mut state = Self {
             repo: repo.clone(),
             rclone,
             remotes: Vec::new(),
@@ -181,6 +201,8 @@ impl CelesteApp {
             syncing: std::collections::HashSet::new(),
             sync_dir_log_lines: HashMap::new(),
             sync_dir_log_content: HashMap::new(),
+            add_sync_dir_error: None,
+            shared_oauth_client: std::collections::HashSet::new(),
             sync_state: AppState::new(),
             all_known_sync_dirs: Vec::new(),
             exclusion_panel: None,
@@ -194,6 +216,7 @@ impl CelesteApp {
             cancel_flags: HashMap::new(),
             stderr_capture: stderr_capture::handle(),
             tray_tx: None,
+            last_tray_status: None,
             system_theme: iced_theme::Mode::None,
             pending_delete: None,
             window_id: None,
@@ -205,7 +228,14 @@ impl CelesteApp {
         // Seed the cached system theme with whatever iced already knows;
         // the subscription below picks up subsequent changes.
         let initial_theme = iced::system::theme().map(Message::SystemThemeChanged);
-        (state, Task::batch([load, initial_theme]))
+        let open = if show_window {
+            let (id, opened) = window::open(main_window_settings());
+            state.window_id = Some(id);
+            opened.discard()
+        } else {
+            Task::none()
+        };
+        (state, Task::batch([load, initial_theme, open]))
     }
 
     fn title(&self, _id: window::Id) -> String {
@@ -251,7 +281,16 @@ impl CelesteApp {
         // portal via `mundy` and emits a `Mode` whenever it changes. Forward
         // those into the tray so the rasterised glyphs follow the panel.
         let system_theme = iced::system::theme_changes().map(Message::SystemThemeChanged);
-        Subscription::batch([events, ticker, tray, window_close, system_theme])
+        // A second launch of the binary asks us (over the single-instance socket) to surface the window.
+        let show_requests = single_instance::show_requests().map(|()| Message::TrayClick(TrayAction::Open));
+        let escape = iced::keyboard::listen().filter_map(|event| match event {
+            iced::keyboard::Event::KeyPressed {
+                key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                ..
+            } => Some(Message::Escape),
+            _ => None,
+        });
+        Subscription::batch([events, ticker, tray, window_close, system_theme, show_requests, escape])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -264,13 +303,9 @@ impl CelesteApp {
             Message::AddRemote(sub) => self.handle_add_remote_msg(sub),
             Message::AddRemoteResult(Ok(id)) => self.handle_add_remote_result_ok(id),
             Message::AddRemoteResult(Err(msg)) => self.handle_add_remote_result_err(msg),
-            Message::Remote(remote_page::Msg::Back) => self.handle_remote_back(),
             Message::Remote(remote_page::Msg::RefreshNow(id)) => self.handle_refresh_now(id),
             Message::Remote(remote_page::Msg::RequestDeleteRemote(id, name)) => {
                 self.handle_request_delete_remote(id, name)
-            }
-            Message::Remote(remote_page::Msg::DeleteRemote(id, name)) => {
-                self.handle_delete_remote(id, name)
             }
             Message::Remote(remote_page::Msg::ConfirmDelete) => self.handle_confirm_delete(),
             Message::Remote(remote_page::Msg::CancelDelete) => self.handle_cancel_delete(),
@@ -288,12 +323,13 @@ impl CelesteApp {
                 self.handle_draft_remote_path_changed(s)
             }
             Message::Remote(remote_page::Msg::AddSyncDir) => self.handle_add_sync_dir(),
-            Message::Remote(remote_page::Msg::RequestDeleteSyncDir(local, remote)) => {
-                self.handle_request_delete_sync_dir(local, remote)
+            Message::Remote(remote_page::Msg::RequestDeleteSyncDir(local, remote, label)) => {
+                self.handle_request_delete_sync_dir(local, remote, label)
             }
-            Message::Remote(remote_page::Msg::DeleteSyncDir(local, remote)) => {
-                self.handle_delete_sync_dir(local, remote)
-            }
+            Message::Remote(remote_page::Msg::BrowseLocalPath) => self.handle_browse_local_path(),
+            Message::LocalPathPicked(path) => self.handle_local_path_picked(path),
+            Message::SyncDirAdded(id, result) => self.handle_sync_dir_added(id, result),
+            Message::Remote(remote_page::Msg::ToggleLog(sd_id)) => self.handle_toggle_log(sd_id),
             Message::Remote(remote_page::Msg::Settings(sub)) | Message::Settings(sub) => {
                 self.handle_settings(sub)
             }
@@ -332,61 +368,120 @@ impl CelesteApp {
             Message::SystemThemeChanged(mode) => self.handle_system_theme_changed(mode),
             Message::Quit => self.handle_quit(),
             Message::WindowClosed(id) => self.handle_window_closed(id),
+            Message::Escape => self.handle_escape(),
         };
         self.push_tray_status();
         cmd
     }
 
     fn view(&self, _id: window::Id) -> Element<'_, Message> {
-        if let Some(draft) = self.add_remote_draft.as_ref() {
-            return add_remote::view(draft).map(Message::AddRemote);
-        }
+        let nav = main_page::nav(
+            self.remotes
+                .iter()
+                .map(|remote| main_page::NavEntry {
+                    remote,
+                    state: self.display_state(remote),
+                    has_folders: self.all_known_sync_dirs.iter().any(|d| d.remote_id == remote.id),
+                })
+                .collect(),
+            self.selected,
+        )
+        .map(Message::Main);
 
-        match self
+        let content: Element<'_, Message> = match self
             .selected
             .and_then(|id| self.remotes.iter().find(|r| r.id == id))
         {
-            Some(remote) => {
-                let dirs: &[SyncDir] = self
-                    .sync_dirs
-                    .get(&remote.id)
-                    .map(|v| v.as_slice())
-                    .unwrap_or(&[]);
-                let (draft_local, draft_remote) = self
-                    .sync_dir_drafts
-                    .get(&remote.id)
-                    .map(|(l, r)| (l.as_str(), r.as_str()))
-                    .unwrap_or(("", ""));
-                let eta = self.next_sync_eta(remote.id);
-                let needs_reauth = self.sync_state.needs_reauth(remote.id);
-                remote_page::view(
-                    remote,
-                    dirs,
-                    &self.sync_dir_log_content,
-                    self.sync_state.dir_states(remote.id),
-                    &self.all_known_sync_dirs,
-                    self.exclusion_panel,
-                    &self.sync_dir_exclusions,
-                    &self.draft_exclusion,
-                    (draft_local, draft_remote),
-                    eta,
-                    needs_reauth,
-                    self.pending_delete.as_ref(),
-                )
-                .map(Message::Remote)
-            }
-            None => main_page::view(&self.remotes, self.selected, &self.sync_state)
-                .map(Message::Main),
+            Some(remote) => remote_page::view(self.remote_page(remote)).map(Message::Remote),
+            None => container(main_page::empty_state().map(Message::Main))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(theme::page)
+                .into(),
+        };
+
+        let base: Element<'_, Message> = row![nav, content].into();
+        if let Some(draft) = self.add_remote_draft.as_ref() {
+            let dismiss = draft.can_cancel().then_some(Message::AddRemote(add_remote::Msg::Cancel));
+            stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
+        } else if let Some(pending) = self.pending_delete.as_ref() {
+            stack![base, remote_page::confirm_delete_overlay(pending).map(Message::Remote)].into()
+        } else {
+            base
         }
     }
 }
 
 impl CelesteApp {
+    /// Close the topmost dialog or open panel.
+    fn handle_escape(&mut self) -> Task<Message> {
+        if self.pending_delete.take().is_some() {
+            return Task::none();
+        }
+        if let Some(draft) = &self.add_remote_draft {
+            if draft.can_cancel() {
+                return self.handle_add_remote_msg(add_remote::Msg::Cancel);
+            }
+            return Task::none();
+        }
+        self.exclusion_panel = None;
+        Task::none()
+    }
+
+    /// Roll-up shown for a remote; falls back to the policy before the
+    /// state machine knows the remote.
+    fn display_state(&self, remote: &Remote) -> RunState {
+        self.sync_state.roll_up(remote.id).unwrap_or(if remote.policy.enabled {
+            RunState::Waiting
+        } else {
+            RunState::Paused
+        })
+    }
+
+    /// Collect everything the remote page renders.
+    fn remote_page<'a>(&'a self, remote: &'a Remote) -> remote_page::Page<'a> {
+        let dirs: &[SyncDir] = self.sync_dirs.get(&remote.id).map_or(&[], |v| v.as_slice());
+        let (draft_local, draft_remote) = self
+            .sync_dir_drafts
+            .get(&remote.id)
+            .map_or(("", ""), |(l, r)| (l.as_str(), r.as_str()));
+        let folders = dirs
+            .iter()
+            .map(|dir| {
+                let lines = self.sync_dir_log_lines.get(&dir.id);
+                remote_page::Folder {
+                    dir,
+                    state: self.sync_state.dir_state(remote.id, dir.id),
+                    latest_line: lines.and_then(|l| l.back()).map(|l| l.text.as_str()),
+                    latest_problem: lines
+                        .and_then(|l| l.iter().rev().find(|line| line.text.starts_with('⚠')))
+                        .map(|l| l.text.as_str()),
+                    log: self.sync_dir_log_content.get(&dir.id),
+                    exclusions_open: self.exclusion_panel == Some(dir.id),
+                    auto_excluded: remote_page_auto_excluded(dir, &self.all_known_sync_dirs),
+                    custom_excluded: self.sync_dir_exclusions.get(&dir.id).map_or(&[], |v| v.as_slice()),
+                    draft_exclusion: self.draft_exclusion.get(&dir.id).map_or("", |s| s.as_str()),
+                }
+            })
+            .collect();
+        remote_page::Page {
+            remote,
+            state: self.display_state(remote),
+            syncing: self.syncing.contains(&remote.id),
+            next_sync: self.next_sync_eta(remote.id),
+            dirs: folders,
+            draft_local,
+            draft_remote,
+            add_error: self.add_sync_dir_error.as_deref(),
+            shared_oauth_client: self.shared_oauth_client.contains(&remote.id),
+        }
+    }
+
     /// Push the current tray status to the ksni task, if it's alive.
     /// Computation lives in the tray module so the mapping rule sits
     /// next to the icon set it drives. Silently drops on a full channel
     /// — the tray catches up on the next change (within one tick).
-    fn push_tray_status(&self) {
+    fn push_tray_status(&mut self) {
         if let Some(tx) = self.tray_tx.as_ref() {
             let status = tray::compute_status(
                 &self.sync_state,
@@ -394,7 +489,13 @@ impl CelesteApp {
                 &self.syncing,
                 &self.last_sync_at,
             );
-            let _ = tx.try_send(TrayUpdate::Status(status));
+            // `update` runs at least once a second (ticker); only wake
+            // the tray task when something visible actually changed.
+            if self.last_tray_status.as_ref() != Some(&status)
+                && tx.try_send(TrayUpdate::Status(status.clone())).is_ok()
+            {
+                self.last_tray_status = Some(status);
+            }
         }
     }
 
@@ -418,6 +519,23 @@ pub(crate) fn is_auth_failure(msg: &str) -> bool {
         proton::ProtonTranslator, rclone::RcloneTranslator,
     };
     RcloneTranslator.is_auth_failure(msg) || ProtonTranslator.is_auth_failure(msg)
+}
+
+/// Sync_dirs from `all` that are auto-excluded under `sd` — another
+/// sync_dir on the same remote whose remote path is nested under
+/// `sd.remote_path`. Local-tree overlaps are blocked at AddSyncDir time,
+/// so only the remote-tree case can occur.
+fn remote_page_auto_excluded<'a>(sd: &SyncDir, all: &'a [SyncDir]) -> Vec<&'a SyncDir> {
+    all.iter()
+        .filter(|d| d.id != sd.id && d.remote_id == sd.remote_id)
+        .filter(|d| {
+            if sd.remote_path.is_empty() {
+                !d.remote_path.is_empty()
+            } else {
+                d.remote_path.starts_with(&format!("{}/", sd.remote_path))
+            }
+        })
+        .collect()
 }
 
 /// True when two local paths overlap — equal, or one is a strict
@@ -455,11 +573,13 @@ pub(crate) fn map_domain_provider_to_add_remote(
 /// (matching Signal / Telegram / WhatsApp behaviour). The tray's "Open
 /// Celeste" entry then opens a fresh window via [`window::open`].
 ///
-/// Boot opens no window: Celeste typically autostarts at login, where a
-/// pop-up would steal focus. The user surfaces it through the tray.
+/// Boot opens no window unless `show_window` (`--show`) is set: Celeste
+/// typically autostarts at login, where a pop-up would steal focus. The
+/// user surfaces it through the tray or by launching the binary again.
 pub fn run(
     repo: Arc<dyn Repository>,
     rclone: Arc<ClientRouter>,
+    show_window: bool,
 ) -> iced::Result {
     // Bias iced's default glyph lookup to the sans-serif family so
     // cosmic-text's fallback layer resolves against the fonts we just
@@ -471,7 +591,7 @@ pub fn run(
     };
 
     let mut builder = iced::daemon(
-        move || CelesteApp::new(repo.clone(), rclone.clone()),
+        move || CelesteApp::new(repo.clone(), rclone.clone(), show_window),
         CelesteApp::update,
         CelesteApp::view,
     )
@@ -496,6 +616,8 @@ pub fn run(
 pub(crate) fn main_window_settings() -> window::Settings {
     window::Settings {
         icon: crate::branding::window_icon(),
+        size: Size::new(1000.0, 700.0),
+        min_size: Some(Size::new(720.0, 460.0)),
         ..window::Settings::default()
     }
 }
@@ -516,21 +638,31 @@ pub(crate) fn main_window_settings() -> window::Settings {
 /// We log each load/miss to stderr so the first "I see boxes" report
 /// is traceable.
 fn fallback_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
-    [
+    let mut paths: Vec<String> = Vec::new();
+    for query in [
         "Noto Color Emoji",
         "Noto Sans Symbols 2",
         "Noto Sans",
         "sans-serif",
         "emoji",
         "monospace",
-    ]
-    .iter()
-    .filter_map(|q| fc_match_read(q))
-    .map(std::borrow::Cow::Owned)
-    .collect()
+    ] {
+        // Generic aliases usually resolve to a file an earlier query
+        // already found; loading it twice would just double its RAM.
+        if let Some(path) = fc_match_path(query)
+            && !paths.contains(&path)
+        {
+            paths.push(path);
+        }
+    }
+    paths
+        .iter()
+        .filter_map(|p| std::fs::read(p).ok())
+        .map(std::borrow::Cow::Owned)
+        .collect()
 }
 
-fn fc_match_read(pattern: &str) -> Option<Vec<u8>> {
+fn fc_match_path(pattern: &str) -> Option<String> {
     let out = std::process::Command::new("fc-match")
         .args(["-f", "%{file}"])
         .arg(pattern)
@@ -539,10 +671,6 @@ fn fc_match_read(pattern: &str) -> Option<Vec<u8>> {
     if !out.status.success() {
         return None;
     }
-    let path = String::from_utf8(out.stdout).ok()?;
-    let path = path.trim();
-    if path.is_empty() {
-        return None;
-    }
-    std::fs::read(path).ok()
+    let path = String::from_utf8(out.stdout).ok()?.trim().to_owned();
+    (!path.is_empty()).then_some(path)
 }

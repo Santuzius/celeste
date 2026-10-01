@@ -18,23 +18,25 @@ use crate::{
 use super::super::{local_paths_overlap, CelesteApp, Message};
 
 impl CelesteApp {
-    /// Handle [`Message::SyncDirsLoaded`] — pre-populate empty log
-    /// content + state machine entries for every dir on this remote.
+    /// Handle [`Message::SyncDirsLoaded`] — store the list and align the
+    /// state machine (and per-dir UI state) with it.
     pub(in crate::app) fn handle_sync_dirs_loaded(
         &mut self,
         id: RemoteId,
         sd: Vec<SyncDir>,
     ) -> Task<Message> {
-        // Pre-populate an empty `text_editor::Content` for every
-        // sync_dir so the read-only editor renders even when the
-        // engine hasn't emitted a single event for it yet — the
-        // editor needs a `&Content` to draw against.
-        for d in &sd {
-            self.sync_dir_log_content
-                .entry(d.id)
-                .or_insert_with(iced::widget::text_editor::Content::new);
-            self.sync_state.ensure_dir(id, d.id);
+        // Forget everything about sync_dirs that were deleted, so a
+        // stale Error can't keep colouring the remote's roll-up.
+        let ids: Vec<SyncDirId> = sd.iter().map(|d| d.id).collect();
+        if let Some(old) = self.sync_dirs.get(&id) {
+            for gone in old.iter().map(|d| d.id).filter(|d| !ids.contains(d)) {
+                self.sync_dir_log_lines.remove(&gone);
+                self.sync_dir_log_content.remove(&gone);
+                self.sync_dir_exclusions.remove(&gone);
+                self.draft_exclusion.remove(&gone);
+            }
         }
+        self.sync_state.set_dirs(id, &ids);
         self.sync_dirs.insert(id, sd);
         Task::none()
     }
@@ -45,12 +47,20 @@ impl CelesteApp {
         &mut self,
         all: Vec<SyncDir>,
     ) -> Task<Message> {
+        // Align every remote's dir set with the DB, not just the visited
+        // one: the roll-ups (sidebar, tray) need it before the first pass,
+        // and a remote without folders must be recognisable as such.
+        for remote in &self.remotes {
+            let ids: Vec<SyncDirId> = all.iter().filter(|d| d.remote_id == remote.id).map(|d| d.id).collect();
+            self.sync_state.set_dirs(remote.id, &ids);
+        }
         self.all_known_sync_dirs = all;
         Task::none()
     }
 
     /// Handle [`remote_page::Msg::DraftLocalPathChanged`] / [`DraftRemotePathChanged`].
     pub(in crate::app) fn handle_draft_local_path_changed(&mut self, s: String) -> Task<Message> {
+        self.add_sync_dir_error = None;
         if let Some(id) = self.selected {
             self.sync_dir_drafts.entry(id).or_default().0 = s;
         }
@@ -66,7 +76,7 @@ impl CelesteApp {
 
     /// Handle [`remote_page::Msg::AddSyncDir`] — normalise input,
     /// reject overlapping local paths, auto-create the directories,
-    /// and insert the DB row.
+    /// and insert the DB row. Problems are shown under the form.
     pub(in crate::app) fn handle_add_sync_dir(&mut self) -> Task<Message> {
         let Some(id) = self.selected else {
             return Task::none();
@@ -74,36 +84,42 @@ impl CelesteApp {
         let Some((local, remote)) = self.sync_dir_drafts.get(&id).cloned() else {
             return Task::none();
         };
-        if local.trim().is_empty() || remote.trim().is_empty() {
-            return Task::none();
-        }
         let Some(remote_name) =
             self.remotes.iter().find(|r| r.id == id).map(|r| r.name.clone())
         else {
             return Task::none();
         };
+        let local = expand_home(local.trim());
+        if local.is_empty() {
+            self.add_sync_dir_error = Some("Choose a folder on this computer.".to_owned());
+            return Task::none();
+        }
+        if !local.starts_with('/') {
+            self.add_sync_dir_error = Some("Use an absolute path, e.g. /home/you/Documents or ~/Documents.".to_owned());
+            return Task::none();
+        }
         // Normalise to match the on-disk contract: the local path is
         // absolute (leading `/`) and has no trailing `/`; the remote
         // path has no leading or trailing `/`. The sync loop assumes
         // this shape when stripping prefixes off listed items.
-        let local_norm = format!("/{}", crate::util::strip_slashes(local.trim()));
+        let local_norm = format!("/{}", crate::util::strip_slashes(&local));
         let remote_norm = crate::util::strip_slashes(remote.trim());
-        // Reject any local path that overlaps an existing sync_dir
-        // (descendant or ancestor). Sync_dirs must be local siblings
-        // — overlapping local trees would have the engine walking the
-        // same files twice with conflicting tracking.
+        // Sync_dirs must be local siblings — overlapping local trees
+        // would have the engine walking the same files twice with
+        // conflicting tracking.
         if let Some(conflict) = self
             .all_known_sync_dirs
             .iter()
             .find(|d| local_paths_overlap(&d.local_path, &local_norm))
         {
-            eprintln!(
-                "AddSyncDir rejected: local path '{}' overlaps existing sync_dir '{}'",
-                local_norm, conflict.local_path,
-            );
+            self.add_sync_dir_error = Some(format!(
+                "{} overlaps the already synced folder {}. Synced folders can't contain each other.",
+                crate::util::fmt_home(&local_norm),
+                crate::util::fmt_home(&conflict.local_path),
+            ));
             return Task::none();
         }
-        self.sync_dir_drafts.insert(id, (String::new(), String::new()));
+        self.add_sync_dir_error = None;
         let repo = self.repo.clone();
         let rclone = self.rclone.clone();
         Task::perform(
@@ -113,21 +129,96 @@ impl CelesteApp {
                 // "directory not found" on the listing call.
                 let local_for_mk = local_norm.clone();
                 let remote_for_mk = remote_norm.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    let _ = std::fs::create_dir_all(&local_for_mk);
+                let created = tokio::task::spawn_blocking(move || {
+                    std::fs::create_dir_all(&local_for_mk)
+                        .map_err(|e| format!("Couldn't create {local_for_mk}: {e}"))?;
                     let _ = rclone.mkdir(
                         &remote_name,
                         &remote_for_mk,
                         &crate::domain::ports::cancel_never(),
                     );
+                    Ok::<(), String>(())
                 })
-                .await;
-
-                let _ = repo.insert_sync_dir(id, local_norm, remote_norm).await;
-                id
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()));
+                let result = match created {
+                    Ok(()) => repo
+                        .insert_sync_dir(id, local_norm, remote_norm)
+                        .await
+                        .map(|_| ())
+                        .map_err(|e| e.to_string()),
+                    Err(e) => Err(e),
+                };
+                (id, result)
             },
-            |id| Message::Main(main_page::Msg::Selected(id)),
+            |(id, result)| Message::SyncDirAdded(id, result),
         )
+    }
+
+    /// Handle [`Message::SyncDirAdded`] — clear the form and reload on
+    /// success, keep the input and show the reason otherwise.
+    pub(in crate::app) fn handle_sync_dir_added(
+        &mut self,
+        id: RemoteId,
+        result: Result<(), String>,
+    ) -> Task<Message> {
+        match result {
+            Ok(()) => {
+                self.sync_dir_drafts.remove(&id);
+                self.add_sync_dir_error = None;
+                // Start syncing the new folder right away.
+                self.last_sync_at.remove(&id);
+                self.handle_remote_selected(id)
+            }
+            Err(err) => {
+                self.add_sync_dir_error = Some(err);
+                Task::none()
+            }
+        }
+    }
+
+    /// Handle [`remote_page::Msg::BrowseLocalPath`] — open the desktop's
+    /// folder chooser off the UI thread.
+    pub(in crate::app) fn handle_browse_local_path(&mut self) -> Task<Message> {
+        Task::perform(
+            async {
+                tokio::task::spawn_blocking(|| {
+                    crate::infrastructure::portal::pick_folder("Choose a folder to sync")
+                })
+                .await
+                .ok()
+                .flatten()
+            },
+            Message::LocalPathPicked,
+        )
+    }
+
+    /// Handle [`Message::LocalPathPicked`] — fill the local field and,
+    /// when the remote field is still empty, suggest the same folder
+    /// name on the remote.
+    pub(in crate::app) fn handle_local_path_picked(&mut self, path: Option<String>) -> Task<Message> {
+        let (Some(path), Some(id)) = (path, self.selected) else {
+            return Task::none();
+        };
+        let draft = self.sync_dir_drafts.entry(id).or_default();
+        if draft.1.trim().is_empty()
+            && let Some(name) = std::path::Path::new(&path).file_name().and_then(|n| n.to_str())
+        {
+            draft.1 = name.to_owned();
+        }
+        draft.0 = path;
+        self.add_sync_dir_error = None;
+        Task::none()
+    }
+
+    /// Handle [`remote_page::Msg::ToggleLog`] — expand / collapse a
+    /// folder's activity log. The shaped editor content only exists
+    /// while expanded.
+    pub(in crate::app) fn handle_toggle_log(&mut self, sd_id: SyncDirId) -> Task<Message> {
+        if self.sync_dir_log_content.remove(&sd_id).is_none() {
+            self.sync_dir_log_content.insert(sd_id, self.build_log_content(sd_id));
+        }
+        Task::none()
     }
 
     /// Handle [`remote_page::Msg::DeleteSyncDir`].
@@ -161,7 +252,11 @@ impl CelesteApp {
             return Task::none();
         };
         let was_enabled = remote.policy.enabled;
-        let new_policy = settings::policy_from(&sub, &remote.policy);
+        let Some(new_policy) = settings::policy_from(&sub, &remote.policy) else {
+            // Account / removal actions are routed through the remote
+            // page's own messages; nothing to persist here.
+            return Task::none();
+        };
         remote.policy = new_policy.clone();
         self.sync_state.set_remote_enabled(id, new_policy.enabled);
         // If the user just disabled a remote that's currently syncing,
@@ -268,5 +363,13 @@ impl CelesteApp {
             content.perform(action);
         }
         Task::none()
+    }
+}
+
+/// Expand a leading `~` to `$HOME`, so typed paths can use the same shorthand the UI displays.
+fn expand_home(path: &str) -> String {
+    match (path.strip_prefix('~'), std::env::var("HOME")) {
+        (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => format!("{home}{rest}"),
+        _ => path.to_owned(),
     }
 }

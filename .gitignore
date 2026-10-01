@@ -15,3 +15,9 @@
 # main Celeste crate.
 /src/go/target
 /src/go/Cargo.lock
+
+temp
+
+# Nix build output and vendored Go modules (nix/package.nix)
+/result
+/src/go/vendor

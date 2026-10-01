@@ -9,6 +9,7 @@ use crate::{
         events::SyncEvent,
         ports::{BackendClient, Cancel, Repository, is_cancelled as cancel_check},
         remote::Remote,
+        run_state::{RunState, SyncActivity},
         sync::{SyncDir, SyncError},
     },
     util,
@@ -17,6 +18,7 @@ use crate::{
 use super::planner::Action;
 use super::snapshot::Snapshot;
 
+/// Returns how many actions failed.
 pub(super) fn apply<FE>(
     actions: Vec<Action>,
     snapshot: &Snapshot,
@@ -26,10 +28,12 @@ pub(super) fn apply<FE>(
     client: &dyn BackendClient,
     emit: &FE,
     cancel: &Cancel,
-) where
+) -> usize
+where
     FE: Fn(SyncEvent) + Clone,
 {
     let is_cancelled = || cancel_check(cancel);
+    let failures = std::cell::Cell::new(0usize);
     let total = actions.len();
     let emit_status = |text: String| {
         emit(SyncEvent::SyncDirStatus {
@@ -46,6 +50,7 @@ pub(super) fn apply<FE>(
         });
     };
     let emit_error = |error: SyncError| {
+        failures.set(failures.get() + 1);
         emit(SyncEvent::SyncDirError {
             remote_id: remote.id,
             sync_dir_id: sync_dir.id,
@@ -53,9 +58,22 @@ pub(super) fn apply<FE>(
         });
     };
 
+    // Actions arrive sorted by phase, so the activity only changes a
+    // handful of times per pass — emit just those transitions.
+    let mut current_activity: Option<SyncActivity> = None;
     for (idx, action) in actions.into_iter().enumerate() {
         if is_cancelled() {
-            return;
+            return failures.get();
+        }
+        if let Some(activity) = activity_of(&action)
+            && current_activity != Some(activity)
+        {
+            current_activity = Some(activity);
+            emit(SyncEvent::SyncDirStateChanged {
+                remote_id: remote.id,
+                sync_dir_id: sync_dir.id,
+                state: RunState::Syncing(activity),
+            });
         }
         // Refresh the phase-pending line roughly every 16 actions so a
         // long apply (e.g. 1800+ downloads on first sync of a large
@@ -217,6 +235,17 @@ pub(super) fn apply<FE>(
         }
     }
     let _ = snapshot;
+    failures.get()
+}
+
+fn activity_of(action: &Action) -> Option<SyncActivity> {
+    match action {
+        Action::Upload { .. } => Some(SyncActivity::Uploading),
+        Action::Download { .. } => Some(SyncActivity::Downloading),
+        Action::DeleteLocal { .. } | Action::DeleteRemote { .. } => Some(SyncActivity::Deleting),
+        Action::Conflict { .. } => Some(SyncActivity::Resolving),
+        Action::ClearDbRow { .. } => None,
+    }
 }
 
 fn record_upsert(

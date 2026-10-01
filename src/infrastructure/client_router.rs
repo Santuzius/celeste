@@ -111,4 +111,10 @@ impl BackendClient for ClientRouter {
     fn checkpoint_session(&self, remote: &str) {
         self.pick(remote).checkpoint_session(remote);
     }
+    fn needs_reauth(&self, remote: &str) -> bool {
+        self.pick(remote).needs_reauth(remote)
+    }
+    fn uses_shared_oauth_client(&self, remote: &str) -> bool {
+        self.pick(remote).uses_shared_oauth_client(remote)
+    }
 }

@@ -4,7 +4,7 @@
 //! service calls.
 
 pub mod duration_picker;
-pub mod run_state_icon;
+pub mod icon;
 mod text_ext;
 
 /// Drop-in replacement for `iced::widget::text` that opts into

@@ -36,6 +36,7 @@ fn main() {
         password: require("PROTON_PASSWORD"),
         two_fa: env::var("PROTON_TOTP").unwrap_or_default(),
         mailbox_password: env::var("PROTON_MAILBOX_PASSWORD").unwrap_or_default(),
+        ..Default::default()
     };
 
     eprintln!("logging in as {}…", mask(&params.username));

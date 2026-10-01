@@ -1,80 +1,97 @@
-//! Per-remote "Sync Settings" panel (Enabled + interval + hoverable
-//! warning for provider-specific rate-limit tripwires).
+//! Per-remote settings card: automatic sync on/off, interval, account status and removal — one labelled row each, in the style of KDE / Windows 11 settings pages.
 
 use iced::{
-    widget::{checkbox, column, row, tooltip, Space},
-    Element, Length,
+    widget::{button, column, container, row, rule, toggler, tooltip},
+    Alignment, Element, Length,
 };
 
 use crate::{
-    domain::remote::{Interval, Remote, SyncPolicy},
-    theme::{ROW_SPACING, SECTION_SPACING},
-    widgets::{duration_picker, text},
+    domain::remote::{Interval, Remote, RemoteId, SyncPolicy},
+    theme::{self, CAPTION, TEXT},
+    widgets::{duration_picker, icon::icon, text},
 };
 
 #[derive(Debug, Clone)]
 pub enum Msg {
     EnabledToggled(bool),
     IntervalChanged(Interval),
+    Reauthenticate(RemoteId, String),
+    RemoveRemote(RemoteId, String),
 }
 
-/// Turn a Msg back into the full updated SyncPolicy. The caller passes the
-/// current policy; we only mutate the field the message concerns.
-pub fn policy_from(msg: &Msg, current: &SyncPolicy) -> SyncPolicy {
+/// The updated policy for a policy-changing message, `None` for the others.
+pub fn policy_from(msg: &Msg, current: &SyncPolicy) -> Option<SyncPolicy> {
     let mut policy = current.clone();
     match msg {
         Msg::EnabledToggled(v) => policy.enabled = *v,
         Msg::IntervalChanged(i) => policy.interval = *i,
+        Msg::Reauthenticate(..) | Msg::RemoveRemote(..) => return None,
     }
-    policy
+    Some(policy)
 }
 
-pub fn view(remote: &Remote) -> Element<'_, Msg> {
-    let heading = text("Sync Settings").size(18);
-    let enabled = checkbox(remote.policy.enabled)
-        .on_toggle(Msg::EnabledToggled)
-        .label("Enabled");
+pub fn view(remote: &Remote, auth_needed: bool) -> Element<'_, Msg> {
+    let warn_below = remote.provider_kind.and_then(|k| k.short_interval_threshold());
+    let mut interval_control = row![duration_picker::view(remote.policy.interval, warn_below, Msg::IntervalChanged)]
+        .spacing(8)
+        .align_y(Alignment::Center);
+    // Providers with a short-interval tripwire get a hoverable explanation next to the picker.
+    if let Some(warning) = remote.provider_kind.and_then(|k| k.short_interval_warning()) {
+        interval_control = interval_control.push(tooltip(
+            icon(icondata::TbAlertTriangleOutline, 16.0),
+            container(text(warning).size(CAPTION)).padding(10).max_width(320).style(theme::card),
+            tooltip::Position::Left,
+        ));
+    }
 
-    let warn_below = remote
-        .provider_kind
-        .and_then(|k| k.short_interval_threshold());
-    let warning = remote
-        .provider_kind
-        .and_then(|k| k.short_interval_warning());
-
-    let picker = duration_picker::view(
-        remote.policy.interval,
-        warn_below,
-        Msg::IntervalChanged,
-    );
-
-    // When the provider has a short-interval warning, append a hoverable
-    // ⚠ next to the picker — the options themselves already show the
-    // glyph per-item, this gives the user somewhere to hover for the
-    // full explanation.
-    let picker_row: Element<'_, Msg> = if let Some(msg) = warning {
-        row![
-            picker,
-            Space::new().width(Length::Fixed(8.0)),
-            tooltip(
-                text("⚠").size(16),
-                text(msg).size(12),
-                tooltip::Position::Right,
-            )
-            .gap(8)
-            .padding(8),
-        ]
-        .align_y(iced::Alignment::Center)
-        .into()
+    let (account_detail, account_button) = if auth_needed {
+        ("Not signed in — syncing is on hold until you sign in again.", theme::button_primary as fn(&_, _) -> _)
     } else {
-        picker
+        ("Signed in. Sign in again to switch the account or refresh the session.", theme::button_secondary as fn(&_, _) -> _)
     };
 
-    column![
-        heading,
-        row![enabled].spacing(ROW_SPACING * 2.0),
-        picker_row,
+    let rows = column![
+        setting_row(
+            "Automatic sync",
+            "Sync this remote in the background at the interval below.",
+            toggler(remote.policy.enabled).on_toggle(Msg::EnabledToggled).size(20).into(),
+        ),
+        rule::horizontal(1).style(theme::separator),
+        setting_row("Interval", "How often Celeste checks for changes on both sides.", interval_control.into()),
+        rule::horizontal(1).style(theme::separator),
+        setting_row(
+            "Account",
+            account_detail,
+            button(text("Sign in again").size(TEXT))
+                .padding([6, 14])
+                .style(account_button)
+                .on_press(Msg::Reauthenticate(remote.id, remote.name.clone()))
+                .into(),
+        ),
+        rule::horizontal(1).style(theme::separator),
+        setting_row(
+            "Remove remote",
+            "Stops syncing and forgets this remote's folders. No files are deleted.",
+            button(text("Remove…").size(TEXT))
+                .padding([6, 14])
+                .style(theme::button_secondary)
+                .on_press(Msg::RemoveRemote(remote.id, remote.name.clone()))
+                .into(),
+        ),
+    ];
+
+    container(rows).padding([2, 0]).width(Length::Fill).style(theme::card).into()
+}
+
+fn setting_row<'a>(title: &'a str, detail: &'a str, control: Element<'a, Msg>) -> Element<'a, Msg> {
+    row![
+        column![text(title).size(TEXT), text(detail).size(CAPTION).style(theme::muted)]
+            .spacing(2)
+            .width(Length::Fill),
+        control,
     ]
-    .spacing(SECTION_SPACING)
+    .spacing(16)
+    .padding([12, 14])
+    .align_y(Alignment::Center)
     .into()
 }

@@ -29,7 +29,7 @@ pkgs.mkShell {
   ];
 
   # Some dependencies use unstable rustc features gated behind RUSTC_BOOTSTRAP.
-  # Matches the value set in the celeste-nix package so dev builds mirror the
+  # Matches nix/package.nix so dev builds mirror the
   # packaged build.
   RUSTC_BOOTSTRAP = 1;
 

@@ -34,14 +34,54 @@ impl CelesteApp {
         self.remotes = remotes;
         for r in &self.remotes {
             self.sync_state.ensure_remote(r.id, r.policy.enabled);
+            // A session that already failed to resume at startup
+            // needs reauth even if the remote is (auto-)paused and so
+            // never gets a sync pass that would discover it.
+            if self.rclone.needs_reauth(&r.name) {
+                self.sync_state.auth_failure(r.id);
+            }
         }
-        Task::none()
+        self.shared_oauth_client = self
+            .remotes
+            .iter()
+            .filter(|r| self.rclone.uses_shared_oauth_client(&r.name))
+            .map(|r| r.id)
+            .collect();
+        // Keep a remote selected whenever there is one, so the window
+        // never opens on an empty pane; (re)load its folders if needed.
+        let selected = self
+            .selected
+            .filter(|id| self.remotes.iter().any(|r| r.id == *id))
+            .or_else(|| self.remotes.first().map(|r| r.id));
+        let repo = self.repo.clone();
+        let all_dirs = Task::perform(
+            async move { repo.list_all_sync_dirs().await.unwrap_or_default() },
+            Message::AllSyncDirsRefreshed,
+        );
+        let select = match selected {
+            Some(id) if self.selected != Some(id) || !self.sync_dirs.contains_key(&id) => {
+                self.handle_remote_selected(id)
+            }
+            Some(_) => Task::none(),
+            None => {
+                self.selected = None;
+                Task::none()
+            }
+        };
+        Task::batch([all_dirs, select])
     }
 
     /// Handle [`main_page::Msg::Selected`] — navigate to a remote and
     /// kick off two parallel reads (this remote's sync_dirs + the
     /// global sync_dirs list for auto-exclusion).
     pub(in crate::app) fn handle_remote_selected(&mut self, id: RemoteId) -> Task<Message> {
+        if self.selected != Some(id) {
+            // Per-page UI state doesn't carry over to another remote;
+            // expanded logs are dropped to free their text buffers.
+            self.add_sync_dir_error = None;
+            self.exclusion_panel = None;
+            self.sync_dir_log_content.clear();
+        }
         self.selected = Some(id);
         let repo = self.repo.clone();
         let repo2 = self.repo.clone();
@@ -63,7 +103,7 @@ impl CelesteApp {
         let ids: Vec<RemoteId> = self
             .remotes
             .iter()
-            .filter(|r| r.policy.enabled && !self.syncing.contains(&r.id))
+            .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
             .map(|r| r.id)
             .collect();
         let cmds: Vec<Task<Message>> =
@@ -90,16 +130,51 @@ impl CelesteApp {
         };
         match sub {
             add_remote::Msg::NameChanged(s) => draft.name = s,
-            add_remote::Msg::ProviderChanged(p) => draft.provider = Some(p),
+            add_remote::Msg::ProviderChanged(p) => {
+                // Suggest a name (unique among the existing remotes)
+                // until the user types their own.
+                let suggested = |p: add_remote::ProviderKind| p.to_string().replace(' ', "");
+                if draft.name.trim().is_empty() || draft.provider.is_some_and(|old| draft.name.starts_with(&suggested(old))) {
+                    let base = suggested(p);
+                    let taken = |n: &str| self.remotes.iter().any(|r| r.name == n);
+                    draft.name = (1..)
+                        .map(|i| if i == 1 { base.clone() } else { format!("{base}{i}") })
+                        .find(|n| !taken(n))
+                        .unwrap_or(base);
+                }
+                draft.provider = Some(p);
+            }
             add_remote::Msg::UrlChanged(s) => draft.url = s,
             add_remote::Msg::UserChanged(s) => draft.user = s,
             add_remote::Msg::PassChanged(s) => draft.pass = s,
             add_remote::Msg::TotpChanged(s) => draft.totp = s,
             add_remote::Msg::ClientIdChanged(s) => draft.client_id = s,
             add_remote::Msg::ClientSecretChanged(s) => draft.client_secret = s,
+            add_remote::Msg::OpenVerification => {
+                if let Some(hv) = &draft.hv {
+                    open_in_browser(&hv.url());
+                }
+            }
             add_remote::Msg::Cancel => {
+                // Stops a pending `rclone authorize`; its result then
+                // arrives as a cancellation and is ignored.
+                if let Some(handle) = &draft.oauth {
+                    handle.cancel();
+                }
                 self.add_remote_draft = None;
                 return Task::none();
+            }
+            add_remote::Msg::OpenClientIdGuide => open_in_browser(add_remote::GDRIVE_CLIENT_ID_GUIDE),
+            add_remote::Msg::CopyPrivacyLink => return iced::clipboard::write(add_remote::PRIVACY_POLICY.to_owned()),
+            add_remote::Msg::OpenAuthLink => {
+                if let Some(url) = draft.oauth.as_ref().and_then(|h| h.url()) {
+                    open_in_browser(&url);
+                }
+            }
+            add_remote::Msg::CopyAuthLink => {
+                if let Some(url) = draft.oauth.as_ref().and_then(|h| h.url()) {
+                    return iced::clipboard::write(url);
+                }
             }
             add_remote::Msg::Submit => {
                 let Some(kind) = draft.provider else {
@@ -147,6 +222,7 @@ impl CelesteApp {
                     let user = draft.user.clone();
                     let pass = draft.pass.clone();
                     let totp = draft.totp.clone();
+                    let hv = draft.hv.clone();
                     let router = self.rclone.clone();
                     let is_reauth = draft.reauth;
                     draft.busy = true;
@@ -170,6 +246,7 @@ impl CelesteApp {
                                         &user,
                                         &pass,
                                         &totp,
+                                        hv.as_ref(),
                                         &*router_inner,
                                     )
                                 })
@@ -194,6 +271,7 @@ impl CelesteApp {
                                     &user,
                                     &pass,
                                     &totp,
+                                    hv.as_ref(),
                                     &*repo,
                                     &*router,
                                 )
@@ -208,7 +286,15 @@ impl CelesteApp {
                 if let Some(provider) = kind.oauth_provider() {
                     let client_id = draft.client_id.trim().to_owned();
                     let client_secret = draft.client_secret.trim().to_owned();
+                    if kind.needs_own_client_id() && (client_id.is_empty() || client_secret.is_empty()) {
+                        draft.error = Some(
+                            "Enter your own client ID and secret — see \"How to create a client ID\".".to_owned(),
+                        );
+                        return Task::none();
+                    }
                     let is_reauth = draft.reauth;
+                    let handle = std::sync::Arc::new(crate::services::auth::AuthorizeHandle::default());
+                    draft.oauth = Some(handle.clone());
                     draft.busy = true;
                     if is_reauth {
                         // Reauth: keep the existing DB row, just
@@ -235,6 +321,7 @@ impl CelesteApp {
                                         provider,
                                         client_id,
                                         client_secret,
+                                        &handle,
                                         &*rclone_inner,
                                     )
                                 })
@@ -263,6 +350,7 @@ impl CelesteApp {
                                     provider,
                                     client_id,
                                     client_secret,
+                                    &handle,
                                     &*repo,
                                     &*rclone,
                                 )
@@ -279,17 +367,20 @@ impl CelesteApp {
     }
 
     /// Handle [`Message::AddRemoteResult(Ok)`] — close the dialog,
-    /// clear auth-failure state, re-enable the policy if it was
-    /// auto-paused, and reload the remotes list.
+    /// clear the auth flag, make sure the remote is enabled, and reload
+    /// the remotes list.
+    ///
+    /// Re-enabling covers remotes that older versions auto-paused on an
+    /// auth failure: signing in again is the user saying "sync this".
+    /// The policy is persisted *before* the reload so the reload can't
+    /// read the stale `enabled = false` back and re-pause the remote.
     pub(in crate::app) fn handle_add_remote_result_ok(&mut self, id: RemoteId) -> Task<Message> {
         self.add_remote_draft = None;
-        // Restore all dir states and re-enable the remote in the state
-        // machine (clears AuthNeeded → Waiting, paused siblings →
-        // pre-pause state, clears pause_snapshot).
+        self.selected = Some(id);
         self.sync_state.reauth_complete(id);
         self.sync_state.set_remote_enabled(id, true);
-        // Re-enable the policy in the domain model so the scheduler
-        // picks it up on the next tick.
+        // Sync right away instead of waiting out the interval.
+        self.last_sync_at.remove(&id);
         let mut reenable_policy: Option<crate::domain::remote::SyncPolicy> = None;
         if let Some(remote) = self.remotes.iter_mut().find(|r| r.id == id)
             && !remote.policy.enabled
@@ -298,39 +389,39 @@ impl CelesteApp {
             reenable_policy = Some(remote.policy.clone());
         }
         let repo = self.repo.clone();
-        let repo_for_policy = self.repo.clone();
-        let reload = Task::perform(
-            async move { repo.list_remotes().await.unwrap_or_default() },
+        Task::perform(
+            async move {
+                if let Some(policy) = reenable_policy {
+                    let _ = repo.set_policy(id, policy).await;
+                }
+                repo.list_remotes().await.unwrap_or_default()
+            },
             Message::RemotesLoaded,
-        );
-        if let Some(policy) = reenable_policy {
-            Task::batch([
-                Task::perform(
-                    async move {
-                        let _ = repo_for_policy.set_policy(id, policy).await;
-                    },
-                    |_| Message::PolicySaved,
-                ),
-                reload,
-            ])
-        } else {
-            reload
-        }
+        )
     }
 
     /// Handle [`Message::AddRemoteResult(Err)`] — surface the message
     /// inside the open draft.
+    ///
+    /// A human-verification request isn't an error the user can fix in
+    /// the form: open the challenge in the browser right away and keep
+    /// it on the draft, so the next submit retries with its token.
     pub(in crate::app) fn handle_add_remote_result_err(&mut self, msg: String) -> Task<Message> {
-        if let Some(draft) = self.add_remote_draft.as_mut() {
-            draft.error = Some(msg);
-            draft.busy = false;
+        if msg == crate::services::auth::AUTHORIZE_CANCELLED {
+            return Task::none();
         }
-        Task::none()
-    }
-
-    /// Handle [`remote_page::Msg::Back`] — clear the selected remote.
-    pub(in crate::app) fn handle_remote_back(&mut self) -> Task<Message> {
-        self.selected = None;
+        if let Some(draft) = self.add_remote_draft.as_mut() {
+            draft.busy = false;
+            draft.oauth = None;
+            match celeste_go::proton::HumanVerification::from_login_error(&msg) {
+                Some(hv) => {
+                    open_in_browser(&hv.url());
+                    draft.hv = Some(hv);
+                    draft.error = None;
+                }
+                None => draft.error = Some(msg),
+            }
+        }
         Task::none()
     }
 
@@ -381,9 +472,10 @@ impl CelesteApp {
         &mut self,
         local: String,
         remote: String,
+        remote_label: String,
     ) -> Task<Message> {
         self.pending_delete =
-            Some(remote_page::PendingDelete::SyncDir { local, remote });
+            Some(remote_page::PendingDelete::SyncDir { local, remote, remote_label });
         Task::none()
     }
 
@@ -394,7 +486,7 @@ impl CelesteApp {
             Some(remote_page::PendingDelete::Remote(id, name)) => {
                 self.handle_delete_remote(id, name)
             }
-            Some(remote_page::PendingDelete::SyncDir { local, remote }) => {
+            Some(remote_page::PendingDelete::SyncDir { local, remote, .. }) => {
                 self.handle_delete_sync_dir(local, remote)
             }
             None => Task::none(),
@@ -466,5 +558,12 @@ impl CelesteApp {
         draft.reauth = true;
         self.add_remote_draft = Some(draft);
         Task::none()
+    }
+}
+
+/// Hand a URL to the desktop's default browser.
+fn open_in_browser(url: &str) {
+    if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
+        eprintln!("celeste: couldn't open {url} ({err}).");
     }
 }

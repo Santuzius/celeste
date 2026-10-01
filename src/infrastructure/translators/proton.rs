@@ -19,7 +19,8 @@ impl EventTranslator for ProtonTranslator {
     fn classify(&self, op: Operation, msg: &str) -> BackendEvent {
         let lower = msg.to_ascii_lowercase();
 
-        if msg.contains("Code=401")
+        if msg.contains(crate::infrastructure::proton::client::REAUTH_HINT)
+            || msg.contains("Code=401")
             || msg.contains("Code=10013")
             || lower.contains("unauthenticated")
             || lower.contains("unauthorized")
@@ -123,6 +124,19 @@ mod tests {
             );
             assert!(ProtonTranslator.is_auth_failure(msg));
         }
+    }
+
+    #[test]
+    fn disabled_session_placeholders_route_to_reauth() {
+        let msg = format!(
+            "Proton Drive session for 'P' not found in keyring. {}",
+            crate::infrastructure::proton::client::REAUTH_HINT,
+        );
+        assert!(ProtonTranslator.is_auth_failure(&msg));
+        // The "still retrying" placeholder must not.
+        assert!(!ProtonTranslator.is_auth_failure(
+            "Proton Drive session for 'P' not resumed yet (dial tcp: no such host). Retrying automatically — no action needed."
+        ));
     }
 
     #[test]

@@ -36,7 +36,18 @@ use crate::{
     services::secrets,
 };
 
+/// GUI file synchronization client.
+#[derive(clap::Parser)]
+#[command(version)]
+struct Cli {
+    /// Open the main window on startup instead of starting hidden in the tray.
+    #[arg(long)]
+    show: bool,
+}
+
 fn main() {
+    let cli = <Cli as clap::Parser>::parse();
+
     // Tap stderr before the Go runtime can grab it — that's the
     // only way to catch the `WARN[...] Too many requests` lines rclone's
     // backends emit when they silently retry a 429. Falls back to a no-op
@@ -53,6 +64,11 @@ fn main() {
     // a warning; that's the only path where tokens can hit disk.
     let data_dir = util::get_data_dir();
     std::fs::create_dir_all(&data_dir).expect("failed to create data dir");
+
+    // Bail out before touching the DB or keyring when another process already owns this data dir.
+    if let infrastructure::single_instance::Instance::Secondary = infrastructure::single_instance::acquire(&data_dir) {
+        return;
+    }
 
     legacy_config_dir::run(&data_dir);
     fold_stale_rclone_into_keyring(&data_dir);
@@ -109,7 +125,7 @@ fn main() {
     let default_client: Arc<dyn BackendClient> = Arc::new(LibrcloneClient::new(rclone_config));
     let router = Arc::new(ClientRouter::new(default_client));
     resume_native_sessions(&*repo, &router);
-    iced_run(repo, router).expect("iced app exited with error");
+    iced_run(repo, router, cli.show).expect("iced app exited with error");
 }
 
 /// Sweep an `<data_dir>/rclone.conf` left behind by a prior version
@@ -182,7 +198,7 @@ fn hydrate_rclone_config(rclone_config: &std::path::Path) {
 /// clear "Reauthenticate" message rather than falling through to
 /// rclone (which would error with an opaque config-lookup failure).
 fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
-    use crate::infrastructure::proton::client::{DisabledProtonClient, PendingProtonClient};
+    use crate::infrastructure::proton::client::{DisabledProtonClient, PendingProtonClient, REAUTH_HINT};
     let remotes = util::await_future(repo.list_remotes()).unwrap_or_default();
     for remote in remotes {
         if remote.backend != Backend::NativeProton {
@@ -190,8 +206,9 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
         }
         if remote.session_path.is_none() {
             let reason = format!(
-                "Proton Drive session blob missing for '{}'. Click Reauthenticate on the remote page to log in again.",
+                "Proton Drive session blob missing for '{}'. {}",
                 remote.name,
+                REAUTH_HINT,
             );
             eprintln!("celeste: {reason}");
             notify_reauth_needed(&remote.name);
@@ -214,8 +231,9 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
             }
             Ok(None) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' not found in keyring. Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' not found in keyring. {}",
                     remote.name,
+                    REAUTH_HINT,
                 );
                 eprintln!("celeste: {reason}");
                 notify_reauth_needed(&remote.name);
@@ -232,8 +250,9 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
             // the user a full 2FA login for a session that was fine.
             Err(err) if crate::app::is_auth_failure(&err) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' has expired ({err}). Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' has expired ({err}). {}",
                     remote.name,
+                    REAUTH_HINT,
                 );
                 eprintln!("celeste: {reason}");
                 notify_reauth_needed(&remote.name);
@@ -261,12 +280,21 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
 /// its session at startup. Silently swallows errors — the remote page
 /// banner + button are the authoritative recovery surface; the toast
 /// is just there to nudge users who've minimised Celeste to the tray.
+///
+/// Sent from a detached thread: at autostart the notification daemon
+/// may not be up yet, and a blocking D-Bus activation would otherwise
+/// hold up the whole UI start for the call's timeout.
 fn notify_reauth_needed(remote_name: &str) {
+    let remote_name = remote_name.to_owned();
+    std::thread::spawn(move || show_reauth_notification(&remote_name));
+}
+
+fn show_reauth_notification(remote_name: &str) {
     let mut notification = notify_rust::Notification::new();
     notification
-        .summary("Celeste: reauthentication needed")
+        .summary("Celeste: sign-in needed")
         .body(&format!(
-            "Sync is paused for '{remote_name}'. Open Celeste and click Reauthenticate to log in again.",
+            "Syncing '{remote_name}' is on hold. Open Celeste and click Sign in again.",
         ))
         .appname("Celeste");
     if let Some(icon) = branding::icon_file_path() {
