@@ -15,6 +15,12 @@ use resvg::{tiny_skia, usvg};
 /// being installed.
 pub const CELESTE_ICON_SVG: &[u8] = include_bytes!("../assets/celeste-icon.svg");
 
+/// The brand icon as an iced svg handle (in-window logo), parsed once.
+pub fn logo() -> iced::widget::svg::Handle {
+    static CACHED: OnceLock<iced::widget::svg::Handle> = OnceLock::new();
+    CACHED.get_or_init(|| iced::widget::svg::Handle::from_memory(CELESTE_ICON_SVG)).clone()
+}
+
 /// Pixel side length used when rasterising the brand icon for the
 /// iced window. Compositors downscale freely; oversampling once at a
 /// generous size beats repeatedly handing them a 32×32.

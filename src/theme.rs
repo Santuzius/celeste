@@ -48,6 +48,9 @@ pub struct Tones {
     pub warning: Color,
     pub danger: Color,
     pub danger_hover: Color,
+    /// Background of destructive buttons (white text on it), darker than `danger` in dark mode for contrast.
+    pub danger_fill: Color,
+    pub danger_fill_hover: Color,
     pub selection: Color,
 }
 
@@ -66,6 +69,8 @@ const LIGHT: Tones = Tones {
     warning: rgb(0xb7790f),
     danger: rgb(0xc4372f),
     danger_hover: rgb(0xa92e27),
+    danger_fill: rgb(0xc4372f),
+    danger_fill_hover: rgb(0xa92e27),
     selection: rgb(0xdde7f4),
 };
 
@@ -84,6 +89,8 @@ const DARK: Tones = Tones {
     warning: rgb(0xe3a93a),
     danger: rgb(0xe5584f),
     danger_hover: rgb(0xec7068),
+    danger_fill: rgb(0xc0392f),
+    danger_fill_hover: rgb(0xd24a40),
     selection: rgb(0x2c3b4f),
 };
 
@@ -191,6 +198,16 @@ pub fn backdrop(_theme: &Theme) -> container::Style {
     container::Style::default().background(Color { a: 0.45, ..Color::BLACK })
 }
 
+/// Top bar of the content area (title, status and page actions), set off from the scrolling body below by [`separator`] like a KDE page header.
+pub fn header_bar(theme: &Theme) -> container::Style {
+    let t = tones(theme);
+    container::Style {
+        background: Some(t.nav.into()),
+        text_color: Some(t.text),
+        ..Default::default()
+    }
+}
+
 /// Tinted message bar (KDE `KMessageWidget` style) in the warning tone.
 pub fn warning_bar(theme: &Theme) -> container::Style {
     let t = tones(theme);
@@ -258,10 +275,10 @@ pub fn button_primary(theme: &Theme, status: button::Status) -> button::Style {
 /// Destructive action.
 pub fn button_danger(theme: &Theme, status: button::Status) -> button::Style {
     let t = tones(theme);
-    let base = button_base(t.danger, Color::WHITE, t.danger);
+    let base = button_base(t.danger_fill, Color::WHITE, t.danger_fill);
     match status {
         button::Status::Active | button::Status::Pressed => base,
-        button::Status::Hovered => button_base(t.danger_hover, Color::WHITE, t.danger_hover),
+        button::Status::Hovered => button_base(t.danger_fill_hover, Color::WHITE, t.danger_fill_hover),
         button::Status::Disabled => disabled(base),
     }
 }
@@ -289,6 +306,19 @@ pub fn button_toggle(open: bool) -> impl Fn(&Theme, button::Status) -> button::S
         let style = button_flat(theme, status);
         if open && matches!(status, button::Status::Active) {
             button::Style { background: Some(tones(theme).selection.into()), ..style }
+        } else {
+            style
+        }
+    }
+}
+
+/// Neutral button that stays tinted while the view it opens is shown.
+pub fn button_secondary_toggle(open: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme, status| {
+        let style = button_secondary(theme, status);
+        let t = tones(theme);
+        if open && !matches!(status, button::Status::Disabled) {
+            button::Style { background: Some(t.selection.into()), border: Border { color: t.accent, ..style.border }, ..style }
         } else {
             style
         }

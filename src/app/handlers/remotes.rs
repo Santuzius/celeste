@@ -80,6 +80,7 @@ impl CelesteApp {
             // expanded logs are dropped to free their text buffers.
             self.add_sync_dir_error = None;
             self.exclusion_panel = None;
+            self.settings_open = false;
             self.sync_dir_log_content.clear();
         }
         self.selected = Some(id);
@@ -565,7 +566,7 @@ impl CelesteApp {
 }
 
 /// Hand a URL to the desktop's default browser.
-fn open_in_browser(url: &str) {
+pub(in crate::app) fn open_in_browser(url: &str) {
     if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
         eprintln!("celeste: couldn't open {url} ({err}).");
     }

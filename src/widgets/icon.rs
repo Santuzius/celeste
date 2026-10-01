@@ -38,6 +38,11 @@ pub fn muted_icon<'a>(icon_data: icondata::Icon, size: f32) -> Svg<'a, Theme> {
     icon(icon_data, size).style(|theme: &Theme, _| svg::Style { color: Some(theme::tones(theme).muted) })
 }
 
+/// White icon for filled buttons (e.g. destructive ones).
+pub fn on_fill_icon<'a>(icon_data: icondata::Icon, size: f32) -> Svg<'a, Theme> {
+    icon(icon_data, size).style(|_: &Theme, _| svg::Style { color: Some(iced::Color::WHITE) })
+}
+
 /// Glyph for a run-state, coloured by severity.
 pub fn status_icon<'a, Msg: 'a>(state: RunState, size: f32) -> Element<'a, Msg> {
     let glyph = match state {

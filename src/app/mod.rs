@@ -35,7 +35,7 @@ use crate::{
         stderr_capture::{self, CaptureHandle},
         tray::{self, TrayAction, TrayUpdate},
     },
-    screens::{add_remote, main_page, remote_page, settings},
+    screens::{about, add_remote, main_page, remote_page, settings},
     theme,
 };
 
@@ -50,6 +50,7 @@ pub enum Message {
     Remote(remote_page::Msg),
     Settings(settings::Msg),
     AddRemote(add_remote::Msg),
+    About(about::Msg),
     AddRemoteResult(Result<RemoteId, String>),
     RemotesLoaded(Vec<Remote>),
     SyncDirsLoaded(RemoteId, Vec<SyncDir>),
@@ -152,6 +153,10 @@ pub struct CelesteApp {
     /// In-progress (local_path, remote_path) inputs for the Add sync_dir form
     /// on each remote page.
     sync_dir_drafts: HashMap<RemoteId, (String, String)>,
+    /// The remote page shows its settings instead of its folders.
+    settings_open: bool,
+    /// The About dialog is shown.
+    about_open: bool,
     /// In-progress Add Remote form. Some(...) while the screen is shown.
     add_remote_draft: Option<add_remote::Draft>,
     /// Sender handed to us by the subscription worker; sync code clones this
@@ -211,6 +216,8 @@ impl CelesteApp {
             last_sync_at: HashMap::new(),
             refresh_requested_after: std::collections::HashSet::new(),
             sync_dir_drafts: HashMap::new(),
+            settings_open: false,
+            about_open: false,
             add_remote_draft: None,
             events_tx: None,
             cancel_flags: HashMap::new(),
@@ -304,6 +311,22 @@ impl CelesteApp {
             Message::AddRemoteResult(Ok(id)) => self.handle_add_remote_result_ok(id),
             Message::AddRemoteResult(Err(msg)) => self.handle_add_remote_result_err(msg),
             Message::Remote(remote_page::Msg::RefreshNow(id)) => self.handle_refresh_now(id),
+            Message::Remote(remote_page::Msg::ToggleSettings) => {
+                self.settings_open = !self.settings_open;
+                Task::none()
+            }
+            Message::Main(main_page::Msg::OpenAbout) => {
+                self.about_open = true;
+                Task::none()
+            }
+            Message::About(about::Msg::Close) => {
+                self.about_open = false;
+                Task::none()
+            }
+            Message::About(about::Msg::Open(url)) => {
+                handlers::remotes::open_in_browser(url);
+                Task::none()
+            }
             Message::Remote(remote_page::Msg::RequestDeleteRemote(id, name)) => {
                 self.handle_request_delete_remote(id, name)
             }
@@ -406,6 +429,8 @@ impl CelesteApp {
             stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
         } else if let Some(pending) = self.pending_delete.as_ref() {
             stack![base, remote_page::confirm_delete_overlay(pending).map(Message::Remote)].into()
+        } else if self.about_open {
+            stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
         } else {
             base
         }
@@ -418,13 +443,18 @@ impl CelesteApp {
         if self.pending_delete.take().is_some() {
             return Task::none();
         }
+        if std::mem::take(&mut self.about_open) {
+            return Task::none();
+        }
         if let Some(draft) = &self.add_remote_draft {
             if draft.can_cancel() {
                 return self.handle_add_remote_msg(add_remote::Msg::Cancel);
             }
             return Task::none();
         }
-        self.exclusion_panel = None;
+        if self.exclusion_panel.take().is_none() {
+            self.settings_open = false;
+        }
         Task::none()
     }
 
@@ -474,6 +504,7 @@ impl CelesteApp {
             draft_remote,
             add_error: self.add_sync_dir_error.as_deref(),
             shared_oauth_client: self.shared_oauth_client.contains(&remote.id),
+            settings_open: self.settings_open,
         }
     }
 

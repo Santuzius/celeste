@@ -74,7 +74,7 @@ pub fn view(remote: &Remote, auth_needed: bool) -> Element<'_, Msg> {
             "Stops syncing and forgets this remote's folders. No files are deleted.",
             button(text("Remove…").size(TEXT))
                 .padding([6, 14])
-                .style(theme::button_secondary)
+                .style(theme::button_danger)
                 .on_press(Msg::RemoveRemote(remote.id, remote.name.clone()))
                 .into(),
         ),

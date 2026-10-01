@@ -1,7 +1,7 @@
 //! Left navigation pane (one entry per remote with its roll-up status) and the empty state shown before any remote exists.
 
 use iced::{
-    widget::{button, center, column, container, row, scrollable, text::Wrapping, Space},
+    widget::{button, center, column, container, row, scrollable, svg, text::Wrapping, Space},
     Alignment, Element, Length,
 };
 
@@ -22,6 +22,7 @@ pub enum Msg {
     Selected(RemoteId),
     RefreshAll,
     AddRemote,
+    OpenAbout,
 }
 
 /// One navigation entry.
@@ -40,12 +41,18 @@ pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>) -> Elemen
     let footer = column![
         flat_row(icondata::TbPlusOutline, "Add remote", Msg::AddRemote),
         flat_row(icondata::TbRefreshOutline, "Sync all now", Msg::RefreshAll),
+        flat_row(icondata::TbInfoCircleOutline, "About Celeste", Msg::OpenAbout),
     ]
     .spacing(2);
 
     container(
         column![
-            container(text("Celeste").size(theme::HEADING)).padding([4, 10]),
+            container(
+                row![svg(crate::branding::logo()).width(Length::Fixed(24.0)).height(Length::Fixed(24.0)), text("Celeste").size(theme::HEADING)]
+                    .spacing(10)
+                    .align_y(Alignment::Center),
+            )
+            .padding([4, 10]),
             scrollable(list)
                 .height(Length::Fill)
                 .direction(theme::slim_scrollbar())

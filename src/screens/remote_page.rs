@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use iced::{
     widget::{
-        button, center, column, container, mouse_area, opaque, row, scrollable, stack, text::Wrapping,
+        button, center, column, container, mouse_area, opaque, row, rule, scrollable, stack, text::Wrapping,
         text_editor, text_input, tooltip, Space,
     },
     Alignment, Element, Length,
@@ -20,7 +20,7 @@ use crate::{
     theme::{self, CAPTION, HEADING, PAGE_PADDING, ROW_SPACING, SECTION_SPACING, TEXT, TITLE},
     util::fmt_home,
     widgets::{
-        icon::{icon, muted_icon, status_icon},
+        icon::{icon, muted_icon, on_fill_icon, status_icon},
         text,
     },
 };
@@ -37,6 +37,8 @@ const FORM_LABEL_WIDTH: f32 = 150.0;
 #[derive(Debug, Clone)]
 pub enum Msg {
     RefreshNow(RemoteId),
+    /// Switch the page body between the folders and the remote's settings.
+    ToggleSettings,
     Settings(settings::Msg),
     DraftLocalPathChanged(String),
     DraftRemotePathChanged(String),
@@ -82,6 +84,8 @@ pub struct Page<'a> {
     pub add_error: Option<&'a str>,
     /// Google Drive remote still on rclone's retiring shared OAuth client.
     pub shared_oauth_client: bool,
+    /// The body shows the settings instead of the folders.
+    pub settings_open: bool,
 }
 
 /// One sync folder row.
@@ -114,6 +118,10 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
         .spacing(2)
         .width(Length::Fill),
         backoff_hint(page.next_sync),
+        button(row![icon(icondata::TbSettingsOutline, 16.0), text("Settings").size(TEXT)].spacing(6).align_y(Alignment::Center))
+            .padding([6, 12])
+            .style(theme::button_secondary_toggle(page.settings_open))
+            .on_press(Msg::ToggleSettings),
         button(row![icon(icondata::TbRefreshOutline, 16.0), text("Sync now").size(TEXT)].spacing(6).align_y(Alignment::Center))
             .padding([6, 12])
             .style(theme::button_secondary)
@@ -171,6 +179,11 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
         );
     }
 
+    if page.settings_open {
+        body = body.push(column![section_heading("Settings"), settings::view(remote, auth_needed).map(Msg::from_settings)].spacing(6));
+        return frame(header, body);
+    }
+
     // ── Folders ─────────────────────────────────────────────────────────
     let mut folders = column![section_heading("Folders")].spacing(6);
     if page.dirs.is_empty() {
@@ -187,22 +200,25 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
     body = body.push(folders);
     body = body.push(add_folder_card(remote, page.draft_local, page.draft_remote, page.add_error));
 
-    // ── Settings ────────────────────────────────────────────────────────
-    body = body.push(column![section_heading("Settings"), settings::view(remote, auth_needed).map(Msg::from_settings)].spacing(6));
+    frame(header, body)
+}
 
-    let content = column![
-        header,
-        scrollable(container(body).padding(iced::Padding::default().right(14.0).bottom(PAGE_PADDING)))
-            .height(Length::Fill)
-            .direction(theme::slim_scrollbar())
-            .style(theme::scrollbar)
-            .spacing(2),
-    ]
-    .spacing(SECTION_SPACING)
-    .max_width(MAX_CONTENT_WIDTH);
+/// Header bar on top, a hairline, then the scrolling body — the KDE page layout. Both share the same capped content width.
+fn frame<'a>(header: impl Into<Element<'a, Msg>>, body: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
+    let header_bar = container(container(header).max_width(MAX_CONTENT_WIDTH))
+        .padding(iced::Padding { top: PAGE_PADDING - 6.0, left: PAGE_PADDING, right: PAGE_PADDING, bottom: 14.0 })
+        .width(Length::Fill)
+        .style(theme::header_bar);
+    let scroll = scrollable(
+        container(container(body).max_width(MAX_CONTENT_WIDTH))
+            .padding(iced::Padding { top: SECTION_SPACING - 4.0, left: PAGE_PADDING, right: PAGE_PADDING - 10.0, bottom: PAGE_PADDING }),
+    )
+    .height(Length::Fill)
+    .direction(theme::slim_scrollbar())
+    .style(theme::scrollbar)
+    .spacing(2);
 
-    container(content)
-        .padding(iced::Padding { top: PAGE_PADDING, left: PAGE_PADDING, right: PAGE_PADDING - 10.0, bottom: 0.0 })
+    container(column![header_bar, rule::horizontal(1).style(theme::separator), scroll])
         .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::page)
@@ -305,9 +321,9 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
             "Activity log",
         ),
         with_tip(
-            button(icon(icondata::TbTrashOutline, 16.0))
+            button(on_fill_icon(icondata::TbTrashOutline, 16.0))
                 .padding(6)
-                .style(theme::button_flat)
+                .style(theme::button_danger)
                 .on_press(Msg::RequestDeleteSyncDir(sd.local_path.clone(), sd.remote_path.clone(), format!("{}:{remote_display}", remote.name))),
             "Stop syncing this folder",
         ),
