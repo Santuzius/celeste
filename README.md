@@ -63,8 +63,25 @@ nix-shell --run 'cargo run --release'
 
 No global `rustup`, `go`, or system headers are required — everything is pulled in by the shell.
 
-## Installing on NixOS
-Celeste ships a flake. Add it as an input — this one line is all you need in `inputs`:
+## Installing with Nix
+Celeste ships a flake, so it works with the Nix package manager on any Linux distribution (flakes enabled).
+
+Try it without installing:
+
+```sh
+nix run github:Santuzius/celeste
+```
+
+Install it into your user profile:
+
+```sh
+nix profile add github:Santuzius/celeste
+```
+
+`github:Santuzius/celeste` follows the `develop` branch; append a release tag for a fixed version, e.g. `github:Santuzius/celeste/v0.17.1`. Flakes have no "latest release" alias, but your `flake.lock` keeps whatever you got until `nix flake update` (or `nix profile upgrade`).
+
+### NixOS
+Add the flake as an input — this one line is all you need in `inputs`:
 
 ```nix
 celeste.url = "github:Santuzius/celeste";
@@ -78,6 +95,4 @@ inputs.celeste.nixosModules.default
 { programs.celeste.enable = true; }   # programs.celeste.autostart = false; to skip autostart
 ```
 
-Alternatively add `inputs.celeste.packages.${system}.default` to `environment.systemPackages`, use `overlays.default`, or try it without installing: `nix run github:Santuzius/celeste`. Pin a release with `github:Santuzius/celeste/v0.17.0`.
-
-The package builds everything in the Nix sandbox, including the Go archive (vendored Go modules) — no `--impure` needed. When `src/go/go.mod` or `go.sum` change, update `vendorHash` in `nix/package.nix`; when the `src/go/proton-api` submodule moves, update its pinned `rev` and `hash` there.
+Alternatively add `inputs.celeste.packages.${system}.default` to `environment.systemPackages` or use `overlays.default`.
