@@ -65,7 +65,7 @@ if [ "$MODE" = xvfb ]; then
   export PATH="$T/bin:$PATH"
 elif [ -f "$HOME/.config/mimeapps.list" ]; then
   # Keep the default browser (OAuth, human verification). It then runs with a fresh profile under the test home, not the real one.
-  cp "$HOME/.config/mimeapps.list" "$T/home/.config/mimeapps.list"
+  install -m 644 "$HOME/.config/mimeapps.list" "$T/home/.config/mimeapps.list"
 fi
 
 export HOME="$T/home"
