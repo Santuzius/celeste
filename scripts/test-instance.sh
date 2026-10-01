@@ -57,6 +57,17 @@ fi
 mkdir -p "$T/home/.local/share" "$T/home/.config" "$T/home/.cache" "$T/run"
 chmod 700 "$T/run"
 
+if [ "$MODE" = xvfb ]; then
+  # Never start a real browser on the invisible display: links (OAuth, human verification) are only logged.
+  mkdir -p "$T/bin"
+  printf '#!/bin/sh\necho "$@" >> "%s/xdg-open.log"\n' "$T" > "$T/bin/xdg-open"
+  chmod +x "$T/bin/xdg-open"
+  export PATH="$T/bin:$PATH"
+elif [ -f "$HOME/.config/mimeapps.list" ]; then
+  # Keep the default browser (OAuth, human verification). It then runs with a fresh profile under the test home, not the real one.
+  cp "$HOME/.config/mimeapps.list" "$T/home/.config/mimeapps.list"
+fi
+
 export HOME="$T/home"
 export XDG_DATA_HOME="$T/home/.local/share"
 export XDG_CONFIG_HOME="$T/home/.config"
