@@ -280,12 +280,21 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
 /// its session at startup. Silently swallows errors — the remote page
 /// banner + button are the authoritative recovery surface; the toast
 /// is just there to nudge users who've minimised Celeste to the tray.
+///
+/// Sent from a detached thread: at autostart the notification daemon
+/// may not be up yet, and a blocking D-Bus activation would otherwise
+/// hold up the whole UI start for the call's timeout.
 fn notify_reauth_needed(remote_name: &str) {
+    let remote_name = remote_name.to_owned();
+    std::thread::spawn(move || show_reauth_notification(&remote_name));
+}
+
+fn show_reauth_notification(remote_name: &str) {
     let mut notification = notify_rust::Notification::new();
     notification
-        .summary("Celeste: reauthentication needed")
+        .summary("Celeste: sign-in needed")
         .body(&format!(
-            "Sync is paused for '{remote_name}'. Open Celeste and click Reauthenticate to log in again.",
+            "Syncing '{remote_name}' is on hold. Open Celeste and click Sign in again.",
         ))
         .appname("Celeste");
     if let Some(icon) = branding::icon_file_path() {

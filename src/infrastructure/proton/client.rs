@@ -478,7 +478,7 @@ impl BackendClient for PendingProtonClient {
 
 /// Sentence every [`DisabledProtonClient`] reason ends with. The Proton
 /// translator keys on it so these errors count as auth failures.
-pub const REAUTH_HINT: &str = "Click Reauthenticate on the remote page to log in again.";
+pub const REAUTH_HINT: &str = "Open the remote in Celeste and click Sign in again.";
 
 /// Placeholder adapter for native-proton remotes whose session couldn't
 /// be resumed at startup (blob missing, refresh token expired, etc.).
