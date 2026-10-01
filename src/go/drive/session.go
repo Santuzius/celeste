@@ -142,6 +142,30 @@ type LoginParams struct {
 	Password        string `json:"password"`
 	MailboxPassword string `json:"mailbox_password,omitempty"`
 	TwoFA           string `json:"two_fa,omitempty"`
+	// Human-verification challenge from a previous attempt that the
+	// user has since solved in the browser (see ErrHumanVerification).
+	HVToken   string   `json:"hv_token,omitempty"`
+	HVMethods []string `json:"hv_methods,omitempty"`
+}
+
+// HVErrorPrefix starts the error message of a login that Proton
+// answered with a human-verification request (Code 9001). The JSON
+// after the prefix is the challenge (`{"token": …, "methods": […]}`):
+// the user solves it at verify.proton.me, then the login is retried
+// with the same token — the flow Proton Bridge uses.
+const HVErrorPrefix = "HUMAN_VERIFICATION_REQUIRED "
+
+func humanVerificationError(err error) error {
+	var apiErr *proton.APIError
+	if !errors.As(err, &apiErr) || !apiErr.IsHVError() {
+		return err
+	}
+	details, detailsErr := apiErr.GetHVDetails()
+	if detailsErr != nil || details.Token == "" {
+		return err
+	}
+	b, _ := json.Marshal(map[string]interface{}{"token": details.Token, "methods": details.Methods})
+	return errors.New(HVErrorPrefix + string(b))
 }
 
 // Login performs a fresh username+password (+ optional TOTP / mailbox
@@ -156,10 +180,14 @@ func Login(ctx context.Context, p LoginParams) (*Session, error) {
 		proton.WithAppVersion(AppVersion),
 		proton.WithTransport(newProtonHTTPTransport()),
 	)
-	c, auth, err := m.NewClientWithLogin(ctx, p.Username, []byte(p.Password))
+	var hv *proton.APIHVDetails
+	if p.HVToken != "" {
+		hv = &proton.APIHVDetails{Token: p.HVToken, Methods: p.HVMethods}
+	}
+	c, auth, err := m.NewClientWithLoginWithHVToken(ctx, p.Username, []byte(p.Password), hv)
 	if err != nil {
 		m.Close()
-		return nil, err
+		return nil, humanVerificationError(err)
 	}
 	if auth.TwoFA.Enabled&proton.HasTOTP != 0 {
 		if p.TwoFA == "" {

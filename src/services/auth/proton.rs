@@ -2,6 +2,8 @@
 
 use std::{path::Path, sync::Arc};
 
+use celeste_go::proton::HumanVerification;
+
 use crate::{
     domain::{
         ports::Repository,
@@ -18,7 +20,28 @@ use crate::{
 /// the credential blob lives in the OS keyring under the remote's name.
 const KEYRING_SESSION_MARKER: &str = "keyring";
 
-/// Proton Drive: username + password + optional TOTP. No browser step.
+/// Login parameters, carrying a solved human-verification challenge when
+/// the previous attempt was answered with one (see [`HumanVerification`]).
+fn login_params(
+    username: &str,
+    password: &str,
+    totp: &str,
+    hv: Option<&HumanVerification>,
+) -> celeste_go::proton::LoginParams {
+    celeste_go::proton::LoginParams {
+        username: username.to_owned(),
+        password: password.to_owned(),
+        two_fa: totp.to_owned(),
+        hv_token: hv.map(|h| h.token.clone()).unwrap_or_default(),
+        hv_methods: hv.map(|h| h.methods.clone()).unwrap_or_default(),
+        ..Default::default()
+    }
+}
+
+/// Proton Drive: username + password + optional TOTP. Proton may answer
+/// with a human-verification request (CAPTCHA) instead; the error then
+/// parses as a [`HumanVerification`], and the caller retries with it
+/// once the user has solved it in the browser.
 ///
 /// Uses the native Proton client (no rclone in the path). Logs in
 /// against Proton's API, persists the reusable credential blob into
@@ -31,15 +54,11 @@ pub fn add_proton_drive_remote(
     username: &str,
     password: &str,
     totp: &str,
+    hv: Option<&HumanVerification>,
     repo: &dyn Repository,
     router: &ClientRouter,
 ) -> Result<RemoteId, String> {
-    let params = celeste_go::proton::LoginParams {
-        username: username.to_owned(),
-        password: password.to_owned(),
-        two_fa: totp.to_owned(),
-        mailbox_password: String::new(),
-    };
+    let params = login_params(username, password, totp, hv);
     let cred = celeste_go::proton::login(&params)?;
 
     persist_session_to_keyring(name, &cred.uid)?;
@@ -77,14 +96,10 @@ pub fn reauth_proton_drive_remote(
     username: &str,
     password: &str,
     totp: &str,
+    hv: Option<&HumanVerification>,
     router: &ClientRouter,
 ) -> Result<(), String> {
-    let params = celeste_go::proton::LoginParams {
-        username: username.to_owned(),
-        password: password.to_owned(),
-        two_fa: totp.to_owned(),
-        mailbox_password: String::new(),
-    };
+    let params = login_params(username, password, totp, hv);
     let cred = celeste_go::proton::login(&params)?;
 
     persist_session_to_keyring(name, &cred.uid)?;

@@ -138,6 +138,11 @@ impl CelesteApp {
             add_remote::Msg::TotpChanged(s) => draft.totp = s,
             add_remote::Msg::ClientIdChanged(s) => draft.client_id = s,
             add_remote::Msg::ClientSecretChanged(s) => draft.client_secret = s,
+            add_remote::Msg::OpenVerification => {
+                if let Some(hv) = &draft.hv {
+                    open_in_browser(&hv.url());
+                }
+            }
             add_remote::Msg::Cancel => {
                 self.add_remote_draft = None;
                 return Task::none();
@@ -188,6 +193,7 @@ impl CelesteApp {
                     let user = draft.user.clone();
                     let pass = draft.pass.clone();
                     let totp = draft.totp.clone();
+                    let hv = draft.hv.clone();
                     let router = self.rclone.clone();
                     let is_reauth = draft.reauth;
                     draft.busy = true;
@@ -211,6 +217,7 @@ impl CelesteApp {
                                         &user,
                                         &pass,
                                         &totp,
+                                        hv.as_ref(),
                                         &*router_inner,
                                     )
                                 })
@@ -235,6 +242,7 @@ impl CelesteApp {
                                     &user,
                                     &pass,
                                     &totp,
+                                    hv.as_ref(),
                                     &*repo,
                                     &*router,
                                 )
@@ -355,10 +363,21 @@ impl CelesteApp {
 
     /// Handle [`Message::AddRemoteResult(Err)`] — surface the message
     /// inside the open draft.
+    ///
+    /// A human-verification request isn't an error the user can fix in
+    /// the form: open the challenge in the browser right away and keep
+    /// it on the draft, so the next submit retries with its token.
     pub(in crate::app) fn handle_add_remote_result_err(&mut self, msg: String) -> Task<Message> {
         if let Some(draft) = self.add_remote_draft.as_mut() {
-            draft.error = Some(msg);
             draft.busy = false;
+            match celeste_go::proton::HumanVerification::from_login_error(&msg) {
+                Some(hv) => {
+                    open_in_browser(&hv.url());
+                    draft.hv = Some(hv);
+                    draft.error = None;
+                }
+                None => draft.error = Some(msg),
+            }
         }
         Task::none()
     }
@@ -496,5 +515,12 @@ impl CelesteApp {
         draft.reauth = true;
         self.add_remote_draft = Some(draft);
         Task::none()
+    }
+}
+
+/// Hand a URL to the desktop's default browser.
+fn open_in_browser(url: &str) {
+    if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
+        eprintln!("celeste: couldn't open {url} ({err}).");
     }
 }

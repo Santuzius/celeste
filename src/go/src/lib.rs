@@ -96,6 +96,36 @@ pub mod proton {
         pub mailbox_password: String,
         #[serde(skip_serializing_if = "String::is_empty")]
         pub two_fa: String,
+        /// Solved human-verification challenge from a previous attempt.
+        #[serde(skip_serializing_if = "String::is_empty")]
+        pub hv_token: String,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        pub hv_methods: Vec<String>,
+    }
+
+    /// Prefix of a login error that is really Proton asking for human
+    /// verification (CAPTCHA). Mirrors `drive.HVErrorPrefix`.
+    const HV_ERROR_PREFIX: &str = "HUMAN_VERIFICATION_REQUIRED ";
+
+    /// A human-verification challenge returned by a login attempt.
+    #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+    pub struct HumanVerification {
+        pub token: String,
+        #[serde(default)]
+        pub methods: Vec<String>,
+    }
+
+    impl HumanVerification {
+        /// Parse a [`login`] error; `None` for every other error.
+        pub fn from_login_error(err: &str) -> Option<Self> {
+            serde_json::from_str(err.strip_prefix(HV_ERROR_PREFIX)?).ok()
+        }
+
+        /// Page where the user solves the challenge in a normal browser.
+        pub fn url(&self) -> String {
+            let methods = if self.methods.is_empty() { "captcha".to_owned() } else { self.methods.join(",") };
+            format!("https://verify.proton.me/?methods={methods}&token={}", self.token)
+        }
     }
 
     /// Reusable credential — the JSON shape stored on disk and handed
@@ -391,3 +421,17 @@ fn read_c_string(raw: *mut c_char) -> String {
 // screams; re-assert here.
 #[allow(dead_code)]
 fn _path_used_somewhere(_p: &Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::proton::HumanVerification;
+
+    #[test]
+    fn parses_human_verification_errors() {
+        let err = r#"HUMAN_VERIFICATION_REQUIRED {"methods":["captcha"],"token":"abc123"}"#;
+        let hv = HumanVerification::from_login_error(err).expect("HV error");
+        assert_eq!(hv.token, "abc123");
+        assert_eq!(hv.url(), "https://verify.proton.me/?methods=captcha&token=abc123");
+        assert_eq!(HumanVerification::from_login_error("422 POST …: Code=2001"), None);
+    }
+}

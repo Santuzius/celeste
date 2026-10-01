@@ -11,6 +11,8 @@ use iced::{
     widget::{Space, button, column, container, pick_list, row, text::Shaping, text_input},
 };
 
+use celeste_go::proton::HumanVerification;
+
 use crate::{
     services::auth::{OAuthProvider, WebDavVendor},
     theme::{self, CAPTION, HEADING, ROW_SPACING, TEXT},
@@ -29,6 +31,8 @@ pub enum Msg {
     ClientSecretChanged(String),
     Submit,
     Cancel,
+    /// Re-open the human-verification page in the browser.
+    OpenVerification,
 }
 
 /// The set of backends Celeste's sync algorithm has been exercised
@@ -147,6 +151,9 @@ pub struct Draft {
     /// locked, submit reuses the existing DB row + session path
     /// instead of inserting a new one.
     pub reauth: bool,
+    /// Pending Proton human-verification challenge (CAPTCHA). Sent along
+    /// with the next submit once the user has solved it in the browser.
+    pub hv: Option<HumanVerification>,
 }
 
 const LABEL_WIDTH: f32 = 110.0;
@@ -214,6 +221,26 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             body = body.push(field("Client secret", input("optional", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));
         }
         Some(_) | None => {}
+    }
+
+    if draft.hv.is_some() && !draft.busy {
+        body = body.push(
+            container(
+                column![
+                    text("Proton wants to make sure you're human").size(TEXT),
+                    text("1. Solve the CAPTCHA on the page that just opened in your browser.").size(CAPTION),
+                    text(format!("2. Come back and click {}.", if draft.reauth { "Sign in" } else { "Add" })).size(CAPTION),
+                    button(text("Open verification page again").size(CAPTION))
+                        .padding([5, 12])
+                        .style(theme::button_secondary)
+                        .on_press(Msg::OpenVerification),
+                ]
+                .spacing(6),
+            )
+            .padding([10, 12])
+            .width(Length::Fill)
+            .style(theme::warning_bar),
+        );
     }
 
     if draft.busy {
