@@ -488,6 +488,7 @@ impl CelesteApp {
     pub(in crate::app) fn handle_confirm_delete(&mut self) -> Task<Message> {
         match self.pending_delete.take() {
             Some(remote_page::PendingDelete::Remote(id, name)) => {
+                self.settings_open = false;
                 self.handle_delete_remote(id, name)
             }
             Some(remote_page::PendingDelete::SyncDir { local, remote, .. }) => {

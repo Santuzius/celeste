@@ -16,7 +16,7 @@ use std::{
 use iced::{
     stream,
     theme as iced_theme,
-    widget::{container, row, stack},
+    widget::{container, row, rule, stack},
     window, Element, Length, Size, Subscription, Task, Theme,
 };
 use tokio::sync::mpsc;
@@ -311,8 +311,12 @@ impl CelesteApp {
             Message::AddRemoteResult(Ok(id)) => self.handle_add_remote_result_ok(id),
             Message::AddRemoteResult(Err(msg)) => self.handle_add_remote_result_err(msg),
             Message::Remote(remote_page::Msg::RefreshNow(id)) => self.handle_refresh_now(id),
-            Message::Remote(remote_page::Msg::ToggleSettings) => {
-                self.settings_open = !self.settings_open;
+            Message::Remote(remote_page::Msg::OpenSettings) => {
+                self.settings_open = true;
+                Task::none()
+            }
+            Message::Remote(remote_page::Msg::CloseSettings) => {
+                self.settings_open = false;
                 Task::none()
             }
             Message::Main(main_page::Msg::OpenAbout) => {
@@ -333,6 +337,7 @@ impl CelesteApp {
             Message::Remote(remote_page::Msg::ConfirmDelete) => self.handle_confirm_delete(),
             Message::Remote(remote_page::Msg::CancelDelete) => self.handle_cancel_delete(),
             Message::Remote(remote_page::Msg::Reauthenticate(id, name)) => {
+                self.settings_open = false;
                 self.handle_reauthenticate(id, name)
             }
 
@@ -423,12 +428,15 @@ impl CelesteApp {
                 .into(),
         };
 
-        let base: Element<'_, Message> = row![nav, content].into();
+        let base: Element<'_, Message> = row![nav, rule::vertical(1).style(theme::separator), content].into();
         if let Some(draft) = self.add_remote_draft.as_ref() {
             let dismiss = draft.can_cancel().then_some(Message::AddRemote(add_remote::Msg::Cancel));
             stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
         } else if let Some(pending) = self.pending_delete.as_ref() {
             stack![base, remote_page::confirm_delete_overlay(pending).map(Message::Remote)].into()
+        } else if let Some(remote) = self.settings_open.then(|| self.selected_remote()).flatten() {
+            let auth_needed = self.display_state(remote) == RunState::AuthNeeded;
+            stack![base, remote_page::settings_dialog(remote, auth_needed).map(Message::Remote)].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
         } else {
@@ -452,10 +460,15 @@ impl CelesteApp {
             }
             return Task::none();
         }
-        if self.exclusion_panel.take().is_none() {
-            self.settings_open = false;
+        if std::mem::take(&mut self.settings_open) {
+            return Task::none();
         }
+        self.exclusion_panel = None;
         Task::none()
+    }
+
+    fn selected_remote(&self) -> Option<&Remote> {
+        self.selected.and_then(|id| self.remotes.iter().find(|r| r.id == id))
     }
 
     /// Roll-up shown for a remote; falls back to the policy before the
@@ -504,7 +517,6 @@ impl CelesteApp {
             draft_remote,
             add_error: self.add_sync_dir_error.as_deref(),
             shared_oauth_client: self.shared_oauth_client.contains(&remote.id),
-            settings_open: self.settings_open,
         }
     }
 

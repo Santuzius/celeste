@@ -37,8 +37,9 @@ const FORM_LABEL_WIDTH: f32 = 150.0;
 #[derive(Debug, Clone)]
 pub enum Msg {
     RefreshNow(RemoteId),
-    /// Switch the page body between the folders and the remote's settings.
-    ToggleSettings,
+    /// Open / close the remote's settings dialog.
+    OpenSettings,
+    CloseSettings,
     Settings(settings::Msg),
     DraftLocalPathChanged(String),
     DraftRemotePathChanged(String),
@@ -84,8 +85,6 @@ pub struct Page<'a> {
     pub add_error: Option<&'a str>,
     /// Google Drive remote still on rclone's retiring shared OAuth client.
     pub shared_oauth_client: bool,
-    /// The body shows the settings instead of the folders.
-    pub settings_open: bool,
 }
 
 /// One sync folder row.
@@ -118,14 +117,14 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
         .spacing(2)
         .width(Length::Fill),
         backoff_hint(page.next_sync),
-        button(row![icon(icondata::TbSettingsOutline, 16.0), text("Settings").size(TEXT)].spacing(6).align_y(Alignment::Center))
-            .padding([6, 12])
-            .style(theme::button_secondary_toggle(page.settings_open))
-            .on_press(Msg::ToggleSettings),
         button(row![icon(icondata::TbRefreshOutline, 16.0), text("Sync now").size(TEXT)].spacing(6).align_y(Alignment::Center))
             .padding([6, 12])
             .style(theme::button_secondary)
             .on_press_maybe((!auth_needed && !page.syncing).then_some(Msg::RefreshNow(remote.id))),
+        button(row![icon(icondata::TbSettingsOutline, 16.0), text("Settings").size(TEXT)].spacing(6).align_y(Alignment::Center))
+            .padding([6, 12])
+            .style(theme::button_secondary)
+            .on_press(Msg::OpenSettings),
     ]
     .spacing(ROW_SPACING)
     .align_y(Alignment::Center);
@@ -177,11 +176,6 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
             .width(Length::Fill)
             .style(theme::warning_bar),
         );
-    }
-
-    if page.settings_open {
-        body = body.push(column![section_heading("Settings"), settings::view(remote, auth_needed).map(Msg::from_settings)].spacing(6));
-        return frame(header, body);
     }
 
     // ── Folders ─────────────────────────────────────────────────────────
@@ -487,6 +481,26 @@ fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &
     .align_y(Alignment::Center));
 
     container(col).padding([12, 14]).width(Length::Fill).style(theme::card).into()
+}
+
+/// Settings dialog of a remote, shown over the page like the Add remote dialog.
+pub fn settings_dialog<'a>(remote: &'a Remote, auth_needed: bool) -> Element<'a, Msg> {
+    let card = container(
+        column![
+            text(format!("Settings for {}", remote.name)).size(HEADING + 2.0),
+            settings::view(remote, auth_needed).map(Msg::from_settings),
+            row![
+                Space::new().width(Length::Fill),
+                button(text("Close").size(TEXT)).padding([6, 16]).style(theme::button_secondary).on_press(Msg::CloseSettings),
+            ],
+        ]
+        .spacing(16),
+    )
+    .padding(22)
+    .max_width(620)
+    .style(theme::dialog);
+
+    modal(card.into(), Some(Msg::CloseSettings))
 }
 
 /// Dimmed backdrop + centred confirmation card for a pending delete.

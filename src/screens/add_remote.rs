@@ -8,7 +8,7 @@
 
 use iced::{
     Alignment, Element, Length,
-    widget::{Space, button, column, container, pick_list, row, text::{Shaping, Wrapping}, text_input},
+    widget::{Space, button, column, container, pick_list, row, text::Shaping, text_input},
 };
 
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use celeste_go::proton::HumanVerification;
 use crate::{
     services::auth::{AuthorizeHandle, OAuthProvider, WebDavVendor},
     theme::{self, CAPTION, HEADING, ROW_SPACING, TEXT},
-    widgets::text,
+    widgets::{bullet, text},
 };
 
 #[derive(Debug, Clone)]
@@ -209,11 +209,6 @@ fn input<'a>(placeholder: &'a str, value: &'a str, on_input: fn(String) -> Msg) 
 
 fn hint<'a>(s: &'a str) -> Element<'a, Msg> {
     text(s).size(TEXT - 1.0).style(theme::muted).into()
-}
-
-/// Indented list item of an instruction.
-fn bullet<'a>(s: &'a str) -> Element<'a, Msg> {
-    row![text("•").size(TEXT), text(s).size(TEXT).wrapping(Wrapping::WordOrGlyph)].spacing(8).padding(iced::Padding::default().left(8.0)).into()
 }
 
 /// Instruction text the user has to act on — body size and colour.

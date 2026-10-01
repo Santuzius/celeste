@@ -312,19 +312,6 @@ pub fn button_toggle(open: bool) -> impl Fn(&Theme, button::Status) -> button::S
     }
 }
 
-/// Neutral button that stays tinted while the view it opens is shown.
-pub fn button_secondary_toggle(open: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme, status| {
-        let style = button_secondary(theme, status);
-        let t = tones(theme);
-        if open && !matches!(status, button::Status::Disabled) {
-            button::Style { background: Some(t.selection.into()), border: Border { color: t.accent, ..style.border }, ..style }
-        } else {
-            style
-        }
-    }
-}
-
 /// Entry in the navigation pane.
 pub fn nav_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme, status| {
