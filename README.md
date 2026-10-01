@@ -78,7 +78,7 @@ Install it into your user profile:
 nix profile add github:Santuzius/celeste
 ```
 
-`github:Santuzius/celeste` follows the `develop` branch; append a release tag for a fixed version, e.g. `github:Santuzius/celeste/v0.17.1`. Flakes have no "latest release" alias, but your `flake.lock` keeps whatever you got until `nix flake update` (or `nix profile upgrade`).
+`github:Santuzius/celeste` always gives the latest release; `nix flake update` (or `nix profile upgrade`) moves you to a newer one.
 
 ### NixOS
 Add the flake as an input — this one line is all you need in `inputs`:
