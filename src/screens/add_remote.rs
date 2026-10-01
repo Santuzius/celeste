@@ -48,7 +48,7 @@ pub enum Msg {
 pub const GDRIVE_CLIENT_ID_GUIDE: &str = "https://rclone.org/drive/#making-your-own-client-id";
 
 /// Celeste's privacy policy, usable as privacy policy link in the Google consent screen's branding.
-pub const PRIVACY_POLICY: &str = "https://github.com/Santuzius/celeste/blob/develop/PRIVACY.md";
+pub const PRIVACY_POLICY: &str = "https://github.com/Santuzius/celeste/blob/main/PRIVACY.md";
 
 /// The set of backends Celeste's sync algorithm has been exercised
 /// against. WebDAV / Nextcloud / Owncloud / Dropbox / pCloud are

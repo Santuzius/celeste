@@ -16,7 +16,7 @@ Celeste is a GUI file synchronization client
 - Proton Drive
 
 > [!IMPORTANT]
-> Google Drive needs your own OAuth client ID, see [rclone's guide](https://rclone.org/drive/#making-your-own-client-id). In the consent screen's **Branding** settings, you can enter [`https://github.com/Santuzius/celeste/blob/develop/PRIVACY.md`](./PRIVACY.md) as **Application privacy policy link** and your own website or social media profile as **Application home page**.
+> Google Drive needs your own OAuth client ID, see [rclone's guide](https://rclone.org/drive/#making-your-own-client-id). In the consent screen's **Branding** settings, you can enter [`https://github.com/Santuzius/celeste/blob/main/PRIVACY.md`](./PRIVACY.md) as **Application privacy policy link** and your own website or social media profile as **Application home page**.
 
 ## Features
 - Two-way sync
