@@ -440,7 +440,7 @@ fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &
         text("Add a folder").size(TEXT),
         row![
             label("On this computer".to_owned()),
-            text_input("/home/you/Documents", draft_local)
+            text_input("e.g. /home/you/Documents/Scans", draft_local)
                 .on_input(Msg::DraftLocalPathChanged)
                 .on_submit_maybe(can_add.then_some(Msg::AddSyncDir))
                 .padding(7)
@@ -455,7 +455,7 @@ fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &
         .align_y(Alignment::Center),
         row![
             label(format!("On {}", remote.name)),
-            text_input("Folder path, e.g. Documents (empty = whole drive)", draft_remote)
+            text_input("e.g. Documents/Scans (empty = whole drive)", draft_remote)
                 .on_input(Msg::DraftRemotePathChanged)
                 .on_submit_maybe(can_add.then_some(Msg::AddSyncDir))
                 .padding(7)
