@@ -165,6 +165,7 @@ impl CelesteApp {
                 return Task::none();
             }
             add_remote::Msg::OpenClientIdGuide => open_in_browser(add_remote::GDRIVE_CLIENT_ID_GUIDE),
+            add_remote::Msg::CopyPrivacyLink => return iced::clipboard::write(add_remote::PRIVACY_POLICY.to_owned()),
             add_remote::Msg::OpenAuthLink => {
                 if let Some(url) = draft.oauth.as_ref().and_then(|h| h.url()) {
                     open_in_browser(&url);

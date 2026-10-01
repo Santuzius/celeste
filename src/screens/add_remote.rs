@@ -40,10 +40,15 @@ pub enum Msg {
     CopyAuthLink,
     /// Open rclone's guide for creating a Google Drive client ID.
     OpenClientIdGuide,
+    /// Copy Celeste's privacy policy link (for the Google consent screen's branding).
+    CopyPrivacyLink,
 }
 
 /// rclone's step-by-step guide for creating a Google Drive OAuth client.
 pub const GDRIVE_CLIENT_ID_GUIDE: &str = "https://rclone.org/drive/#making-your-own-client-id";
+
+/// Celeste's privacy policy, usable as privacy policy link in the Google consent screen's branding.
+pub const PRIVACY_POLICY: &str = "https://github.com/Santuzius/celeste/blob/develop/PRIVACY.md";
 
 /// The set of backends Celeste's sync algorithm has been exercised
 /// against. WebDAV / Nextcloud / Owncloud / Dropbox / pCloud are
@@ -250,6 +255,15 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
                     .padding([5, 12])
                     .style(theme::button_secondary)
                     .on_press(Msg::OpenClientIdGuide),
+            );
+            body = body.push(hint(
+                "In the consent screen's Branding, you can enter Celeste's privacy policy as privacy policy link and your own website or social media profile as application home page.",
+            ));
+            body = body.push(
+                button(text("Copy privacy policy link").size(CAPTION))
+                    .padding([5, 12])
+                    .style(theme::button_secondary)
+                    .on_press(Msg::CopyPrivacyLink),
             );
             body = body.push(field("Client ID", input("…apps.googleusercontent.com", &draft.client_id, Msg::ClientIdChanged)));
             body = body.push(field("Client secret", input("client secret", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));
