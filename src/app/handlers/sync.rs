@@ -76,7 +76,7 @@ impl CelesteApp {
         let remote_ids: Vec<(RemoteId, std::time::Duration)> = self
             .remotes
             .iter()
-            .filter(|r| r.policy.enabled && !self.syncing.contains(&r.id))
+            .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
             .map(|r| (r.id, r.policy.interval.duration()))
             .collect();
         for (id, interval) in remote_ids {
@@ -106,7 +106,7 @@ impl CelesteApp {
     /// and returns a Command that will deliver `SyncFinished(id)` when
     /// the blocking task completes.
     pub(in crate::app) fn start_sync(&mut self, id: RemoteId) -> Task<Message> {
-        if self.syncing.contains(&id) {
+        if self.syncing.contains(&id) || self.sync_state.needs_reauth(id) {
             return Task::none();
         }
         // Fresh cancel flag for this pass. Reusing the existing Arc
@@ -200,15 +200,21 @@ impl CelesteApp {
         )
     }
 
+    /// Enabled by the user and not blocked on reauthentication.
+    pub(in crate::app) fn is_schedulable(&self, id: RemoteId) -> bool {
+        self.remotes.iter().any(|r| r.id == id && r.policy.enabled)
+            && !self.sync_state.needs_reauth(id)
+    }
+
     /// Time until the scheduler will next attempt this remote, plus a
     /// flag telling the caller whether the remote is currently in a
     /// backoff window (next attempt will be a skip, not a real pass).
-    /// Returns `None` when the remote is disabled.
+    /// Returns `None` when the remote is disabled or needs reauth.
     pub fn next_sync_eta(&self, id: RemoteId) -> Option<(std::time::Duration, bool)> {
-        let remote = self.remotes.iter().find(|r| r.id == id)?;
-        if !remote.policy.enabled {
+        if !self.is_schedulable(id) {
             return None;
         }
+        let remote = self.remotes.iter().find(|r| r.id == id)?;
         let interval = remote.policy.interval.duration();
         let now = Instant::now();
         let base_remaining = match self.last_sync_at.get(&id) {

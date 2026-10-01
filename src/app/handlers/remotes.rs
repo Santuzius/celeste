@@ -69,7 +69,7 @@ impl CelesteApp {
         let ids: Vec<RemoteId> = self
             .remotes
             .iter()
-            .filter(|r| r.policy.enabled && !self.syncing.contains(&r.id))
+            .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
             .map(|r| r.id)
             .collect();
         let cmds: Vec<Task<Message>> =
@@ -285,16 +285,19 @@ impl CelesteApp {
     }
 
     /// Handle [`Message::AddRemoteResult(Ok)`] — close the dialog,
-    /// clear auth-failure state, re-enable the policy if it was
-    /// auto-paused, and reload the remotes list.
+    /// clear the auth flag, make sure the remote is enabled, and reload
+    /// the remotes list.
+    ///
+    /// Re-enabling covers remotes that older versions auto-paused on an
+    /// auth failure: signing in again is the user saying "sync this".
+    /// The policy is persisted *before* the reload so the reload can't
+    /// read the stale `enabled = false` back and re-pause the remote.
     pub(in crate::app) fn handle_add_remote_result_ok(&mut self, id: RemoteId) -> Task<Message> {
         self.add_remote_draft = None;
-        // Clear the remote's auth flag (and the stale Errors the failed
-        // attempts left behind) and re-enable it in the state machine.
         self.sync_state.reauth_complete(id);
         self.sync_state.set_remote_enabled(id, true);
-        // Re-enable the policy in the domain model so the scheduler
-        // picks it up on the next tick.
+        // Sync right away instead of waiting out the interval.
+        self.last_sync_at.remove(&id);
         let mut reenable_policy: Option<crate::domain::remote::SyncPolicy> = None;
         if let Some(remote) = self.remotes.iter_mut().find(|r| r.id == id)
             && !remote.policy.enabled
@@ -303,24 +306,15 @@ impl CelesteApp {
             reenable_policy = Some(remote.policy.clone());
         }
         let repo = self.repo.clone();
-        let repo_for_policy = self.repo.clone();
-        let reload = Task::perform(
-            async move { repo.list_remotes().await.unwrap_or_default() },
+        Task::perform(
+            async move {
+                if let Some(policy) = reenable_policy {
+                    let _ = repo.set_policy(id, policy).await;
+                }
+                repo.list_remotes().await.unwrap_or_default()
+            },
             Message::RemotesLoaded,
-        );
-        if let Some(policy) = reenable_policy {
-            Task::batch([
-                Task::perform(
-                    async move {
-                        let _ = repo_for_policy.set_policy(id, policy).await;
-                    },
-                    |_| Message::PolicySaved,
-                ),
-                reload,
-            ])
-        } else {
-            reload
-        }
+        )
     }
 
     /// Handle [`Message::AddRemoteResult(Err)`] — surface the message
