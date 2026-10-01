@@ -25,6 +25,30 @@ fi
 pkg() { nix-build '<nixpkgs>' -A "$1" --no-out-link 2>/dev/null; }
 GKR="$(pkg gnome-keyring)/bin/gnome-keyring-daemon"
 
+# A previous run's processes (Celeste itself, services D-Bus-activated on its private bus) can outlive it; stop the ones whose HOME is our test home — never anything of the real session — and wait until they are gone.
+test_pids() {
+  for pid in $(pgrep -u "$USER"); do
+    if { tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null | grep -qx "HOME=$T/home"; then echo "$pid"; fi
+  done
+}
+pids="$(test_pids)"
+if [ -n "$pids" ]; then
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 1 50); do [ -z "$(test_pids)" ] && break; sleep 0.1; done
+fi
+# The X server is started with the caller's environment so the cleanup above never takes it down; it is reused across runs.
+if [ "$MODE" = xvfb ]; then
+  DISPLAY_TO_USE=:99
+  xvfb_running() { for p in $(pgrep -x Xvfb); do grep -qa ":99" "/proc/$p/cmdline" && return 0; done; return 1; }
+  if ! xvfb_running; then
+    rm -f /tmp/.X11-unix/X99 /tmp/.X99-lock
+    "$(pkg xorg.xvfb)/bin/Xvfb" :99 -screen 0 1280x860x24 -nolisten tcp >/tmp/celeste-test-xvfb.log 2>&1 &
+    sleep 1
+  fi
+else
+  DISPLAY_TO_USE="${REAL_DISPLAY:-:0}"
+fi
+
 [ "${CELESTE_TEST_RESET:-0}" = 1 ] && rm -rf "$T"
 mkdir -p "$T/home/.local/share" "$T/home/.config" "$T/home/.cache" "$T/run"
 chmod 700 "$T/run"
@@ -35,16 +59,7 @@ export XDG_CONFIG_HOME="$T/home/.config"
 export XDG_CACHE_HOME="$T/home/.cache"
 export XDG_RUNTIME_DIR="$T/run"
 unset WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
-
-if [ "$MODE" = xvfb ]; then
-  export DISPLAY=:99
-  if ! [ -e /tmp/.X11-unix/X99 ]; then
-    "$(pkg xorg.xvfb)/bin/Xvfb" :99 -screen 0 1280x860x24 -nolisten tcp >"$T/xvfb.log" 2>&1 &
-    sleep 1
-  fi
-else
-  export DISPLAY="${REAL_DISPLAY:-:0}"
-fi
+export DISPLAY="$DISPLAY_TO_USE"
 
 export GKR BIN T
 exec dbus-run-session -- bash -c '
