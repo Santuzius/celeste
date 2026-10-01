@@ -41,13 +41,35 @@ impl CelesteApp {
                 self.sync_state.auth_failure(r.id);
             }
         }
-        Task::none()
+        // Keep a remote selected whenever there is one, so the window
+        // never opens on an empty pane; (re)load its folders if needed.
+        let selected = self
+            .selected
+            .filter(|id| self.remotes.iter().any(|r| r.id == *id))
+            .or_else(|| self.remotes.first().map(|r| r.id));
+        match selected {
+            Some(id) if self.selected != Some(id) || !self.sync_dirs.contains_key(&id) => {
+                self.handle_remote_selected(id)
+            }
+            Some(_) => Task::none(),
+            None => {
+                self.selected = None;
+                Task::none()
+            }
+        }
     }
 
     /// Handle [`main_page::Msg::Selected`] — navigate to a remote and
     /// kick off two parallel reads (this remote's sync_dirs + the
     /// global sync_dirs list for auto-exclusion).
     pub(in crate::app) fn handle_remote_selected(&mut self, id: RemoteId) -> Task<Message> {
+        if self.selected != Some(id) {
+            // Per-page UI state doesn't carry over to another remote;
+            // expanded logs are dropped to free their text buffers.
+            self.add_sync_dir_error = None;
+            self.exclusion_panel = None;
+            self.sync_dir_log_content.clear();
+        }
         self.selected = Some(id);
         let repo = self.repo.clone();
         let repo2 = self.repo.clone();
@@ -96,7 +118,20 @@ impl CelesteApp {
         };
         match sub {
             add_remote::Msg::NameChanged(s) => draft.name = s,
-            add_remote::Msg::ProviderChanged(p) => draft.provider = Some(p),
+            add_remote::Msg::ProviderChanged(p) => {
+                // Suggest a name (unique among the existing remotes)
+                // until the user types their own.
+                let suggested = |p: add_remote::ProviderKind| p.to_string().replace(' ', "");
+                if draft.name.trim().is_empty() || draft.provider.is_some_and(|old| draft.name.starts_with(&suggested(old))) {
+                    let base = suggested(p);
+                    let taken = |n: &str| self.remotes.iter().any(|r| r.name == n);
+                    draft.name = (1..)
+                        .map(|i| if i == 1 { base.clone() } else { format!("{base}{i}") })
+                        .find(|n| !taken(n))
+                        .unwrap_or(base);
+                }
+                draft.provider = Some(p);
+            }
             add_remote::Msg::UrlChanged(s) => draft.url = s,
             add_remote::Msg::UserChanged(s) => draft.user = s,
             add_remote::Msg::PassChanged(s) => draft.pass = s,
@@ -294,6 +329,7 @@ impl CelesteApp {
     /// read the stale `enabled = false` back and re-pause the remote.
     pub(in crate::app) fn handle_add_remote_result_ok(&mut self, id: RemoteId) -> Task<Message> {
         self.add_remote_draft = None;
+        self.selected = Some(id);
         self.sync_state.reauth_complete(id);
         self.sync_state.set_remote_enabled(id, true);
         // Sync right away instead of waiting out the interval.
@@ -324,12 +360,6 @@ impl CelesteApp {
             draft.error = Some(msg);
             draft.busy = false;
         }
-        Task::none()
-    }
-
-    /// Handle [`remote_page::Msg::Back`] — clear the selected remote.
-    pub(in crate::app) fn handle_remote_back(&mut self) -> Task<Message> {
-        self.selected = None;
         Task::none()
     }
 
@@ -380,9 +410,10 @@ impl CelesteApp {
         &mut self,
         local: String,
         remote: String,
+        remote_label: String,
     ) -> Task<Message> {
         self.pending_delete =
-            Some(remote_page::PendingDelete::SyncDir { local, remote });
+            Some(remote_page::PendingDelete::SyncDir { local, remote, remote_label });
         Task::none()
     }
 
@@ -393,7 +424,7 @@ impl CelesteApp {
             Some(remote_page::PendingDelete::Remote(id, name)) => {
                 self.handle_delete_remote(id, name)
             }
-            Some(remote_page::PendingDelete::SyncDir { local, remote }) => {
+            Some(remote_page::PendingDelete::SyncDir { local, remote, .. }) => {
                 self.handle_delete_sync_dir(local, remote)
             }
             None => Task::none(),

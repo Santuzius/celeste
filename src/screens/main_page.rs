@@ -1,22 +1,21 @@
-//! The landing page: sidebar listing every configured remote, plus a
-//! placeholder while Phase D fills in the remote detail pane.
+//! Left navigation pane (one entry per remote with its roll-up status) and the empty state shown before any remote exists.
 
 use iced::{
-    widget::{button, column, container, row, scrollable, Space},
+    widget::{button, center, column, container, row, scrollable, text::Wrapping, Space},
     Alignment, Element, Length,
 };
 
 use crate::{
     domain::{
         remote::{Remote, RemoteId},
-        run_state::{AppState, RunState, SyncActivity},
+        run_state::{RunState, SyncActivity},
     },
-    theme::{PAGE_PADDING, ROW_SPACING, SECTION_SPACING},
-    widgets::{run_state_icon::status_icon, text},
+    theme::{self, CAPTION, NAV_WIDTH, ROW_SPACING, TEXT},
+    widgets::{
+        icon::{icon, muted_icon, status_icon},
+        text,
+    },
 };
-
-/// Side length of the per-row roll-up icon.
-const SIDEBAR_ICON_SIZE: f32 = 18.0;
 
 #[derive(Debug, Clone)]
 pub enum Msg {
@@ -25,76 +24,115 @@ pub enum Msg {
     AddRemote,
 }
 
-pub fn view<'a>(
-    remotes: &'a [Remote],
-    selected: Option<RemoteId>,
-    state: &'a AppState,
-) -> Element<'a, Msg> {
-    let header = row![
-        text("Celeste").size(24),
-        Space::new().width(Length::Fill),
-        button(text("Refresh all")).on_press(Msg::RefreshAll),
-        button(text("Add remote")).on_press(Msg::AddRemote),
+/// One navigation entry.
+pub struct NavEntry<'a> {
+    pub remote: &'a Remote,
+    pub state: RunState,
+}
+
+pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>) -> Element<'a, Msg> {
+    let mut list = column![].spacing(2);
+    for entry in entries {
+        list = list.push(nav_item(entry, selected));
+    }
+
+    let footer = column![
+        flat_row(icondata::TbPlusOutline, "Add remote", Msg::AddRemote),
+        flat_row(icondata::TbRefreshOutline, "Sync all now", Msg::RefreshAll),
     ]
-    .spacing(ROW_SPACING)
-    .align_y(Alignment::Center);
-
-    let sidebar = {
-        let mut col = column![text("Remotes").size(16)].spacing(ROW_SPACING);
-        for remote in remotes {
-            let roll_up = state.roll_up(remote.id);
-            let label = format!("{}  ({})", remote.name, status_label(roll_up, remote.policy.enabled));
-            // Icon sits next to the button (not inside it) so the
-            // status badge keeps its surrounding background instead of
-            // inheriting the button's hover/press tint, and so the
-            // icon's bounding box doesn't grow the button's clickable
-            // area.
-            let row_widget = row![
-                status_icon(roll_up, SIDEBAR_ICON_SIZE),
-                button(text(label))
-                    .width(Length::Fill)
-                    .on_press(Msg::Selected(remote.id)),
-            ]
-            .spacing(ROW_SPACING / 2.0)
-            .align_y(Alignment::Center);
-            col = col.push(row_widget);
-        }
-        scrollable(col).width(Length::Fixed(240.0))
-    };
-
-    let body: Element<Msg> = match selected {
-        Some(_) => text("Remote details coming soon.").into(),
-        None => text("Select a remote in the sidebar.").into(),
-    };
+    .spacing(2);
 
     container(
         column![
-            header,
-            row![sidebar, container(body).width(Length::Fill).padding(PAGE_PADDING)]
-                .spacing(PAGE_PADDING),
+            container(text("Celeste").size(theme::HEADING)).padding([4, 10]),
+            scrollable(list)
+                .height(Length::Fill)
+                .direction(theme::slim_scrollbar())
+                .style(theme::scrollbar),
+            footer,
         ]
-        .spacing(SECTION_SPACING),
+        .spacing(ROW_SPACING),
     )
-    .padding(PAGE_PADDING)
+    .padding(10)
+    .width(Length::Fixed(NAV_WIDTH))
+    .height(Length::Fill)
+    .style(theme::nav_pane)
     .into()
 }
 
-/// Short text label paired with the row icon. Falls back to the policy's
-/// `enabled` flag when the state machine has no entry yet (fresh remote
-/// pre-first-tick) so a disabled-from-the-start remote still reads as paused.
-fn status_label(roll_up: Option<RunState>, enabled: bool) -> &'static str {
-    match (roll_up, enabled) {
-        (Some(RunState::Syncing(SyncActivity::Listing)), _) => "listing…",
-        (Some(RunState::Syncing(SyncActivity::Downloading)), _) => "downloading…",
-        (Some(RunState::Syncing(SyncActivity::Uploading)), _) => "uploading…",
-        (Some(RunState::Syncing(SyncActivity::Deleting)), _) => "deleting…",
-        (Some(RunState::Syncing(SyncActivity::Resolving)), _) => "resolving…",
-        (Some(RunState::AuthNeeded), _) => "needs reauth",
-        (Some(RunState::Paused), _) => "paused",
-        (Some(RunState::Synced), _) => "up to date",
-        (Some(RunState::Warning), _) => "warning",
-        (Some(RunState::Error), _) => "error",
-        (Some(RunState::Waiting), false) | (None, false) => "paused",
-        (Some(RunState::Waiting), true) | (None, true) => "idle",
+fn nav_item<'a>(entry: NavEntry<'a>, selected: Option<RemoteId>) -> Element<'a, Msg> {
+    let is_selected = selected == Some(entry.remote.id);
+    // Accent pill on the selected entry, an equally wide gap otherwise so labels don't shift.
+    let indicator: Element<'a, Msg> = if is_selected {
+        container(Space::new())
+            .width(Length::Fixed(3.0))
+            .height(Length::Fixed(18.0))
+            .style(theme::nav_indicator)
+            .into()
+    } else {
+        Space::new().width(Length::Fixed(3.0)).into()
+    };
+    let label = column![
+        text(&entry.remote.name).size(TEXT).wrapping(Wrapping::WordOrGlyph),
+        text(status_label(entry.state)).size(CAPTION).style(theme::muted),
+    ];
+    button(
+        row![indicator, status_icon(entry.state, 18.0), label]
+            .spacing(10)
+            .align_y(Alignment::Center),
+    )
+    .width(Length::Fill)
+    .padding([6, 6])
+    .style(theme::nav_item(is_selected))
+    .on_press(Msg::Selected(entry.remote.id))
+    .into()
+}
+
+fn flat_row<'a>(glyph: icondata::Icon, label: &'a str, msg: Msg) -> Element<'a, Msg> {
+    button(row![icon(glyph, 16.0), text(label).size(TEXT)].spacing(10).align_y(Alignment::Center))
+        .width(Length::Fill)
+        .padding([7, 12])
+        .style(theme::button_flat)
+        .on_press(msg)
+        .into()
+}
+
+/// Short status label for a remote or a sync folder.
+pub fn status_label(state: RunState) -> &'static str {
+    match state {
+        RunState::Syncing(SyncActivity::Listing) => "Checking for changes…",
+        RunState::Syncing(SyncActivity::Downloading) => "Downloading…",
+        RunState::Syncing(SyncActivity::Uploading) => "Uploading…",
+        RunState::Syncing(SyncActivity::Deleting) => "Removing files…",
+        RunState::Syncing(SyncActivity::Resolving) => "Resolving conflicts…",
+        RunState::AuthNeeded => "Not signed in",
+        RunState::Paused => "Paused",
+        RunState::Synced => "Up to date",
+        RunState::Warning => "Synced with problems",
+        RunState::Error => "Sync failed",
+        RunState::Waiting => "Waiting",
     }
+}
+
+/// Content shown while no remote is configured.
+pub fn empty_state<'a>() -> Element<'a, Msg> {
+    center(
+        column![
+            muted_icon(icondata::TbCloudOutline, 56.0),
+            text("No remotes yet").size(theme::TITLE),
+            text("Connect a Proton Drive or Google Drive account, then pick the folders to keep in sync.")
+                .size(TEXT)
+                .style(theme::muted)
+                .align_x(Alignment::Center),
+            Space::new().height(Length::Fixed(4.0)),
+            button(text("Add remote").size(TEXT))
+                .padding([8, 18])
+                .style(theme::button_primary)
+                .on_press(Msg::AddRemote),
+        ]
+        .spacing(ROW_SPACING)
+        .max_width(380)
+        .align_x(Alignment::Center),
+    )
+    .into()
 }

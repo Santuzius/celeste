@@ -112,6 +112,9 @@ impl CelesteApp {
     pub(in crate::app) fn handle_window_closed(&mut self, id: window::Id) -> Task<Message> {
         if self.window_id == Some(id) {
             self.window_id = None;
+            // Nobody can see the expanded logs any more; free their
+            // shaped text buffers while Celeste sits in the tray.
+            self.sync_dir_log_content.clear();
         }
         Task::none()
     }

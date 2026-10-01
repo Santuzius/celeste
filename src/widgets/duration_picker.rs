@@ -73,5 +73,9 @@ pub fn view<Msg: 'static + Clone>(
         });
     pick_list(options, Some(current_opt), move |o| on_change(o.interval))
         .text_shaping(Shaping::Advanced)
+        .text_size(crate::theme::TEXT)
+        .padding([6, 10])
+        .style(crate::theme::pick_list)
+        .menu_style(crate::theme::menu)
         .into()
 }

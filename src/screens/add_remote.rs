@@ -7,13 +7,13 @@
 //!   the token, we pass it to config/create)
 
 use iced::{
-    Element, Length,
+    Alignment, Element, Length,
     widget::{Space, button, column, container, pick_list, row, text::Shaping, text_input},
 };
 
 use crate::{
     services::auth::{OAuthProvider, WebDavVendor},
-    theme::{PAGE_PADDING, ROW_SPACING, SECTION_SPACING},
+    theme::{self, CAPTION, HEADING, ROW_SPACING, TEXT},
     widgets::text,
 };
 
@@ -149,219 +149,104 @@ pub struct Draft {
     pub reauth: bool,
 }
 
-fn field_label(l: &'static str) -> Element<'static, Msg> {
-    text(l).width(Length::Fixed(130.0)).size(13).into()
+const LABEL_WIDTH: f32 = 110.0;
+
+fn field<'a>(label: &'static str, control: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
+    row![text(label).size(TEXT).width(Length::Fixed(LABEL_WIDTH)), control.into()]
+        .align_y(Alignment::Center)
+        .spacing(ROW_SPACING)
+        .into()
 }
 
+fn input<'a>(placeholder: &'a str, value: &'a str, on_input: fn(String) -> Msg) -> text_input::TextInput<'a, Msg> {
+    text_input(placeholder, value)
+        .on_input(on_input)
+        .on_submit(Msg::Submit)
+        .padding(7)
+        .size(TEXT)
+        .style(theme::input)
+}
+
+fn hint<'a>(s: &'a str) -> Element<'a, Msg> {
+    text(s).size(CAPTION).style(theme::muted).into()
+}
+
+/// The dialog card; the app centres it over a dimmed backdrop.
 pub fn view(draft: &Draft) -> Element<'_, Msg> {
-    let heading = text(if draft.reauth {
-        "Reauthenticate remote"
-    } else {
-        "Add remote"
-    })
-    .size(22);
+    let heading = text(if draft.reauth { "Sign in again" } else { "Add remote" }).size(HEADING + 2.0);
 
-    // In reauth mode the name is fixed (it keys the DB row + session
-    // file), so show it as plain text rather than an editable input.
-    let name_row: Element<'_, Msg> = if draft.reauth {
-        row![field_label("Name"), text(&draft.name).size(13)]
-            .align_y(iced::Alignment::Center)
-            .spacing(8)
-            .into()
-    } else {
-        row![
-            field_label("Name"),
-            text_input("My remote", &draft.name)
-                .on_input(Msg::NameChanged)
-                .padding(6),
-        ]
-        .align_y(iced::Alignment::Center)
-        .spacing(8)
-        .into()
-    };
-
-    let selected_option = draft.provider.map(ProviderOption);
-    let provider_row: Element<'_, Msg> = if draft.reauth {
-        row![
-            field_label("Type"),
-            text(selected_option.map(|o| o.to_string()).unwrap_or_default()).size(13),
-        ]
-        .align_y(iced::Alignment::Center)
-        .spacing(8)
-        .into()
-    } else {
-        let picker = pick_list(&PROVIDER_OPTIONS[..], selected_option, |o| {
-            Msg::ProviderChanged(o.0)
-        })
-        .text_shaping(Shaping::Advanced)
-        .placeholder("Pick a provider");
-        row![field_label("Type"), picker,]
-            .align_y(iced::Alignment::Center)
-            .spacing(8)
-            .into()
-    };
-
-    let mut body = column![heading, name_row, provider_row].spacing(SECTION_SPACING);
-
+    // In reauth mode the name and provider are fixed (the name keys the DB row + session), so show them as plain text.
+    let mut body = column![heading].spacing(12);
     if draft.reauth {
-        body = body.push(
-            text(
-                "Enter fresh credentials below. Your sync directories, \
-                 exclusions, and schedule are preserved — only the \
-                 authentication session is replaced.",
-            )
-            .size(12),
-        );
+        let provider = draft.provider.map(|p| p.to_string()).unwrap_or_default();
+        body = body.push(hint("Enter fresh credentials. Folders, exclusions and schedule are kept — only the sign-in session is replaced."));
+        body = body.push(field("Remote", text(format!("{} ({provider})", draft.name)).size(TEXT)));
+    } else {
+        let picker = pick_list(&PROVIDER_OPTIONS[..], draft.provider.map(ProviderOption), |o| Msg::ProviderChanged(o.0))
+            .text_shaping(Shaping::Advanced)
+            .text_size(TEXT)
+            .padding([6, 10])
+            .width(Length::Fill)
+            .style(theme::pick_list)
+            .menu_style(theme::menu)
+            .placeholder("Choose a provider");
+        body = body.push(field("Provider", picker));
+        body = body.push(field("Name", input("e.g. ProtonDrive", &draft.name, Msg::NameChanged)));
     }
 
     match draft.provider {
         Some(p) if p.is_webdav_family() => {
-            body = body.push(
-                row![
-                    field_label("URL"),
-                    text_input("https://cloud.example.org", &draft.url)
-                        .on_input(Msg::UrlChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
-            body = body.push(
-                row![
-                    field_label("Username"),
-                    text_input("username", &draft.user)
-                        .on_input(Msg::UserChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
-            body = body.push(
-                row![
-                    field_label("Password"),
-                    text_input("password", &draft.pass)
-                        .secure(true)
-                        .on_input(Msg::PassChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
+            body = body.push(field("URL", input("https://cloud.example.org", &draft.url, Msg::UrlChanged)));
+            body = body.push(field("Username", input("username", &draft.user, Msg::UserChanged)));
+            body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
         }
         Some(p) if p.is_proton_drive() => {
-            body = body.push(
-                text(
-                    "Note: if you have 2FA enabled, Proton's refresh token \
-                     eventually expires. When that happens the session can't \
-                     reauth automatically (the 2FA code is one-time-use) \
-                     and you'll need to reauthenticate with a \
-                     fresh code.",
-                )
-                .size(12),
-            );
-            body = body.push(
-                row![
-                    field_label("E-Mail"),
-                    text_input("example@proton.me", &draft.user)
-                        .on_input(Msg::UserChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
-            body = body.push(
-                row![
-                    field_label("Password"),
-                    text_input("password", &draft.pass)
-                        .secure(true)
-                        .on_input(Msg::PassChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
-            body = body.push(
-                row![
-                    field_label("2FA code"),
-                    text_input("(if enabled)", &draft.totp)
-                        .on_input(Msg::TotpChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
+            body = body.push(field("E-mail", input("example@proton.me", &draft.user, Msg::UserChanged)));
+            body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
+            body = body.push(field("2FA code", input("only if two-factor authentication is on", &draft.totp, Msg::TotpChanged)));
+            body = body.push(hint(
+                "With 2FA enabled, Proton eventually expires the session and Celeste can't renew it on its own (the code is single-use). You'll then be asked to sign in again.",
+            ));
         }
         Some(p) if p.is_oauth() => {
-            body = body.push(
-                text("Clicking Connect opens your default browser for authorization. Client ID / Secret are optional — leave blank to use rclone's built-in defaults.")
-                    .size(12),
-            );
-            body = body.push(
-                row![
-                    field_label("Client ID"),
-                    text_input("(optional)", &draft.client_id)
-                        .on_input(Msg::ClientIdChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
-            body = body.push(
-                row![
-                    field_label("Client secret"),
-                    text_input("(optional)", &draft.client_secret)
-                        .secure(true)
-                        .on_input(Msg::ClientSecretChanged)
-                        .padding(6),
-                ]
-                .align_y(iced::Alignment::Center)
-                .spacing(8),
-            );
+            body = body.push(hint("Connect opens your browser to grant access. Client ID and secret are optional — leave them empty to use rclone's defaults."));
+            body = body.push(field("Client ID", input("optional", &draft.client_id, Msg::ClientIdChanged)));
+            body = body.push(field("Client secret", input("optional", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));
         }
         Some(_) | None => {}
     }
 
     if draft.busy {
-        body = body.push(text("Waiting for authorization…").size(13));
-        if let Some(p) = &draft.provider {
-            if p.is_oauth() {
-                body = body.push(text("Complete the flow in your browser…").size(13));
-            }
-        }
+        let msg = match draft.provider {
+            Some(p) if p.is_oauth() => "Waiting for you to finish in the browser…",
+            _ => "Signing in…",
+        };
+        body = body.push(text(msg).size(CAPTION));
     }
 
     if let Some(err) = &draft.error {
-        body = body.push(text(format!("⚠ {err}")).size(13));
+        body = body.push(text(err).size(CAPTION).style(theme::danger_text));
     }
 
     let submit_label = if draft.reauth {
-        "Reauthenticate"
+        "Sign in"
     } else {
         match draft.provider {
             Some(p) if p.is_oauth() => "Connect",
             _ => "Add",
         }
     };
-    let submit_btn = {
-        let b = button(text(submit_label));
-        if draft.busy {
-            b
-        } else {
-            b.on_press(Msg::Submit)
-        }
-    };
+    let submit = button(text(submit_label).size(TEXT))
+        .padding([6, 16])
+        .style(theme::button_primary)
+        .on_press_maybe((!draft.busy && draft.provider.is_some()).then_some(Msg::Submit));
+    let cancel = button(text("Cancel").size(TEXT))
+        .padding([6, 16])
+        .style(theme::button_secondary)
+        .on_press_maybe((!draft.busy).then_some(Msg::Cancel));
 
-    let cancel_btn = {
-        let b = button(text("Cancel"));
-        if draft.busy {
-            b
-        } else {
-            b.on_press(Msg::Cancel)
-        }
-    };
+    body = body.push(Space::new().height(Length::Fixed(4.0)));
+    body = body.push(row![Space::new().width(Length::Fill), cancel, submit].spacing(ROW_SPACING));
 
-    body = body
-        .push(row![Space::new().width(Length::Fill), cancel_btn, submit_btn].spacing(ROW_SPACING));
-
-    container(body).padding(PAGE_PADDING).into()
+    container(body).padding(22).max_width(480).style(theme::dialog).into()
 }
