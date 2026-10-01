@@ -8,6 +8,8 @@
 #     xvfb     headless X server on :99 (screenshots via scripts/test-screenshot.sh)
 #     desktop  window on the real desktop via XWayland (e.g. to log in throwaway accounts)
 #   CELESTE_TEST_RESET=1 wipes the test state first.
+#   CELESTE_TEST_BIN=/path/to/celeste runs another build (e.g. an older version for comparisons).
+#   CELESTE_TEST_SHOW=0 starts hidden (tray mode) instead of passing --show.
 set -euo pipefail
 
 MODE="${1:-xvfb}"
@@ -15,7 +17,9 @@ PROFILE=debug
 [ "${2:-}" = "--release" ] && PROFILE=release
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 T="${CELESTE_TEST_DIR:-/tmp/celeste-test}"
-BIN="$REPO/target/$PROFILE/celeste"
+BIN="${CELESTE_TEST_BIN:-$REPO/target/$PROFILE/celeste}"
+SHOW_ARG=--show
+[ "${CELESTE_TEST_SHOW:-1}" = 0 ] && SHOW_ARG=
 
 if [ -z "${IN_NIX_SHELL:-}" ]; then
   exec nix-shell "$REPO/shell.nix" --run "$(printf '%q ' "$0" "$@")"
@@ -61,7 +65,7 @@ export XDG_RUNTIME_DIR="$T/run"
 unset WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
 export DISPLAY="$DISPLAY_TO_USE"
 
-export GKR BIN T
+export GKR BIN T SHOW_ARG
 exec dbus-run-session -- bash -c '
   set -e
   printf test | "$GKR" --unlock --components=secrets >/dev/null
@@ -70,5 +74,5 @@ exec dbus-run-session -- bash -c '
   exe=$(readlink /proc/$pid/exe)
   case "$exe" in /nix/store/*gnome-keyring*) echo "isolated secret service: $exe";; *) echo "ABORT: org.freedesktop.secrets is owned by $exe"; exit 1;; esac
   echo "data dir: $XDG_DATA_HOME/celeste"
-  exec "$BIN" --show
+  exec "$BIN" $SHOW_ARG
 '
