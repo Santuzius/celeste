@@ -26,6 +26,7 @@ use crate::{
     },
     infrastructure::{
         client_router::ClientRouter,
+        single_instance,
         stderr_capture::{self, CaptureHandle},
         tray::{self, TrayAction, TrayUpdate},
     },
@@ -171,8 +172,9 @@ impl CelesteApp {
     fn new(
         repo: Arc<dyn Repository>,
         rclone: Arc<ClientRouter>,
+        show_window: bool,
     ) -> (Self, Task<Message>) {
-        let state = Self {
+        let mut state = Self {
             repo: repo.clone(),
             rclone,
             remotes: Vec::new(),
@@ -205,7 +207,14 @@ impl CelesteApp {
         // Seed the cached system theme with whatever iced already knows;
         // the subscription below picks up subsequent changes.
         let initial_theme = iced::system::theme().map(Message::SystemThemeChanged);
-        (state, Task::batch([load, initial_theme]))
+        let open = if show_window {
+            let (id, opened) = window::open(main_window_settings());
+            state.window_id = Some(id);
+            opened.discard()
+        } else {
+            Task::none()
+        };
+        (state, Task::batch([load, initial_theme, open]))
     }
 
     fn title(&self, _id: window::Id) -> String {
@@ -251,7 +260,9 @@ impl CelesteApp {
         // portal via `mundy` and emits a `Mode` whenever it changes. Forward
         // those into the tray so the rasterised glyphs follow the panel.
         let system_theme = iced::system::theme_changes().map(Message::SystemThemeChanged);
-        Subscription::batch([events, ticker, tray, window_close, system_theme])
+        // A second launch of the binary asks us (over the single-instance socket) to surface the window.
+        let show_requests = single_instance::show_requests().map(|()| Message::TrayClick(TrayAction::Open));
+        Subscription::batch([events, ticker, tray, window_close, system_theme, show_requests])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -455,11 +466,13 @@ pub(crate) fn map_domain_provider_to_add_remote(
 /// (matching Signal / Telegram / WhatsApp behaviour). The tray's "Open
 /// Celeste" entry then opens a fresh window via [`window::open`].
 ///
-/// Boot opens no window: Celeste typically autostarts at login, where a
-/// pop-up would steal focus. The user surfaces it through the tray.
+/// Boot opens no window unless `show_window` (`--show`) is set: Celeste
+/// typically autostarts at login, where a pop-up would steal focus. The
+/// user surfaces it through the tray or by launching the binary again.
 pub fn run(
     repo: Arc<dyn Repository>,
     rclone: Arc<ClientRouter>,
+    show_window: bool,
 ) -> iced::Result {
     // Bias iced's default glyph lookup to the sans-serif family so
     // cosmic-text's fallback layer resolves against the fonts we just
@@ -471,7 +484,7 @@ pub fn run(
     };
 
     let mut builder = iced::daemon(
-        move || CelesteApp::new(repo.clone(), rclone.clone()),
+        move || CelesteApp::new(repo.clone(), rclone.clone(), show_window),
         CelesteApp::update,
         CelesteApp::view,
     )

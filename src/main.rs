@@ -36,7 +36,18 @@ use crate::{
     services::secrets,
 };
 
+/// GUI file synchronization client.
+#[derive(clap::Parser)]
+#[command(version)]
+struct Cli {
+    /// Open the main window on startup instead of starting hidden in the tray.
+    #[arg(long)]
+    show: bool,
+}
+
 fn main() {
+    let cli = <Cli as clap::Parser>::parse();
+
     // Tap stderr before the Go runtime can grab it — that's the
     // only way to catch the `WARN[...] Too many requests` lines rclone's
     // backends emit when they silently retry a 429. Falls back to a no-op
@@ -53,6 +64,11 @@ fn main() {
     // a warning; that's the only path where tokens can hit disk.
     let data_dir = util::get_data_dir();
     std::fs::create_dir_all(&data_dir).expect("failed to create data dir");
+
+    // Bail out before touching the DB or keyring when another process already owns this data dir.
+    if let infrastructure::single_instance::Instance::Secondary = infrastructure::single_instance::acquire(&data_dir) {
+        return;
+    }
 
     legacy_config_dir::run(&data_dir);
     fold_stale_rclone_into_keyring(&data_dir);
@@ -109,7 +125,7 @@ fn main() {
     let default_client: Arc<dyn BackendClient> = Arc::new(LibrcloneClient::new(rclone_config));
     let router = Arc::new(ClientRouter::new(default_client));
     resume_native_sessions(&*repo, &router);
-    iced_run(repo, router).expect("iced app exited with error");
+    iced_run(repo, router, cli.show).expect("iced app exited with error");
 }
 
 /// Sweep an `<data_dir>/rclone.conf` left behind by a prior version
