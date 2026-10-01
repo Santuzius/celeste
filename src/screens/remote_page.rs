@@ -190,11 +190,7 @@ pub fn view<'a>(
 
         // Reauth needed: show AuthNeeded icon on every card so the
         // user can see at a glance that no dir can progress.
-        let icon_state = if needs_reauth {
-            Some(RunState::AuthNeeded)
-        } else {
-            status.get(&sd.id).copied()
-        };
+        let icon_state = status.get(&sd.id).copied();
 
         // Top row: [icon] paths | [Excluded (n)] [Delete].
         // Wrap the path label in a Fill-width container so a long

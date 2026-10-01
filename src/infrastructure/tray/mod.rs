@@ -33,7 +33,7 @@ use tokio::sync::mpsc;
 
 use crate::domain::{
     remote::{Remote, RemoteId},
-    run_state::AppState,
+    run_state::{AppState, RunState},
 };
 
 use self::icons::IconSet;
@@ -53,7 +53,7 @@ pub enum TrayAction {
 /// Aggregate sync state the app wants the tray icon and tooltip to
 /// reflect. Recomputed by the app after every state change and pushed
 /// via the sender handed over in [`TraySignal::Ready`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TrayStatus {
     /// Initial state before remotes have been loaded.
     Loading,
@@ -61,15 +61,17 @@ pub enum TrayStatus {
     Disconnected,
     /// Every remote is disabled.
     Paused,
-    /// At least one remote needs the user to reauthenticate before
-    /// syncing can resume.
-    AuthNeeded,
+    /// These remotes need the user to reauthenticate before syncing
+    /// can resume.
+    AuthNeeded { remotes: Vec<String> },
     /// At least one remote is actively syncing.
     Syncing { count: usize },
-    /// At least one remote has hit provider rate-limiting and is in a
-    /// backoff window.
-    Warning,
-    /// All enabled remotes are idle and up to date.
+    /// These remotes ended their last pass with errors / warnings or
+    /// are backing off after provider rate-limiting.
+    Warning { remotes: Vec<String> },
+    /// All enabled remotes are idle and up to date. The age is rounded
+    /// down to whole minutes so the tooltip (and the D-Bus traffic it
+    /// causes) changes at most once a minute.
     Done { last_sync_ago: Option<Duration> },
 }
 
@@ -175,8 +177,8 @@ impl CelesteTray {
         let icon = match &self.status {
             TrayStatus::Loading | TrayStatus::Syncing { .. } => &self.icons.syncing,
             TrayStatus::Disconnected | TrayStatus::Paused => &self.icons.paused,
-            TrayStatus::AuthNeeded => &self.icons.auth_needed,
-            TrayStatus::Warning => &self.icons.warning,
+            TrayStatus::AuthNeeded { .. } => &self.icons.auth_needed,
+            TrayStatus::Warning { .. } => &self.icons.warning,
             TrayStatus::Done { .. } => &self.icons.synced,
         };
         icon.pick(self.theme)
@@ -261,7 +263,9 @@ fn description_for(status: &TrayStatus) -> String {
         TrayStatus::Loading => "Starting up…".to_owned(),
         TrayStatus::Disconnected => "No remotes configured".to_owned(),
         TrayStatus::Paused => "All remotes are disabled".to_owned(),
-        TrayStatus::AuthNeeded => "Reauthentication required".to_owned(),
+        TrayStatus::AuthNeeded { remotes } => {
+            format!("Reauthentication required: {}", remotes.join(", "))
+        }
         TrayStatus::Syncing { count } => {
             if *count == 1 {
                 "Syncing 1 remote…".to_owned()
@@ -269,7 +273,7 @@ fn description_for(status: &TrayStatus) -> String {
                 format!("Syncing {count} remotes…")
             }
         }
-        TrayStatus::Warning => "Rate-limited — backing off".to_owned(),
+        TrayStatus::Warning { remotes } => format!("Sync problems: {}", remotes.join(", ")),
         TrayStatus::Done { last_sync_ago } => match last_sync_ago {
             Some(age) => format!("Up to date — last sync {}", format_ago(*age)),
             None => "Up to date".to_owned(),
@@ -280,7 +284,7 @@ fn description_for(status: &TrayStatus) -> String {
 fn format_ago(age: Duration) -> String {
     let secs = age.as_secs();
     if secs < 60 {
-        format!("{secs}s ago")
+        "just now".to_owned()
     } else if secs < 3_600 {
         format!("{}m ago", secs / 60)
     } else {
@@ -291,6 +295,10 @@ fn format_ago(age: Duration) -> String {
 /// Roll the per-remote run-state machine plus the app's "what's running
 /// right now" inputs into a single [`TrayStatus`]. Owned by the tray
 /// module so the mapping rule lives next to the icon set it drives.
+///
+/// Priority: reauth (blocks syncing) > problems (sticky until a clean
+/// pass, so they don't flicker with every scheduled pass) > syncing >
+/// all paused > up to date.
 pub fn compute_status(
     state: &AppState,
     remotes: &[Remote],
@@ -300,18 +308,23 @@ pub fn compute_status(
     if remotes.is_empty() {
         return TrayStatus::Disconnected;
     }
-    // Reauth blocks syncing on the affected remote and pauses its
-    // siblings, so it dominates every other state except an empty
-    // remote list — surface it before syncing/warning/paused so the
-    // user sees the blocker immediately.
-    if remotes.iter().any(|r| state.needs_reauth(r.id)) {
-        return TrayStatus::AuthNeeded;
+    let names_where = |pred: &dyn Fn(&Remote) -> bool| -> Vec<String> {
+        remotes.iter().filter(|r| pred(r)).map(|r| r.name.clone()).collect()
+    };
+    let auth = names_where(&|r| state.needs_reauth(r.id));
+    if !auth.is_empty() {
+        return TrayStatus::AuthNeeded { remotes: auth };
+    }
+    let problems = names_where(&|r| {
+        r.policy.enabled
+            && (state.in_backoff(r.id)
+                || state.roll_up(r.id).is_some_and(|s| matches!(s, RunState::Warning | RunState::Error)))
+    });
+    if !problems.is_empty() {
+        return TrayStatus::Warning { remotes: problems };
     }
     if !syncing.is_empty() {
         return TrayStatus::Syncing { count: syncing.len() };
-    }
-    if state.any_degraded() {
-        return TrayStatus::Warning;
     }
     if remotes.iter().all(|r| !r.policy.enabled) {
         return TrayStatus::Paused;
@@ -320,6 +333,7 @@ pub fn compute_status(
     let last_sync_ago = last_sync_at
         .values()
         .map(|t| now.duration_since(*t))
-        .min();
+        .min()
+        .map(|d| Duration::from_secs(d.as_secs() / 60 * 60));
     TrayStatus::Done { last_sync_ago }
 }

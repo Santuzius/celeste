@@ -198,7 +198,7 @@ fn hydrate_rclone_config(rclone_config: &std::path::Path) {
 /// clear "Reauthenticate" message rather than falling through to
 /// rclone (which would error with an opaque config-lookup failure).
 fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
-    use crate::infrastructure::proton::client::{DisabledProtonClient, PendingProtonClient};
+    use crate::infrastructure::proton::client::{DisabledProtonClient, PendingProtonClient, REAUTH_HINT};
     let remotes = util::await_future(repo.list_remotes()).unwrap_or_default();
     for remote in remotes {
         if remote.backend != Backend::NativeProton {
@@ -206,8 +206,9 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
         }
         if remote.session_path.is_none() {
             let reason = format!(
-                "Proton Drive session blob missing for '{}'. Click Reauthenticate on the remote page to log in again.",
+                "Proton Drive session blob missing for '{}'. {}",
                 remote.name,
+                REAUTH_HINT,
             );
             eprintln!("celeste: {reason}");
             notify_reauth_needed(&remote.name);
@@ -230,8 +231,9 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
             }
             Ok(None) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' not found in keyring. Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' not found in keyring. {}",
                     remote.name,
+                    REAUTH_HINT,
                 );
                 eprintln!("celeste: {reason}");
                 notify_reauth_needed(&remote.name);
@@ -248,8 +250,9 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
             // the user a full 2FA login for a session that was fine.
             Err(err) if crate::app::is_auth_failure(&err) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' has expired ({err}). Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' has expired ({err}). {}",
                     remote.name,
+                    REAUTH_HINT,
                 );
                 eprintln!("celeste: {reason}");
                 notify_reauth_needed(&remote.name);

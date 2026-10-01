@@ -33,8 +33,19 @@ impl CelesteApp {
             self.sync_dir_log_content
                 .entry(d.id)
                 .or_insert_with(iced::widget::text_editor::Content::new);
-            self.sync_state.ensure_dir(id, d.id);
         }
+        // Forget everything about sync_dirs that were deleted, so a
+        // stale Error can't keep colouring the remote's roll-up.
+        let ids: Vec<SyncDirId> = sd.iter().map(|d| d.id).collect();
+        if let Some(old) = self.sync_dirs.get(&id) {
+            for gone in old.iter().map(|d| d.id).filter(|d| !ids.contains(d)) {
+                self.sync_dir_log_lines.remove(&gone);
+                self.sync_dir_log_content.remove(&gone);
+                self.sync_dir_exclusions.remove(&gone);
+                self.draft_exclusion.remove(&gone);
+            }
+        }
+        self.sync_state.set_dirs(id, &ids);
         self.sync_dirs.insert(id, sd);
         Task::none()
     }

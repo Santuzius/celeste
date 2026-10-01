@@ -231,5 +231,11 @@ pub trait BackendClient: Send + Sync {
     /// and have nothing per-pass to checkpoint; the native Proton
     /// client overrides this to re-persist rotated refresh tokens.
     fn checkpoint_session(&self, _remote: &str) {}
+
+    /// `true` when this client is a placeholder for a session that
+    /// can't be used until the user reauthenticates.
+    fn needs_reauth(&self, _remote: &str) -> bool {
+        false
+    }
 }
 

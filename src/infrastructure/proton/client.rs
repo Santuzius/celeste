@@ -378,7 +378,7 @@ impl PendingProtonClient {
             // failure — no amount of waiting fixes either.
             Ok(None) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' not found in keyring. Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' not found in keyring. {REAUTH_HINT}",
                     self.remote_name,
                 );
                 *state = PendingState::Waiting {
@@ -389,7 +389,7 @@ impl PendingProtonClient {
             }
             Err(err) if crate::app::is_auth_failure(&err) => {
                 let reason = format!(
-                    "Proton Drive session for '{}' has expired ({err}). Click Reauthenticate on the remote page to log in again.",
+                    "Proton Drive session for '{}' has expired ({err}). {REAUTH_HINT}",
                     self.remote_name,
                 );
                 *state = PendingState::Waiting {
@@ -476,6 +476,10 @@ impl BackendClient for PendingProtonClient {
     }
 }
 
+/// Sentence every [`DisabledProtonClient`] reason ends with. The Proton
+/// translator keys on it so these errors count as auth failures.
+pub const REAUTH_HINT: &str = "Click Reauthenticate on the remote page to log in again.";
+
 /// Placeholder adapter for native-proton remotes whose session couldn't
 /// be resumed at startup (blob missing, refresh token expired, etc.).
 /// Registered on the [`ClientRouter`] so the sync engine's calls fail
@@ -551,5 +555,8 @@ impl BackendClient for DisabledProtonClient {
     }
     fn remote_type(&self, _remote: &str) -> Result<Option<String>, String> {
         Ok(Some("native-proton".to_owned()))
+    }
+    fn needs_reauth(&self, _remote: &str) -> bool {
+        true
     }
 }

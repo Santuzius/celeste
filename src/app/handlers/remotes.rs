@@ -34,6 +34,12 @@ impl CelesteApp {
         self.remotes = remotes;
         for r in &self.remotes {
             self.sync_state.ensure_remote(r.id, r.policy.enabled);
+            // A session that already failed to resume at startup
+            // needs reauth even if the remote is (auto-)paused and so
+            // never gets a sync pass that would discover it.
+            if self.rclone.needs_reauth(&r.name) {
+                self.sync_state.auth_failure(r.id);
+            }
         }
         Task::none()
     }
@@ -283,9 +289,8 @@ impl CelesteApp {
     /// auto-paused, and reload the remotes list.
     pub(in crate::app) fn handle_add_remote_result_ok(&mut self, id: RemoteId) -> Task<Message> {
         self.add_remote_draft = None;
-        // Restore all dir states and re-enable the remote in the state
-        // machine (clears AuthNeeded → Waiting, paused siblings →
-        // pre-pause state, clears pause_snapshot).
+        // Clear the remote's auth flag (and the stale Errors the failed
+        // attempts left behind) and re-enable it in the state machine.
         self.sync_state.reauth_complete(id);
         self.sync_state.set_remote_enabled(id, true);
         // Re-enable the policy in the domain model so the scheduler

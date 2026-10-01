@@ -30,6 +30,9 @@ impl EventTranslator for RcloneTranslator {
             || lower.contains(" 401 ")
             || lower.contains("unauthenticated")
             || lower.contains("unauthorized")
+            // OAuth refresh token revoked or expired (e.g. Google
+            // Drive app in "testing" mode drops tokens after 7 days).
+            || lower.contains("invalid_grant")
         {
             return BackendEvent::AuthExpired;
         }
@@ -64,5 +67,21 @@ impl EventTranslator for RcloneTranslator {
         }
 
         BackendEvent::Other(msg.to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn revoked_oauth_token_routes_to_reauth() {
+        let msg = "couldn't fetch token: invalid_grant: maybe token expired? - try refreshing with \"rclone config reconnect gdrive:\"";
+        assert!(RcloneTranslator.is_auth_failure(msg));
+    }
+
+    #[test]
+    fn plain_network_errors_are_not_auth_failures() {
+        assert!(!RcloneTranslator.is_auth_failure("dial tcp: lookup www.googleapis.com: no such host"));
     }
 }

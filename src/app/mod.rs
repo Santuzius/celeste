@@ -153,6 +153,8 @@ pub struct CelesteApp {
     /// handshake has landed; remains `None` if the session has no
     /// StatusNotifier host.
     tray_tx: Option<mpsc::Sender<TrayUpdate>>,
+    /// Last status pushed to the tray, to skip redundant pushes.
+    last_tray_status: Option<tray::TrayStatus>,
     /// Last system colour-scheme value reported by iced. Cached so
     /// the [`Message::TrayReady`] handshake can seed the tray with
     /// the current value before the next change fires.
@@ -196,6 +198,7 @@ impl CelesteApp {
             cancel_flags: HashMap::new(),
             stderr_capture: stderr_capture::handle(),
             tray_tx: None,
+            last_tray_status: None,
             system_theme: iced_theme::Mode::None,
             pending_delete: None,
             window_id: None,
@@ -374,7 +377,7 @@ impl CelesteApp {
                     remote,
                     dirs,
                     &self.sync_dir_log_content,
-                    self.sync_state.dir_states(remote.id),
+                    dirs.iter().map(|d| (d.id, self.sync_state.dir_state(remote.id, d.id))).collect(),
                     &self.all_known_sync_dirs,
                     self.exclusion_panel,
                     &self.sync_dir_exclusions,
@@ -397,7 +400,7 @@ impl CelesteApp {
     /// Computation lives in the tray module so the mapping rule sits
     /// next to the icon set it drives. Silently drops on a full channel
     /// — the tray catches up on the next change (within one tick).
-    fn push_tray_status(&self) {
+    fn push_tray_status(&mut self) {
         if let Some(tx) = self.tray_tx.as_ref() {
             let status = tray::compute_status(
                 &self.sync_state,
@@ -405,7 +408,13 @@ impl CelesteApp {
                 &self.syncing,
                 &self.last_sync_at,
             );
-            let _ = tx.try_send(TrayUpdate::Status(status));
+            // `update` runs at least once a second (ticker); only wake
+            // the tray task when something visible actually changed.
+            if self.last_tray_status.as_ref() != Some(&status)
+                && tx.try_send(TrayUpdate::Status(status.clone())).is_ok()
+            {
+                self.last_tray_status = Some(status);
+            }
         }
     }
 

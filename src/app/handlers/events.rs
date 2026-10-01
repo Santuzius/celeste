@@ -53,18 +53,17 @@ impl CelesteApp {
                 };
                 // Auth-failure heuristic: HTTP 401 and the matching
                 // rclone phrasing both indicate the session is dead and
-                // only reauth fixes it. Promote the sync_dir to
-                // AuthNeeded, pause its siblings, and auto-pause the
-                // policy so the scheduler stops hammering an endpoint
-                // that can only return 401 until the user signs in
-                // again.
+                // only reauth fixes it. Flag the whole remote (the
+                // session is per remote) and auto-pause the policy so
+                // the scheduler stops hammering an endpoint that can
+                // only return 401 until the user signs in again.
                 let auth_failure = match &error {
                     SyncError::General(_, msg) => is_auth_failure(msg),
                     SyncError::BothMoreCurrent(..) => false,
                 };
                 self.push_log_line(sync_dir_id, line);
                 if auth_failure {
-                    self.sync_state.auth_failure_on_dir(remote_id, sync_dir_id);
+                    self.sync_state.auth_failure(remote_id);
                     if let Some(remote) =
                         self.remotes.iter_mut().find(|r| r.id == remote_id)
                         && remote.policy.enabled

@@ -20,6 +20,7 @@ impl CelesteApp {
         tx: mpsc::Sender<TrayUpdate>,
     ) -> Task<Message> {
         self.tray_tx = Some(tx);
+        self.last_tray_status = None;
         self.push_tray_theme();
         self.push_tray_status();
         Task::none()

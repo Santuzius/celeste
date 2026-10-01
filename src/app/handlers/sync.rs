@@ -33,6 +33,7 @@ impl CelesteApp {
         verdict: PassVerdict,
     ) -> Task<Message> {
         self.syncing.remove(&id);
+        self.sync_state.finish_pass(id);
         self.last_sync_at.insert(id, Instant::now());
         match verdict {
             PassVerdict::Clean => {
@@ -217,12 +218,6 @@ impl CelesteApp {
             }
             None => std::time::Duration::ZERO,
         };
-        let in_backoff = self
-            .sync_state
-            .remotes
-            .get(&id)
-            .map_or(0, |rs| rs.syncs_to_skip)
-            > 0;
-        Some((base_remaining, in_backoff))
+        Some((base_remaining, self.sync_state.in_backoff(id)))
     }
 }

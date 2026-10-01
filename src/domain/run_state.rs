@@ -1,9 +1,6 @@
 //! Hierarchical sync run-state: Dir → Remote → App.
 //!
-//! `RunState` is the single enum for all levels. `RemoteState` owns per-dir
-//! states and the auth-failure bookkeeping (transitively pausing siblings
-//! when one dir needs reauthentication). `AppState` is the top-level holder,
-//! providing the coordinator-facing API used by `CelesteApp`.
+//! `RunState` is the single enum for all levels. The sync engine only ever reports per-dir `Syncing` / `Synced` / `Warning` / `Error`; `Paused` and `AuthNeeded` are remote-level conditions (policy disabled, session dead) that are layered on top when a state is *displayed*, so they can't be clobbered by a late engine event and never need restoring afterwards.
 
 use std::collections::HashMap;
 
@@ -14,8 +11,7 @@ use super::{remote::RemoteId, sync::SyncDirId};
 // ---------------------------------------------------------------------------
 
 /// What the sync engine is currently doing inside a `Syncing` pass.
-/// Carried inside `RunState::Syncing` so the UI can show a structured
-/// activity label instead of parsing log strings.
+/// Carried inside `RunState::Syncing` so the UI can show a structured activity label instead of parsing log strings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SyncActivity {
     Listing,
@@ -27,29 +23,23 @@ pub enum SyncActivity {
 
 /// Coarse run-state for a sync directory (or its roll-up at remote/app level).
 ///
-/// Severity ordering (low → high): Waiting < Paused < AuthNeeded < Synced <
-/// Syncing < Warning < Error. Roll-up at the remote level takes the maximum
-/// over children, then applies the `!enabled` → Paused downgrade (unless a
-/// child is already `AuthNeeded`, which overrides the downgrade).
+/// Severity ordering (low → high): Waiting < Paused < Synced < Syncing < Warning < Error < AuthNeeded. Roll-up at the remote level takes the maximum over the children; the remote-level conditions (auth, disabled) override it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunState {
-    /// Between scheduled passes or fresh before first sync.
+    /// Fresh before the first pass, or a pass was interrupted.
     Waiting,
-    /// Explicitly disabled by the user, OR transitively paused while a
-    /// sibling dir on the same remote is waiting for reauthentication.
+    /// The remote is disabled (by the user, or auto-paused on an auth failure).
     Paused,
-    /// This dir surfaced an auth failure; user must reauthenticate the
-    /// parent remote before syncing can resume.
+    /// The remote's session is dead; the user must reauthenticate.
     AuthNeeded,
     /// A pass just completed with no errors.
     Synced,
     /// A sync pass is currently running.
     Syncing(SyncActivity),
     /// Last pass degraded (rate-limited, per-file errors, conflicts).
-    /// Sticky — a subsequent clean `Synced` does not clear it.
+    /// Sticky within a pass — a later clean `Synced` does not clear it; the next pass's `Syncing` does.
     Warning,
-    /// Last pass aborted (snapshot failure, missing auth, etc.).
-    /// Sticky like `Warning`.
+    /// Last pass aborted (listing failed, etc.). Sticky like `Warning`.
     Error,
 }
 
@@ -58,49 +48,39 @@ impl RunState {
         match self {
             Self::Waiting => 0,
             Self::Paused => 1,
-            Self::AuthNeeded => 2,
-            Self::Synced => 3,
-            Self::Syncing(_) => 4,
-            Self::Warning => 5,
-            Self::Error => 6,
+            Self::Synced => 2,
+            Self::Syncing(_) => 3,
+            Self::Warning => 4,
+            Self::Error => 5,
+            Self::AuthNeeded => 6,
         }
     }
 
     /// Whether `self` should remain instead of being replaced by `next`.
-    /// Warning and Error survive a later Synced — a clean apply step does
-    /// not erase a per-file error that fired earlier in the same pass.
+    /// Warning and Error survive a later Synced — a clean apply step does not erase a per-file error that fired earlier in the same pass.
     fn is_sticky_over(self, next: RunState) -> bool {
-        matches!(
-            (self, next),
-            (RunState::Warning, RunState::Synced) | (RunState::Error, RunState::Synced)
-        )
+        matches!((self, next), (RunState::Warning | RunState::Error, RunState::Synced))
+    }
+
+    /// Something the user should look at.
+    pub fn is_problem(self) -> bool {
+        matches!(self, Self::Warning | Self::Error | Self::AuthNeeded)
     }
 }
 
 // ---------------------------------------------------------------------------
-// DirState / RemoteState
+// RemoteState
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug)]
-pub struct DirState {
-    pub state: RunState,
-}
-
-/// Per-remote state: owns per-dir run-states and the auth-failure bookkeeping.
-///
-/// When any dir raises `AuthNeeded`, `RemoteState` snapshots every sibling's
-/// state and transitions them to `Paused`. On successful reauthentication,
-/// `reauth_complete` restores siblings from the snapshot and returns the
-/// formerly-failing dir to `Waiting`.
+/// Per-remote state: per-dir engine states plus the remote-level conditions and backoff counters.
 #[derive(Clone, Debug)]
 pub struct RemoteState {
-    pub dirs: HashMap<SyncDirId, DirState>,
-    /// Mirrors `remote.policy.enabled`. When false, the roll-up returns
-    /// `Paused` unless a child dir is in `AuthNeeded` (which takes priority).
+    /// Last state the engine reported per dir.
+    pub dirs: HashMap<SyncDirId, RunState>,
+    /// Mirrors `remote.policy.enabled`.
     pub enabled: bool,
-    /// Snapshot of sibling dir states captured at the moment the first
-    /// `AuthNeeded` transition fires. `None` when no auth failure is active.
-    pub pause_snapshot: Option<HashMap<SyncDirId, RunState>>,
+    /// The remote's session is dead; only a reauthentication clears this.
+    pub auth_needed: bool,
     /// Consecutive degraded-pass count; drives the linear backoff schedule.
     pub consecutive_degraded: u32,
     /// Scheduler cycles remaining to skip before the next pass attempt.
@@ -112,85 +92,76 @@ impl RemoteState {
         Self {
             dirs: HashMap::new(),
             enabled,
-            pause_snapshot: None,
+            auth_needed: false,
             consecutive_degraded: 0,
             syncs_to_skip: 0,
         }
     }
 
+    /// Remote-level condition that overrides every dir state, if any.
+    fn override_state(&self) -> Option<RunState> {
+        if self.auth_needed {
+            Some(RunState::AuthNeeded)
+        } else if !self.enabled {
+            Some(RunState::Paused)
+        } else {
+            None
+        }
+    }
+
     /// Aggregate child dir states into a single `RunState` for this remote.
     pub fn roll_up(&self) -> RunState {
-        let child_max = self
-            .dirs
-            .values()
-            .map(|d| d.state)
-            .max_by_key(|s| s.severity())
-            .unwrap_or(RunState::Waiting);
-
-        // AuthNeeded from any child overrides the !enabled downgrade.
-        if matches!(child_max, RunState::AuthNeeded) {
-            return RunState::AuthNeeded;
-        }
-        if !self.enabled {
-            return RunState::Paused;
-        }
-        child_max
+        self.override_state().unwrap_or_else(|| {
+            self.dirs
+                .values()
+                .copied()
+                .max_by_key(|s| s.severity())
+                .unwrap_or(RunState::Waiting)
+        })
     }
 
-    /// Transition dir `id` to `next`, respecting the stickiness rule:
-    /// Warning/Error survive a later Synced.
+    /// The state to display for one dir.
+    pub fn dir_display_state(&self, id: SyncDirId) -> RunState {
+        self.override_state()
+            .unwrap_or_else(|| self.dirs.get(&id).copied().unwrap_or(RunState::Waiting))
+    }
+
+    /// Transition dir `id` to `next`, respecting the stickiness rule.
     pub fn transition_dir(&mut self, id: SyncDirId, next: RunState) {
-        let entry = self
-            .dirs
-            .entry(id)
-            .or_insert(DirState { state: RunState::Waiting });
-        if entry.state.is_sticky_over(next) {
-            return;
+        let entry = self.dirs.entry(id).or_insert(RunState::Waiting);
+        if !entry.is_sticky_over(next) {
+            *entry = next;
         }
-        entry.state = next;
     }
 
-    /// Handle an auth failure on dir `id`.
-    /// - Transitions `id` → `AuthNeeded`.
-    /// - On the first call, snapshots all sibling states and transitions
-    ///   them to `Paused`. Subsequent calls (edge-case: a second dir also
-    ///   failing while siblings are already paused) only update `id`.
-    pub fn auth_failure_on_dir(&mut self, id: SyncDirId) {
-        if self.pause_snapshot.is_none() {
-            let snapshot: HashMap<SyncDirId, RunState> = self
-                .dirs
-                .iter()
-                .filter(|entry| *entry.0 != id)
-                .map(|entry| (*entry.0, entry.1.state))
-                .collect();
-            for (did, dir) in self.dirs.iter_mut() {
-                if *did != id {
-                    dir.state = RunState::Paused;
-                }
+    /// Keep only the given dirs (drops state of deleted sync dirs so it can't haunt the roll-up) and add missing ones as `Waiting`.
+    pub fn set_dirs(&mut self, ids: &[SyncDirId]) {
+        self.dirs.retain(|id, _| ids.contains(id));
+        for id in ids {
+            self.dirs.entry(*id).or_insert(RunState::Waiting);
+        }
+    }
+
+    /// A pass ended (cleanly, cancelled, or crashed). Any dir still marked `Syncing` never got its final state — don't leave it spinning.
+    pub fn finish_pass(&mut self) {
+        for state in self.dirs.values_mut() {
+            if matches!(state, RunState::Syncing(_)) {
+                *state = RunState::Waiting;
             }
-            self.pause_snapshot = Some(snapshot);
         }
-        self.dirs
-            .entry(id)
-            .or_insert(DirState { state: RunState::Waiting })
-            .state = RunState::AuthNeeded;
     }
 
-    /// Reauthentication succeeded. Restore siblings from the pause
-    /// snapshot; return all `AuthNeeded` dirs to `Waiting`; clear snapshot.
+    /// Reauthentication succeeded. The `Error`s left by the failed attempts are stale now.
     pub fn reauth_complete(&mut self) {
-        let snapshot = self.pause_snapshot.take();
-        for (&id, dir) in self.dirs.iter_mut() {
-            if matches!(dir.state, RunState::AuthNeeded) {
-                dir.state = RunState::Waiting;
-            } else if let Some(prev) = snapshot.as_ref().and_then(|s| s.get(&id)).copied() {
-                dir.state = prev;
+        self.auth_needed = false;
+        for state in self.dirs.values_mut() {
+            if *state == RunState::Error {
+                *state = RunState::Waiting;
             }
         }
     }
 
-    /// Record a degraded pass. Increments `consecutive_degraded` and sets
-    /// `syncs_to_skip = consecutive_degraded` for linear backoff.
+    /// Record a degraded pass. Increments `consecutive_degraded` and sets `syncs_to_skip = consecutive_degraded` for linear backoff.
     /// Returns the new `consecutive_degraded` value.
     pub fn on_degraded_pass(&mut self) -> u32 {
         self.consecutive_degraded = self.consecutive_degraded.saturating_add(1);
@@ -204,9 +175,7 @@ impl RemoteState {
         self.syncs_to_skip = 0;
     }
 
-    /// Check whether the scheduler should skip this tick. If so,
-    /// decrements `syncs_to_skip` and returns `true`. Returns `false`
-    /// when no skip is due.
+    /// Check whether the scheduler should skip this tick. If so, decrements `syncs_to_skip` and returns `true`.
     pub fn should_skip_and_decrement(&mut self) -> bool {
         if self.syncs_to_skip == 0 {
             return false;
@@ -224,9 +193,7 @@ impl RemoteState {
 // AppState
 // ---------------------------------------------------------------------------
 
-/// Application-level sync state. The single source of truth for all
-/// per-dir and per-remote run-states, replacing the scattered fields that
-/// previously lived directly on `CelesteApp`.
+/// Application-level sync state. The single source of truth for all per-dir and per-remote run-states.
 #[derive(Clone, Debug, Default)]
 pub struct AppState {
     pub remotes: HashMap<RemoteId, RemoteState>,
@@ -237,47 +204,41 @@ impl AppState {
         Self::default()
     }
 
-    /// Create a `RemoteState` entry for `id` if one does not yet exist.
-    /// Also synchronises `enabled` on an existing entry.
+    fn remote_mut(&mut self, id: RemoteId) -> &mut RemoteState {
+        self.remotes.entry(id).or_insert_with(|| RemoteState::new(true))
+    }
+
+    /// Create a `RemoteState` entry for `id` if one does not yet exist, and synchronise `enabled`.
     pub fn ensure_remote(&mut self, id: RemoteId, enabled: bool) {
-        let rs = self
-            .remotes
-            .entry(id)
-            .or_insert_with(|| RemoteState::new(enabled));
-        rs.enabled = enabled;
+        self.remote_mut(id).enabled = enabled;
     }
 
-    /// Create a `DirState` entry in `Waiting` for `dir_id` inside
-    /// remote `remote_id`, if not already present.
-    pub fn ensure_dir(&mut self, remote_id: RemoteId, dir_id: SyncDirId) {
-        if let Some(rs) = self.remotes.get_mut(&remote_id) {
-            rs.dirs
-                .entry(dir_id)
-                .or_insert(DirState { state: RunState::Waiting });
-        }
+    /// Replace the known dir set of `remote_id` (see [`RemoteState::set_dirs`]).
+    pub fn set_dirs(&mut self, remote_id: RemoteId, ids: &[SyncDirId]) {
+        self.remote_mut(remote_id).set_dirs(ids);
     }
 
-    /// Transition `dir_id` inside `remote_id` to `next`, respecting the
-    /// stickiness rule. Creates the remote entry lazily if absent.
+    /// Transition `dir_id` inside `remote_id` to `next`, respecting the stickiness rule.
     pub fn transition_dir(&mut self, remote_id: RemoteId, dir_id: SyncDirId, next: RunState) {
-        let rs = self
-            .remotes
-            .entry(remote_id)
-            .or_insert_with(|| RemoteState::new(true));
-        rs.transition_dir(dir_id, next);
+        self.remote_mut(remote_id).transition_dir(dir_id, next);
     }
 
-    /// Apply auth-failure semantics to `dir_id` within `remote_id`.
-    pub fn auth_failure_on_dir(&mut self, remote_id: RemoteId, dir_id: SyncDirId) {
-        if let Some(rs) = self.remotes.get_mut(&remote_id) {
-            rs.auth_failure_on_dir(dir_id);
-        }
+    /// Mark `remote_id`'s session as dead.
+    pub fn auth_failure(&mut self, remote_id: RemoteId) {
+        self.remote_mut(remote_id).auth_needed = true;
     }
 
-    /// Reauthentication for `remote_id` succeeded: restore all dirs.
+    /// Reauthentication for `remote_id` succeeded.
     pub fn reauth_complete(&mut self, remote_id: RemoteId) {
         if let Some(rs) = self.remotes.get_mut(&remote_id) {
             rs.reauth_complete();
+        }
+    }
+
+    /// A pass for `remote_id` ended.
+    pub fn finish_pass(&mut self, remote_id: RemoteId) {
+        if let Some(rs) = self.remotes.get_mut(&remote_id) {
+            rs.finish_pass();
         }
     }
 
@@ -293,13 +254,9 @@ impl AppState {
         self.remotes.remove(&id);
     }
 
-    /// Record a degraded pass for `id`. Returns the new
-    /// `consecutive_degraded` (for logging).
+    /// Record a degraded pass for `id`. Returns the new `consecutive_degraded` (for logging).
     pub fn on_degraded_pass(&mut self, id: RemoteId) -> u32 {
-        self.remotes
-            .entry(id)
-            .or_insert_with(|| RemoteState::new(true))
-            .on_degraded_pass()
+        self.remote_mut(id).on_degraded_pass()
     }
 
     /// Record a clean pass for `id`.
@@ -309,35 +266,33 @@ impl AppState {
         }
     }
 
-    /// Returns `true` and decrements the skip counter if this remote's
-    /// scheduler tick should be skipped.
+    /// Returns `true` and decrements the skip counter if this remote's scheduler tick should be skipped.
     pub fn should_skip_and_decrement(&mut self, id: RemoteId) -> bool {
         self.remotes
             .get_mut(&id)
-            .map_or(false, |rs| rs.should_skip_and_decrement())
+            .is_some_and(|rs| rs.should_skip_and_decrement())
     }
 
-    /// `true` when any remote has at least one consecutive-degraded pass.
-    pub fn any_degraded(&self) -> bool {
-        self.remotes.values().any(|rs| rs.any_degraded())
+    /// `true` when `id` is inside a backoff window.
+    pub fn in_backoff(&self, id: RemoteId) -> bool {
+        self.remotes.get(&id).is_some_and(|rs| rs.syncs_to_skip > 0)
     }
 
-    /// `true` when any dir in `remote_id` is in the `AuthNeeded` state.
+    /// `true` when `remote_id` needs reauthentication.
     pub fn needs_reauth(&self, remote_id: RemoteId) -> bool {
-        self.remotes.get(&remote_id).map_or(false, |rs| {
-            rs.dirs
-                .values()
-                .any(|d| matches!(d.state, RunState::AuthNeeded))
-        })
+        self.remotes.get(&remote_id).is_some_and(|rs| rs.auth_needed)
     }
 
-    /// Return a snapshot of per-dir states for `remote_id`, suitable for
-    /// passing to the remote-page view.
-    pub fn dir_states(&self, remote_id: RemoteId) -> HashMap<SyncDirId, RunState> {
+    /// Roll-up for one remote; `None` before the remote is known.
+    pub fn roll_up(&self, remote_id: RemoteId) -> Option<RunState> {
+        self.remotes.get(&remote_id).map(RemoteState::roll_up)
+    }
+
+    /// Display state for one dir of `remote_id`.
+    pub fn dir_state(&self, remote_id: RemoteId, dir_id: SyncDirId) -> RunState {
         self.remotes
             .get(&remote_id)
-            .map(|rs| rs.dirs.iter().map(|(&id, d)| (id, d.state)).collect())
-            .unwrap_or_default()
+            .map_or(RunState::Waiting, |rs| rs.dir_display_state(dir_id))
     }
 }
 
@@ -358,17 +313,14 @@ mod tests {
         let states = [
             RunState::Waiting,
             RunState::Paused,
-            RunState::AuthNeeded,
             RunState::Synced,
             RunState::Syncing(SyncActivity::Listing),
             RunState::Warning,
             RunState::Error,
+            RunState::AuthNeeded,
         ];
         for w in states.windows(2) {
-            assert!(
-                w[0].severity() < w[1].severity(),
-                "{w:?} — severity not strictly increasing"
-            );
+            assert!(w[0].severity() < w[1].severity(), "{w:?} — severity not strictly increasing");
         }
     }
 
@@ -378,69 +330,67 @@ mod tests {
         assert!(RunState::Error.is_sticky_over(RunState::Synced));
         assert!(!RunState::Syncing(SyncActivity::Listing).is_sticky_over(RunState::Synced));
         assert!(!RunState::Warning.is_sticky_over(RunState::Error));
+        assert!(!RunState::Error.is_sticky_over(RunState::Syncing(SyncActivity::Listing)));
     }
 
     #[test]
     fn roll_up_takes_max_child() {
         let mut rs = RemoteState::new(true);
-        rs.dirs.insert(dir(1), DirState { state: RunState::Synced });
-        rs.dirs.insert(dir(2), DirState { state: RunState::Warning });
+        rs.transition_dir(dir(1), RunState::Synced);
+        rs.transition_dir(dir(2), RunState::Warning);
         assert_eq!(rs.roll_up(), RunState::Warning);
     }
 
     #[test]
-    fn disabled_remote_rolls_up_to_paused() {
+    fn disabled_remote_rolls_up_and_displays_paused() {
         let mut rs = RemoteState::new(false);
-        rs.dirs.insert(dir(1), DirState { state: RunState::Synced });
+        rs.transition_dir(dir(1), RunState::Error);
         assert_eq!(rs.roll_up(), RunState::Paused);
+        assert_eq!(rs.dir_display_state(dir(1)), RunState::Paused);
     }
 
     #[test]
-    fn auth_needed_overrides_disabled() {
-        let mut rs = RemoteState::new(false);
-        rs.dirs.insert(dir(1), DirState { state: RunState::AuthNeeded });
-        rs.dirs.insert(dir(2), DirState { state: RunState::Paused });
+    fn auth_needed_survives_later_engine_events() {
+        // The engine reports `Error` right after the auth failure (the listing failed) and possibly `Synced` for a sibling that was mid-pass. Neither may hide the reauth requirement.
+        let mut rs = RemoteState::new(true);
+        rs.auth_needed = true;
+        rs.enabled = false; // auto-pause
+        rs.transition_dir(dir(1), RunState::Error);
+        rs.transition_dir(dir(2), RunState::Synced);
         assert_eq!(rs.roll_up(), RunState::AuthNeeded);
+        assert_eq!(rs.dir_display_state(dir(2)), RunState::AuthNeeded);
     }
 
     #[test]
-    fn auth_failure_transitions_and_restores() {
+    fn reauth_clears_flag_and_stale_errors_only() {
         let mut rs = RemoteState::new(true);
-        rs.dirs.insert(dir(1), DirState { state: RunState::Synced });
-        rs.dirs.insert(dir(2), DirState { state: RunState::Warning });
-
-        rs.auth_failure_on_dir(dir(1));
-        assert_eq!(rs.dirs[&dir(1)].state, RunState::AuthNeeded);
-        assert_eq!(rs.dirs[&dir(2)].state, RunState::Paused);
-        assert!(rs.pause_snapshot.is_some());
-
+        rs.auth_needed = true;
+        rs.transition_dir(dir(1), RunState::Error);
+        rs.transition_dir(dir(2), RunState::Warning);
         rs.reauth_complete();
-        assert_eq!(rs.dirs[&dir(1)].state, RunState::Waiting);
-        assert_eq!(rs.dirs[&dir(2)].state, RunState::Warning);
-        assert!(rs.pause_snapshot.is_none());
+        assert!(!rs.auth_needed);
+        assert_eq!(rs.dirs[&dir(1)], RunState::Waiting);
+        assert_eq!(rs.dirs[&dir(2)], RunState::Warning);
     }
 
     #[test]
-    fn second_auth_failure_does_not_overwrite_snapshot() {
+    fn deleted_dirs_stop_affecting_roll_up() {
         let mut rs = RemoteState::new(true);
-        rs.dirs.insert(dir(1), DirState { state: RunState::Synced });
-        rs.dirs.insert(dir(2), DirState { state: RunState::Synced });
-        rs.dirs.insert(dir(3), DirState { state: RunState::Warning });
+        rs.transition_dir(dir(1), RunState::Synced);
+        rs.transition_dir(dir(2), RunState::Error);
+        rs.set_dirs(&[dir(1), dir(3)]);
+        assert_eq!(rs.roll_up(), RunState::Synced);
+        assert_eq!(rs.dirs[&dir(3)], RunState::Waiting);
+    }
 
-        rs.auth_failure_on_dir(dir(1));
-        // Second failure on dir 2 — snapshot should remain unchanged
-        rs.auth_failure_on_dir(dir(2));
-
-        assert_eq!(rs.dirs[&dir(1)].state, RunState::AuthNeeded);
-        assert_eq!(rs.dirs[&dir(2)].state, RunState::AuthNeeded);
-        // dir(3) should still be Paused (was paused in first snapshot)
-        assert_eq!(rs.dirs[&dir(3)].state, RunState::Paused);
-
-        rs.reauth_complete();
-        assert_eq!(rs.dirs[&dir(1)].state, RunState::Waiting);
-        assert_eq!(rs.dirs[&dir(2)].state, RunState::Waiting);
-        // dir(3) restores to Warning (from snapshot captured before second failure)
-        assert_eq!(rs.dirs[&dir(3)].state, RunState::Warning);
+    #[test]
+    fn interrupted_pass_does_not_leave_dirs_syncing() {
+        let mut rs = RemoteState::new(true);
+        rs.transition_dir(dir(1), RunState::Syncing(SyncActivity::Uploading));
+        rs.transition_dir(dir(2), RunState::Warning);
+        rs.finish_pass();
+        assert_eq!(rs.dirs[&dir(1)], RunState::Waiting);
+        assert_eq!(rs.dirs[&dir(2)], RunState::Warning);
     }
 
     #[test]

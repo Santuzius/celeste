@@ -42,7 +42,7 @@ pub fn view<'a>(
     let sidebar = {
         let mut col = column![text("Remotes").size(16)].spacing(ROW_SPACING);
         for remote in remotes {
-            let roll_up = state.remotes.get(&remote.id).map(|rs| rs.roll_up());
+            let roll_up = state.roll_up(remote.id);
             let label = format!("{}  ({})", remote.name, status_label(roll_up, remote.policy.enabled));
             // Icon sits next to the button (not inside it) so the
             // status badge keeps its surrounding background instead of
