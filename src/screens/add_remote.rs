@@ -8,7 +8,7 @@
 
 use iced::{
     Alignment, Element, Length,
-    widget::{Space, button, column, container, pick_list, row, text::Shaping, text_input},
+    widget::{Space, button, column, container, pick_list, row, text::{Shaping, Wrapping}, text_input},
 };
 
 use std::sync::Arc;
@@ -177,6 +177,8 @@ pub struct Draft {
     pub hv: Option<HumanVerification>,
     /// Running OAuth browser flow (cancel handle + authorization link).
     pub oauth: Option<Arc<AuthorizeHandle>>,
+    /// The privacy policy link was copied; the button says so.
+    pub privacy_link_copied: bool,
 }
 
 impl Draft {
@@ -206,7 +208,17 @@ fn input<'a>(placeholder: &'a str, value: &'a str, on_input: fn(String) -> Msg) 
 }
 
 fn hint<'a>(s: &'a str) -> Element<'a, Msg> {
-    text(s).size(CAPTION).style(theme::muted).into()
+    text(s).size(TEXT - 1.0).style(theme::muted).into()
+}
+
+/// Indented list item of an instruction.
+fn bullet<'a>(s: &'a str) -> Element<'a, Msg> {
+    row![text("•").size(TEXT), text(s).size(TEXT).wrapping(Wrapping::WordOrGlyph)].spacing(8).padding(iced::Padding::default().left(8.0)).into()
+}
+
+/// Instruction text the user has to act on — body size and colour.
+fn instruction<'a>(s: &'a str) -> Element<'a, Msg> {
+    text(s).size(TEXT).into()
 }
 
 /// The dialog card; the app centres it over a dimmed backdrop.
@@ -247,29 +259,34 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             ));
         }
         Some(p) if p.needs_own_client_id() => {
-            body = body.push(hint(
-                "Google Drive needs your own OAuth client ID — rclone's shared one is being retired in 2026. Creating one takes a few minutes in the Google Cloud console. Connect then opens your browser to grant access.",
-            ));
+            body = body.push(instruction("Google Drive needs your own OAuth client ID. Creating one takes a few minutes in the Google Cloud console — just follow the guide."));
             body = body.push(
-                button(text("How to create a client ID").size(CAPTION))
-                    .padding([5, 12])
-                    .style(theme::button_secondary)
-                    .on_press(Msg::OpenClientIdGuide),
+                column![
+                    instruction("When the guide gets to the consent screen's Branding, enter:"),
+                    bullet("Application home page: your website or social media profile, e.g. https://t.me/YourTelegramName"),
+                    bullet("Application privacy policy link: Celeste's privacy policy (copy it with the button below)"),
+                ]
+                .spacing(4),
             );
-            body = body.push(hint(
-                "In the consent screen's Branding, you can enter Celeste's privacy policy as privacy policy link and your own website or social media profile as application home page.",
-            ));
             body = body.push(
-                button(text("Copy privacy policy link").size(CAPTION))
-                    .padding([5, 12])
-                    .style(theme::button_secondary)
-                    .on_press(Msg::CopyPrivacyLink),
+                row![
+                    button(text("How to create a client ID").size(TEXT))
+                        .padding([6, 14])
+                        .style(theme::button_secondary)
+                        .on_press(Msg::OpenClientIdGuide),
+                    button(text(if draft.privacy_link_copied { "Link copied" } else { "Copy privacy policy link" }).size(TEXT))
+                        .padding([6, 14])
+                        .style(theme::button_secondary)
+                        .on_press(Msg::CopyPrivacyLink),
+                ]
+                .spacing(ROW_SPACING),
             );
             body = body.push(field("Client ID", input("…apps.googleusercontent.com", &draft.client_id, Msg::ClientIdChanged)));
             body = body.push(field("Client secret", input("client secret", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));
+            body = body.push(instruction("Then click Connect and grant access in your browser."));
         }
         Some(p) if p.is_oauth() => {
-            body = body.push(hint("Connect opens your browser to grant access. Client ID and secret are optional — leave them empty to use rclone's defaults."));
+            body = body.push(hint("Click Connect and grant access in your browser. Client ID and secret are optional — leave them empty to use rclone's defaults."));
             body = body.push(field("Client ID", input("optional", &draft.client_id, Msg::ClientIdChanged)));
             body = body.push(field("Client secret", input("optional", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));
         }
@@ -341,5 +358,5 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
     body = body.push(Space::new().height(Length::Fixed(4.0)));
     body = body.push(row![Space::new().width(Length::Fill), cancel, submit].spacing(ROW_SPACING));
 
-    container(body).padding(22).max_width(480).style(theme::dialog).into()
+    container(body).padding(22).max_width(540).style(theme::dialog).into()
 }
