@@ -144,8 +144,23 @@ impl CelesteApp {
                 }
             }
             add_remote::Msg::Cancel => {
+                // Stops a pending `rclone authorize`; its result then
+                // arrives as a cancellation and is ignored.
+                if let Some(handle) = &draft.oauth {
+                    handle.cancel();
+                }
                 self.add_remote_draft = None;
                 return Task::none();
+            }
+            add_remote::Msg::OpenAuthLink => {
+                if let Some(url) = draft.oauth.as_ref().and_then(|h| h.url()) {
+                    open_in_browser(&url);
+                }
+            }
+            add_remote::Msg::CopyAuthLink => {
+                if let Some(url) = draft.oauth.as_ref().and_then(|h| h.url()) {
+                    return iced::clipboard::write(url);
+                }
             }
             add_remote::Msg::Submit => {
                 let Some(kind) = draft.provider else {
@@ -258,6 +273,8 @@ impl CelesteApp {
                     let client_id = draft.client_id.trim().to_owned();
                     let client_secret = draft.client_secret.trim().to_owned();
                     let is_reauth = draft.reauth;
+                    let handle = std::sync::Arc::new(crate::services::auth::AuthorizeHandle::default());
+                    draft.oauth = Some(handle.clone());
                     draft.busy = true;
                     if is_reauth {
                         // Reauth: keep the existing DB row, just
@@ -284,6 +301,7 @@ impl CelesteApp {
                                         provider,
                                         client_id,
                                         client_secret,
+                                        &handle,
                                         &*rclone_inner,
                                     )
                                 })
@@ -312,6 +330,7 @@ impl CelesteApp {
                                     provider,
                                     client_id,
                                     client_secret,
+                                    &handle,
                                     &*repo,
                                     &*rclone,
                                 )
@@ -368,8 +387,12 @@ impl CelesteApp {
     /// the form: open the challenge in the browser right away and keep
     /// it on the draft, so the next submit retries with its token.
     pub(in crate::app) fn handle_add_remote_result_err(&mut self, msg: String) -> Task<Message> {
+        if msg == crate::services::auth::AUTHORIZE_CANCELLED {
+            return Task::none();
+        }
         if let Some(draft) = self.add_remote_draft.as_mut() {
             draft.busy = false;
+            draft.oauth = None;
             match celeste_go::proton::HumanVerification::from_login_error(&msg) {
                 Some(hv) => {
                     open_in_browser(&hv.url());

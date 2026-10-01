@@ -14,7 +14,7 @@ pub mod webdav;
 
 // Public re-exports so call sites at `crate::services::auth::add_webdav_remote`
 // keep working without forcing every caller to spell out the submodule.
-pub use oauth::{add_oauth_remote, reauth_oauth_remote, OAuthProvider};
+pub use oauth::{add_oauth_remote, reauth_oauth_remote, AuthorizeHandle, OAuthProvider, AUTHORIZE_CANCELLED};
 pub use proton::{
     add_proton_drive_remote, forget_session as forget_proton_session,
     persist_session_if_rotated as persist_proton_session_if_rotated, reauth_proton_drive_remote,

@@ -11,10 +11,12 @@ use iced::{
     widget::{Space, button, column, container, pick_list, row, text::Shaping, text_input},
 };
 
+use std::sync::Arc;
+
 use celeste_go::proton::HumanVerification;
 
 use crate::{
-    services::auth::{OAuthProvider, WebDavVendor},
+    services::auth::{AuthorizeHandle, OAuthProvider, WebDavVendor},
     theme::{self, CAPTION, HEADING, ROW_SPACING, TEXT},
     widgets::text,
 };
@@ -33,6 +35,9 @@ pub enum Msg {
     Cancel,
     /// Re-open the human-verification page in the browser.
     OpenVerification,
+    /// Open / copy the OAuth link of a running `rclone authorize`.
+    OpenAuthLink,
+    CopyAuthLink,
 }
 
 /// The set of backends Celeste's sync algorithm has been exercised
@@ -154,6 +159,16 @@ pub struct Draft {
     /// Pending Proton human-verification challenge (CAPTCHA). Sent along
     /// with the next submit once the user has solved it in the browser.
     pub hv: Option<HumanVerification>,
+    /// Running OAuth browser flow (cancel handle + authorization link).
+    pub oauth: Option<Arc<AuthorizeHandle>>,
+}
+
+impl Draft {
+    /// The dialog may be closed: nothing running, or only a browser
+    /// flow that can be cancelled.
+    pub fn can_cancel(&self) -> bool {
+        !self.busy || self.oauth.is_some()
+    }
 }
 
 const LABEL_WIDTH: f32 = 110.0;
@@ -244,11 +259,24 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
     }
 
     if draft.busy {
-        let msg = match draft.provider {
-            Some(p) if p.is_oauth() => "Waiting for you to finish in the browser…",
-            _ => "Signing in…",
-        };
-        body = body.push(text(msg).size(CAPTION));
+        match &draft.oauth {
+            Some(handle) => {
+                let mut col = column![text("Waiting for you to finish in the browser…").size(TEXT)].spacing(6);
+                // Wrong browser, or none at all? The link works in any browser on this computer.
+                if handle.url().is_some() {
+                    col = col.push(text("If no browser opened (or the wrong one), open the authorization link in any browser on this computer.").size(CAPTION).style(theme::muted));
+                    col = col.push(
+                        row![
+                            button(text("Copy link").size(CAPTION)).padding([5, 12]).style(theme::button_secondary).on_press(Msg::CopyAuthLink),
+                            button(text("Open again").size(CAPTION)).padding([5, 12]).style(theme::button_secondary).on_press(Msg::OpenAuthLink),
+                        ]
+                        .spacing(ROW_SPACING),
+                    );
+                }
+                body = body.push(col);
+            }
+            None => body = body.push(text("Signing in…").size(CAPTION)),
+        }
     }
 
     if let Some(err) = &draft.error {
@@ -270,7 +298,7 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
     let cancel = button(text("Cancel").size(TEXT))
         .padding([6, 16])
         .style(theme::button_secondary)
-        .on_press_maybe((!draft.busy).then_some(Msg::Cancel));
+        .on_press_maybe(draft.can_cancel().then_some(Msg::Cancel));
 
     body = body.push(Space::new().height(Length::Fixed(4.0)));
     body = body.push(row![Space::new().width(Length::Fill), cancel, submit].spacing(ROW_SPACING));

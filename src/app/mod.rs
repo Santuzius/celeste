@@ -398,7 +398,7 @@ impl CelesteApp {
 
         let base: Element<'_, Message> = row![nav, content].into();
         if let Some(draft) = self.add_remote_draft.as_ref() {
-            let dismiss = (!draft.busy).then_some(Message::AddRemote(add_remote::Msg::Cancel));
+            let dismiss = draft.can_cancel().then_some(Message::AddRemote(add_remote::Msg::Cancel));
             stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
         } else if let Some(pending) = self.pending_delete.as_ref() {
             stack![base, remote_page::confirm_delete_overlay(pending).map(Message::Remote)].into()
@@ -415,8 +415,8 @@ impl CelesteApp {
             return Task::none();
         }
         if let Some(draft) = &self.add_remote_draft {
-            if !draft.busy {
-                self.add_remote_draft = None;
+            if draft.can_cancel() {
+                return self.handle_add_remote_msg(add_remote::Msg::Cancel);
             }
             return Task::none();
         }
