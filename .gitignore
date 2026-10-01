@@ -15,3 +15,5 @@
 # main Celeste crate.
 /src/go/target
 /src/go/Cargo.lock
+
+temp
