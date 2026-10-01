@@ -16,7 +16,7 @@ use crate::{
         run_state::RunState,
         sync::{SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
     },
-    screens::{main_page::status_label, settings},
+    screens::{main_page::{status_label, NO_FOLDERS}, settings},
     theme::{self, CAPTION, HEADING, PAGE_PADDING, ROW_SPACING, SECTION_SPACING, TEXT, TITLE},
     util::fmt_home,
     widgets::{
@@ -80,6 +80,8 @@ pub struct Page<'a> {
     pub draft_local: &'a str,
     pub draft_remote: &'a str,
     pub add_error: Option<&'a str>,
+    /// Google Drive remote still on rclone's retiring shared OAuth client.
+    pub shared_oauth_client: bool,
 }
 
 /// One sync folder row.
@@ -136,6 +138,28 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
                     button(text("Sign in again").size(TEXT))
                         .padding([6, 14])
                         .style(theme::button_primary)
+                        .on_press(Msg::Reauthenticate(remote.id, remote.name.clone())),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center),
+            )
+            .padding([10, 14])
+            .width(Length::Fill)
+            .style(theme::warning_bar),
+        );
+    }
+
+    if page.shared_oauth_client && !auth_needed {
+        body = body.push(
+            container(
+                row![
+                    icon(icondata::TbAlertTriangleOutline, 20.0),
+                    text("This remote uses rclone's shared Google client ID, which Google retires during 2026. Sign in again with your own client ID to keep syncing.")
+                        .size(TEXT)
+                        .width(Length::Fill),
+                    button(text("Sign in again").size(TEXT))
+                        .padding([6, 14])
+                        .style(theme::button_secondary)
                         .on_press(Msg::Reauthenticate(remote.id, remote.name.clone())),
                 ]
                 .spacing(12)
@@ -211,6 +235,7 @@ fn status_line(page: &Page<'_>) -> String {
         RunState::Paused => "Paused — automatic sync is off".to_owned(),
         RunState::Syncing(_) => status_label(page.state).to_owned(),
         _ if page.syncing => "Syncing…".to_owned(),
+        _ if page.dirs.is_empty() => format!("{NO_FOLDERS} — add one below to start syncing"),
         RunState::Waiting => next("Waiting for the first sync"),
         state => next(status_label(state)),
     }

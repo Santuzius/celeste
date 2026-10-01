@@ -28,6 +28,7 @@ pub enum Msg {
 pub struct NavEntry<'a> {
     pub remote: &'a Remote,
     pub state: RunState,
+    pub has_folders: bool,
 }
 
 pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>) -> Element<'a, Msg> {
@@ -74,7 +75,13 @@ fn nav_item<'a>(entry: NavEntry<'a>, selected: Option<RemoteId>) -> Element<'a, 
     };
     let label = column![
         text(&entry.remote.name).size(TEXT).wrapping(Wrapping::WordOrGlyph),
-        text(status_label(entry.state)).size(CAPTION).style(theme::muted),
+        text(if entry.has_folders || entry.state.is_problem() || entry.state == RunState::Paused {
+            status_label(entry.state)
+        } else {
+            NO_FOLDERS
+        })
+        .size(CAPTION)
+        .style(theme::muted),
     ];
     button(
         row![indicator, status_icon(entry.state, 18.0), label]
@@ -96,6 +103,9 @@ fn flat_row<'a>(glyph: icondata::Icon, label: &'a str, msg: Msg) -> Element<'a, 
         .on_press(msg)
         .into()
 }
+
+/// Label of a remote that has nothing to sync yet.
+pub const NO_FOLDERS: &str = "No folders yet";
 
 /// Short status label for a remote or a sync folder.
 pub fn status_label(state: RunState) -> &'static str {

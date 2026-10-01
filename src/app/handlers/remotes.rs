@@ -41,13 +41,24 @@ impl CelesteApp {
                 self.sync_state.auth_failure(r.id);
             }
         }
+        self.shared_oauth_client = self
+            .remotes
+            .iter()
+            .filter(|r| self.rclone.uses_shared_oauth_client(&r.name))
+            .map(|r| r.id)
+            .collect();
         // Keep a remote selected whenever there is one, so the window
         // never opens on an empty pane; (re)load its folders if needed.
         let selected = self
             .selected
             .filter(|id| self.remotes.iter().any(|r| r.id == *id))
             .or_else(|| self.remotes.first().map(|r| r.id));
-        match selected {
+        let repo = self.repo.clone();
+        let all_dirs = Task::perform(
+            async move { repo.list_all_sync_dirs().await.unwrap_or_default() },
+            Message::AllSyncDirsRefreshed,
+        );
+        let select = match selected {
             Some(id) if self.selected != Some(id) || !self.sync_dirs.contains_key(&id) => {
                 self.handle_remote_selected(id)
             }
@@ -56,7 +67,8 @@ impl CelesteApp {
                 self.selected = None;
                 Task::none()
             }
-        }
+        };
+        Task::batch([all_dirs, select])
     }
 
     /// Handle [`main_page::Msg::Selected`] — navigate to a remote and
@@ -152,6 +164,7 @@ impl CelesteApp {
                 self.add_remote_draft = None;
                 return Task::none();
             }
+            add_remote::Msg::OpenClientIdGuide => open_in_browser(add_remote::GDRIVE_CLIENT_ID_GUIDE),
             add_remote::Msg::OpenAuthLink => {
                 if let Some(url) = draft.oauth.as_ref().and_then(|h| h.url()) {
                     open_in_browser(&url);
@@ -272,6 +285,12 @@ impl CelesteApp {
                 if let Some(provider) = kind.oauth_provider() {
                     let client_id = draft.client_id.trim().to_owned();
                     let client_secret = draft.client_secret.trim().to_owned();
+                    if kind.needs_own_client_id() && (client_id.is_empty() || client_secret.is_empty()) {
+                        draft.error = Some(
+                            "Enter your own client ID and secret — see \"How to create a client ID\".".to_owned(),
+                        );
+                        return Task::none();
+                    }
                     let is_reauth = draft.reauth;
                     let handle = std::sync::Arc::new(crate::services::auth::AuthorizeHandle::default());
                     draft.oauth = Some(handle.clone());

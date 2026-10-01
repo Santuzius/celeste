@@ -38,7 +38,12 @@ pub enum Msg {
     /// Open / copy the OAuth link of a running `rclone authorize`.
     OpenAuthLink,
     CopyAuthLink,
+    /// Open rclone's guide for creating a Google Drive client ID.
+    OpenClientIdGuide,
 }
+
+/// rclone's step-by-step guide for creating a Google Drive OAuth client.
+pub const GDRIVE_CLIENT_ID_GUIDE: &str = "https://rclone.org/drive/#making-your-own-client-id";
 
 /// The set of backends Celeste's sync algorithm has been exercised
 /// against. WebDAV / Nextcloud / Owncloud / Dropbox / pCloud are
@@ -92,6 +97,12 @@ impl ProviderKind {
 
     pub fn is_oauth(self) -> bool {
         self.oauth_provider().is_some()
+    }
+
+    /// Google retires rclone's shared OAuth client, so these need the
+    /// user's own client ID + secret.
+    pub fn needs_own_client_id(self) -> bool {
+        matches!(self, ProviderKind::GDrive)
     }
 
     pub fn is_proton_drive(self) -> bool {
@@ -229,6 +240,19 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             body = body.push(hint(
                 "With 2FA enabled, Proton eventually expires the session and Celeste can't renew it on its own (the code is single-use). You'll then be asked to sign in again.",
             ));
+        }
+        Some(p) if p.needs_own_client_id() => {
+            body = body.push(hint(
+                "Google Drive needs your own OAuth client ID — rclone's shared one is being retired in 2026. Creating one takes a few minutes in the Google Cloud console. Connect then opens your browser to grant access.",
+            ));
+            body = body.push(
+                button(text("How to create a client ID").size(CAPTION))
+                    .padding([5, 12])
+                    .style(theme::button_secondary)
+                    .on_press(Msg::OpenClientIdGuide),
+            );
+            body = body.push(field("Client ID", input("…apps.googleusercontent.com", &draft.client_id, Msg::ClientIdChanged)));
+            body = body.push(field("Client secret", input("client secret", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));
         }
         Some(p) if p.is_oauth() => {
             body = body.push(hint("Connect opens your browser to grant access. Client ID and secret are optional — leave them empty to use rclone's defaults."));

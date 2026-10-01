@@ -155,4 +155,16 @@ impl BackendClient for LibrcloneClient {
             Err(err) => Err(err),
         }
     }
+
+    fn uses_shared_oauth_client(&self, remote: &str) -> bool {
+        let payload = serde_json::json!({ "name": remote }).to_string();
+        let Ok(body) = celeste_go::rpc("config/get", payload) else {
+            return false;
+        };
+        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) else {
+            return false;
+        };
+        parsed.get("type").and_then(|v| v.as_str()) == Some("drive")
+            && parsed.get("client_id").and_then(|v| v.as_str()).is_none_or(str::is_empty)
+    }
 }

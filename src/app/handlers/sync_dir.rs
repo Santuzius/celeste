@@ -47,6 +47,13 @@ impl CelesteApp {
         &mut self,
         all: Vec<SyncDir>,
     ) -> Task<Message> {
+        // Align every remote's dir set with the DB, not just the visited
+        // one: the roll-ups (sidebar, tray) need it before the first pass,
+        // and a remote without folders must be recognisable as such.
+        for remote in &self.remotes {
+            let ids: Vec<SyncDirId> = all.iter().filter(|d| d.remote_id == remote.id).map(|d| d.id).collect();
+            self.sync_state.set_dirs(remote.id, &ids);
+        }
         self.all_known_sync_dirs = all;
         Task::none()
     }

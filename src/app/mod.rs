@@ -125,6 +125,8 @@ pub struct CelesteApp {
     /// for logs the user has expanded, since each one holds a fully
     /// shaped text buffer. Dropped again on collapse / window close.
     sync_dir_log_content: HashMap<SyncDirId, iced::widget::text_editor::Content>,
+    /// Google Drive remotes still on rclone's retiring shared OAuth client.
+    shared_oauth_client: std::collections::HashSet<RemoteId>,
     /// Error from the last add-sync-dir attempt, shown under the form.
     add_sync_dir_error: Option<String>,
     /// Hierarchical run-state machine: per-dir states, auth-failure
@@ -200,6 +202,7 @@ impl CelesteApp {
             sync_dir_log_lines: HashMap::new(),
             sync_dir_log_content: HashMap::new(),
             add_sync_dir_error: None,
+            shared_oauth_client: std::collections::HashSet::new(),
             sync_state: AppState::new(),
             all_known_sync_dirs: Vec::new(),
             exclusion_panel: None,
@@ -378,6 +381,7 @@ impl CelesteApp {
                 .map(|remote| main_page::NavEntry {
                     remote,
                     state: self.display_state(remote),
+                    has_folders: self.all_known_sync_dirs.iter().any(|d| d.remote_id == remote.id),
                 })
                 .collect(),
             self.selected,
@@ -469,6 +473,7 @@ impl CelesteApp {
             draft_local,
             draft_remote,
             add_error: self.add_sync_dir_error.as_deref(),
+            shared_oauth_client: self.shared_oauth_client.contains(&remote.id),
         }
     }
 

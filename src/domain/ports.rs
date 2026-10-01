@@ -237,5 +237,11 @@ pub trait BackendClient: Send + Sync {
     fn needs_reauth(&self, _remote: &str) -> bool {
         false
     }
+
+    /// `true` for a Google Drive remote that relies on rclone's shared
+    /// OAuth client, which Google retires during 2026.
+    fn uses_shared_oauth_client(&self, _remote: &str) -> bool {
+        false
+    }
 }
 
