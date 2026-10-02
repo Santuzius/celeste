@@ -81,3 +81,9 @@ parts:
     prime:
       - -usr/share/doc
       - -usr/share/man
+
+lint:
+  ignore:
+    # wgpu loads the Vulkan loader at runtime (dlopen through ash), which the library linter can't see.
+    - library:
+        - usr/lib/*/libvulkan.so*
