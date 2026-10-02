@@ -15,6 +15,7 @@ pub(in crate::app) struct LogLine {
 impl CelesteApp {
     /// Append a line to the per-sync_dir log and drop the oldest entries once the buffer exceeds [`remote_page::MAX_LOG_LINES`]. The shaped editor content is only rebuilt while that log is expanded — collapsed logs cost nothing but the strings.
     pub(in crate::app) fn push_log_line(&mut self, sync_dir_id: SyncDirId, line: String) {
+        self.sync_dir_pass_line.insert(sync_dir_id, line.clone());
         let lines = self.sync_dir_log_lines.entry(sync_dir_id).or_default();
         lines.push_back(LogLine { at: local_clock(), text: line });
         while lines.len() > remote_page::MAX_LOG_LINES {

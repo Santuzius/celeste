@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 
 use crate::domain::{
     events::SyncEvent,
-    run_state::RunState,
+    run_state::{RunState, SyncActivity},
     sync::SyncError,
 };
 
@@ -84,6 +84,10 @@ impl CelesteApp {
                 sync_dir_id,
                 state,
             } => {
+                // Every pass starts by listing; from here on only this pass's lines describe what's going on.
+                if state == RunState::Syncing(SyncActivity::Listing) {
+                    self.sync_dir_pass_line.remove(&sync_dir_id);
+                }
                 self.sync_state.transition_dir(remote_id, sync_dir_id, state);
             }
             SyncEvent::SyncDirConflicts {

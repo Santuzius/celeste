@@ -127,6 +127,8 @@ pub struct CelesteApp {
     /// for logs the user has expanded, since each one holds a fully
     /// shaped text buffer. Dropped again on collapse / window close.
     sync_dir_log_content: HashMap<SyncDirId, iced::widget::text_editor::Content>,
+    /// Newest log line of the pass currently running per sync_dir, shown under the folder while it syncs. Cleared when a pass starts, so the previous pass's "Done" line doesn't linger.
+    sync_dir_pass_line: HashMap<SyncDirId, String>,
     /// Google Drive remotes still on rclone's retiring shared OAuth client.
     shared_oauth_client: std::collections::HashSet<RemoteId>,
     /// Error from the last add-sync-dir attempt, shown under the form.
@@ -213,6 +215,7 @@ impl CelesteApp {
             syncing: std::collections::HashSet::new(),
             sync_dir_log_lines: HashMap::new(),
             sync_dir_log_content: HashMap::new(),
+            sync_dir_pass_line: HashMap::new(),
             add_sync_dir_error: None,
             shared_oauth_client: std::collections::HashSet::new(),
             sync_state: AppState::new(),
@@ -512,7 +515,7 @@ impl CelesteApp {
                 remote_page::Folder {
                     dir,
                     state: self.sync_state.dir_state(remote.id, dir.id),
-                    latest_line: lines.and_then(|l| l.back()).map(|l| l.text.as_str()),
+                    latest_line: self.sync_dir_pass_line.get(&dir.id).map(String::as_str),
                     latest_problem: lines
                         .and_then(|l| l.iter().rev().find(|line| line.text.starts_with('⚠')))
                         .map(|l| l.text.as_str()),
