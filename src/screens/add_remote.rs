@@ -18,7 +18,7 @@ use celeste_go::proton::HumanVerification;
 use crate::{
     services::auth::{AuthorizeHandle, OAuthProvider, WebDavVendor},
     theme::{self, CAPTION, HEADING, ROW_SPACING, TEXT},
-    widgets::{bullet, text},
+    widgets::{bullet, icon::accent_icon, text},
 };
 
 #[derive(Debug, Clone)]
@@ -216,6 +216,17 @@ fn instruction<'a>(s: &'a str) -> Element<'a, Msg> {
     text(s).size(TEXT).into()
 }
 
+/// Notice that Celeste isn't the provider's own app, with a blue info marker. Proton's guidelines for third-party Drive clients require this wording.
+fn third_party_notice<'a>(company: &str) -> Element<'a, Msg> {
+    row![
+        accent_icon(icondata::TbInfoCircleOutline, TEXT + 2.0),
+        text(format!("This is a third-party application not officially supported by {company}.")).size(TEXT),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
 /// The dialog card; the app centres it over a dimmed backdrop.
 pub fn view(draft: &Draft) -> Element<'_, Msg> {
     let heading = text(if draft.reauth { "Sign in again" } else { "Add remote" }).size(HEADING + 2.0);
@@ -246,8 +257,7 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
         }
         Some(p) if p.is_proton_drive() => {
-            // Wording required by Proton's guidelines for third-party Drive clients.
-            body = body.push(instruction("This is a third-party application not officially supported by Proton."));
+            body = body.push(third_party_notice("Proton"));
             body = body.push(field("E-mail", input("example@proton.me", &draft.user, Msg::UserChanged)));
             body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
             body = body.push(field("2FA code", input("only if two-factor authentication is on", &draft.totp, Msg::TotpChanged)));
@@ -256,6 +266,7 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             ));
         }
         Some(p) if p.needs_own_client_id() => {
+            body = body.push(third_party_notice("Google"));
             body = body.push(instruction("Google Drive needs your own OAuth client ID. Creating one takes a few minutes in the Google Cloud console — just follow the guide."));
             body = body.push(
                 column![

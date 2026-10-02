@@ -38,6 +38,11 @@ pub fn muted_icon<'a>(icon_data: icondata::Icon, size: f32) -> Svg<'a, Theme> {
     icon(icon_data, size).style(|theme: &Theme, _| svg::Style { color: Some(theme::tones(theme).muted) })
 }
 
+/// Icon in the accent colour (e.g. an info marker).
+pub fn accent_icon<'a>(icon_data: icondata::Icon, size: f32) -> Svg<'a, Theme> {
+    icon(icon_data, size).style(|theme: &Theme, _| svg::Style { color: Some(theme::tones(theme).accent) })
+}
+
 /// White icon for filled buttons (e.g. destructive ones).
 pub fn on_fill_icon<'a>(icon_data: icondata::Icon, size: f32) -> Svg<'a, Theme> {
     icon(icon_data, size).style(|_: &Theme, _| svg::Style { color: Some(iced::Color::WHITE) })
