@@ -31,85 +31,15 @@ import (
 
 	"github.com/rclone/rclone/librclone/librclone"
 
-	// Pull in the same rclone surface librclone-sys does, MINUS the
-	// protondrive backend. Rclone's protondrive backend links in
-	// henrybear327/go-proton-api (a fork pinned to an older resty
-	// API) which collides with ProtonMail/go-proton-api + Proton's
-	// resty fork that our native Drive layer needs. We own the
-	// ProtonDrive path via native-go/drive/ (arriving in Phase 2+)
-	// so dropping rclone's protondrive costs us nothing.
-	//
-	// This is an explicit expansion of github.com/rclone/rclone/backend/all
-	// with the one import excluded. Keep in sync with upstream
-	// /backend/all/all.go if we bump rclone.
-	_ "github.com/rclone/rclone/backend/alias"
-	_ "github.com/rclone/rclone/backend/azureblob"
-	_ "github.com/rclone/rclone/backend/azurefiles"
-	_ "github.com/rclone/rclone/backend/b2"
-	_ "github.com/rclone/rclone/backend/box"
-	_ "github.com/rclone/rclone/backend/cache"
-	_ "github.com/rclone/rclone/backend/chunker"
-	_ "github.com/rclone/rclone/backend/cloudinary"
-	_ "github.com/rclone/rclone/backend/combine"
-	_ "github.com/rclone/rclone/backend/compress"
-	_ "github.com/rclone/rclone/backend/crypt"
+	// Only the rclone backends Celeste can talk to: drive for Google Drive, dropbox, pcloud and webdav for remotes added by older Celeste versions, and local for the copies between disk and remote. Every other backend (S3, Azure, …) only cost build time and binary size. Rclone's protondrive backend stays out in any case: it links henrybear327/go-proton-api, which collides with the ProtonMail/go-proton-api our own Drive layer (native-go/drive/) uses.
 	_ "github.com/rclone/rclone/backend/drive"
 	_ "github.com/rclone/rclone/backend/dropbox"
-	_ "github.com/rclone/rclone/backend/fichier"
-	_ "github.com/rclone/rclone/backend/filefabric"
-	_ "github.com/rclone/rclone/backend/filescom"
-	_ "github.com/rclone/rclone/backend/ftp"
-	_ "github.com/rclone/rclone/backend/gofile"
-	_ "github.com/rclone/rclone/backend/googlecloudstorage"
-	_ "github.com/rclone/rclone/backend/googlephotos"
-	_ "github.com/rclone/rclone/backend/hasher"
-	_ "github.com/rclone/rclone/backend/hdfs"
-	_ "github.com/rclone/rclone/backend/hidrive"
-	_ "github.com/rclone/rclone/backend/http"
-	_ "github.com/rclone/rclone/backend/iclouddrive"
-	_ "github.com/rclone/rclone/backend/imagekit"
-	_ "github.com/rclone/rclone/backend/internetarchive"
-	_ "github.com/rclone/rclone/backend/jottacloud"
-	_ "github.com/rclone/rclone/backend/koofr"
-	_ "github.com/rclone/rclone/backend/linkbox"
 	_ "github.com/rclone/rclone/backend/local"
-	_ "github.com/rclone/rclone/backend/mailru"
-	_ "github.com/rclone/rclone/backend/mega"
-	_ "github.com/rclone/rclone/backend/memory"
-	_ "github.com/rclone/rclone/backend/netstorage"
-	_ "github.com/rclone/rclone/backend/onedrive"
-	_ "github.com/rclone/rclone/backend/opendrive"
-	_ "github.com/rclone/rclone/backend/oracleobjectstorage"
 	_ "github.com/rclone/rclone/backend/pcloud"
-	_ "github.com/rclone/rclone/backend/pikpak"
-	_ "github.com/rclone/rclone/backend/pixeldrain"
-	_ "github.com/rclone/rclone/backend/premiumizeme"
-	// protondrive intentionally omitted — replaced by native Go layer
-	_ "github.com/rclone/rclone/backend/putio"
-	_ "github.com/rclone/rclone/backend/qingstor"
-	_ "github.com/rclone/rclone/backend/quatrix"
-	_ "github.com/rclone/rclone/backend/s3"
-	_ "github.com/rclone/rclone/backend/seafile"
-	_ "github.com/rclone/rclone/backend/sftp"
-	_ "github.com/rclone/rclone/backend/sharefile"
-	_ "github.com/rclone/rclone/backend/sia"
-	_ "github.com/rclone/rclone/backend/smb"
-	_ "github.com/rclone/rclone/backend/storj"
-	_ "github.com/rclone/rclone/backend/sugarsync"
-	_ "github.com/rclone/rclone/backend/swift"
-	_ "github.com/rclone/rclone/backend/ulozto"
-	_ "github.com/rclone/rclone/backend/union"
-	_ "github.com/rclone/rclone/backend/uptobox"
 	_ "github.com/rclone/rclone/backend/webdav"
-	_ "github.com/rclone/rclone/backend/yandex"
-	_ "github.com/rclone/rclone/backend/zoho"
 
-	_ "github.com/rclone/rclone/cmd/cmount"
-	_ "github.com/rclone/rclone/cmd/mount"
-	_ "github.com/rclone/rclone/cmd/mount2"
 	_ "github.com/rclone/rclone/fs/operations"
 	_ "github.com/rclone/rclone/fs/sync"
-	_ "github.com/rclone/rclone/lib/plugin"
 
 	// Our own Drive layer (native-go/drive/) imports go-proton-api
 	// directly. Proton-API-Bridge was removed in Phase 7 after the
