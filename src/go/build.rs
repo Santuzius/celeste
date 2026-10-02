@@ -38,6 +38,10 @@ fn main() {
         "cargo:rerun-if-changed={}",
         manifest_dir.join("proton-ext").display()
     );
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("rclonewatch").display()
+    );
 
     let lib_path = out_dir.join("libceleste_go.a");
     let header_path = out_dir.join("libceleste_go.h");
@@ -73,6 +77,8 @@ fn main() {
         .allowlist_function("RcloneFinalize")
         .allowlist_function("RcloneRPC")
         .allowlist_function("RcloneFreeString")
+        .allowlist_function("RcloneRemoteChanged")
+        .allowlist_function("RcloneForgetRemote")
         .allowlist_function("ProtonDrive_Version")
         .allowlist_function("ProtonDrive_SetAppVersion")
         .allowlist_function("ProtonDrive_Login")

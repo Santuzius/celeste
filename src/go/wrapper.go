@@ -28,6 +28,7 @@ import (
 	"unsafe"
 
 	"celeste/native-go/drive"
+	"celeste/native-go/rclonewatch"
 
 	"github.com/rclone/rclone/librclone/librclone"
 
@@ -76,6 +77,23 @@ func RcloneRPC(method *C.char, input *C.char) (result C.struct_RcloneRPCResult) 
 	result.Output = C.CString(output)
 	result.Status = C.int(status)
 	return result
+}
+
+// RcloneRemoteChanged reports (1/0) whether the rclone remote `remote` (name without colon) may have changed since the previous call; see rclonewatch.Changed.
+//
+//export RcloneRemoteChanged
+func RcloneRemoteChanged(remote *C.char) C.int {
+	if rclonewatch.Changed(C.GoString(remote)) {
+		return 1
+	}
+	return 0
+}
+
+// RcloneForgetRemote stops change tracking for `remote`.
+//
+//export RcloneForgetRemote
+func RcloneForgetRemote(remote *C.char) {
+	rclonewatch.Forget(C.GoString(remote))
 }
 
 //export RcloneFreeString

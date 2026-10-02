@@ -71,6 +71,21 @@ pub fn rpc<S1: Into<String>, S2: Into<String>>(method: S1, input: S2) -> Result<
     }
 }
 
+/// Whether the rclone remote `remote` (name without colon) may have changed on the provider's side since the previous call. Cheap: no network, the backend polls its change log in the background. Always `true` for backends without change notification.
+pub fn remote_changed(remote: &str) -> bool {
+    let Ok(c_remote) = CString::new(remote) else {
+        return true;
+    };
+    unsafe { ffi::RcloneRemoteChanged(c_remote.as_ptr() as *mut c_char) != 0 }
+}
+
+/// Stop change tracking for `remote`, e.g. after its config was replaced or deleted.
+pub fn forget_remote(remote: &str) {
+    if let Ok(c_remote) = CString::new(remote) {
+        unsafe { ffi::RcloneForgetRemote(c_remote.as_ptr() as *mut c_char) };
+    }
+}
+
 /// Smoke ping across the cgo boundary to `go-proton-api`. Constructs
 /// a Manager on the Go side and throws it away; no network work. Used
 /// during startup to verify the combined Go archive linked correctly.
