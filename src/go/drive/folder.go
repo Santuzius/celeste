@@ -264,7 +264,8 @@ func (s *Session) listRecursive(ctx context.Context, rootLinkID string) ([]*Entr
 
 	// ── Phase 1: concurrent ListChildren calls ──────────────────
 
-	const maxConcurrency = 10
+	// Proton answers 10 parallel requests on a large tree with 429s; 4 keeps a walk of ~1600 entries at a few seconds.
+	const maxConcurrency = 4
 	sem := make(chan struct{}, maxConcurrency)
 
 	var (

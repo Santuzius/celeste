@@ -6,7 +6,8 @@ package drive
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -31,6 +32,16 @@ type listingCache struct {
 	trees    map[string][]*Entry // root link ID → recursive listing
 }
 
+// logf writes to stderr directly: librclone redirects the standard logger and hides anything below NOTICE.
+func logf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+}
+
+// cached reports whether any listing is held. Caller holds mu.
+func (l *listingCache) cached() bool {
+	return len(l.dirs) > 0 || len(l.trees) > 0
+}
+
 // clear drops every cached listing. Caller holds mu.
 func (l *listingCache) clear() {
 	l.dirs = nil
@@ -53,6 +64,7 @@ func (s *Session) pollEvents(ctx context.Context) {
 	}
 	l.polledAt = time.Now()
 	if !l.filledAt.IsZero() && time.Since(l.filledAt) > listingMaxAge {
+		logf("drive: cached listing is older than %v; listing again.", listingMaxAge)
 		l.clear()
 	}
 
@@ -60,7 +72,7 @@ func (s *Session) pollEvents(ctx context.Context) {
 	if l.cursor == "" {
 		id, err := protonext.LatestVolumeEventID(ctx, auth, s.volumeID)
 		if err != nil {
-			log.Printf("drive: latest volume event: %v", err)
+			logf("drive: latest volume event: %v", err)
 			l.clear()
 			return
 		}
@@ -73,10 +85,18 @@ func (s *Session) pollEvents(ctx context.Context) {
 		page, err := protonext.VolumeEvents(ctx, auth, s.volumeID, l.cursor)
 		if err != nil {
 			// An expired or unknown cursor also lands here; start over from the latest event.
-			log.Printf("drive: volume events: %v", err)
+			logf("drive: volume events: %v; listing again.", err)
 			l.clear()
 			l.cursor = ""
 			return
+		}
+		if l.cached() {
+			switch {
+			case bool(page.Refresh):
+				logf("drive: the server asked for a full refresh; listing again.")
+			case len(page.Events) > 0:
+				logf("drive: volume event log reports %d change(s); listing again.", len(page.Events))
+			}
 		}
 		if page.Refresh || len(page.Events) > 0 {
 			l.clear()
@@ -88,6 +108,7 @@ func (s *Session) pollEvents(ctx context.Context) {
 			return
 		}
 	}
+	logf("drive: more than %d pages of volume events; listing again.", maxEventPages)
 	l.clear()
 }
 
