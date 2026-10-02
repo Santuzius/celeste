@@ -55,10 +55,12 @@ impl CelesteApp {
         }
         // If the user clicked Refresh now while we were already
         // syncing, honour that click now.
+        // A pass can create leftovers (a synced sub-folder that now belongs to another folder) or record new files under an exclusion.
+        let leftovers = self.refresh_exclusions();
         if self.refresh_requested_after.remove(&id) {
-            self.start_sync(id)
+            Task::batch([leftovers, self.start_sync(id)])
         } else {
-            Task::none()
+            leftovers
         }
     }
 

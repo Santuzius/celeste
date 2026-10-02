@@ -16,7 +16,7 @@ use crate::{
     services::leftovers,
 };
 
-use super::super::{local_paths_overlap, CelesteApp, Message};
+use super::super::{local_paths_overlap, remote_page_auto_excluded, CelesteApp, Message};
 
 impl CelesteApp {
     /// Handle [`Message::SyncDirsLoaded`] — store the list and align the
@@ -34,12 +34,13 @@ impl CelesteApp {
                 self.sync_dir_log_lines.remove(&gone);
                 self.sync_dir_log_content.remove(&gone);
                 self.sync_dir_exclusions.remove(&gone);
+                self.exclusion_leftovers.remove(&gone);
                 self.draft_exclusion.remove(&gone);
             }
         }
         self.sync_state.set_dirs(id, &ids);
         self.sync_dirs.insert(id, sd);
-        Task::none()
+        self.refresh_exclusions()
     }
 
     /// Handle [`Message::AllSyncDirsRefreshed`] — replace the global
@@ -56,7 +57,14 @@ impl CelesteApp {
             self.sync_state.set_dirs(remote.id, &ids);
         }
         self.all_known_sync_dirs = all;
-        Task::none()
+        // A new folder inside another one turns the old copy into leftovers.
+        self.refresh_exclusions()
+    }
+
+    /// Reload exclusions and leftover counts of every folder on the open page, so the filter count and the broom are right without opening the panel first.
+    pub(in crate::app) fn refresh_exclusions(&self) -> Task<Message> {
+        let dirs = self.selected.and_then(|id| self.sync_dirs.get(&id)).map_or(&[][..], |v| v.as_slice());
+        Task::batch(dirs.iter().map(|d| self.reload_exclusions(d.id, |_| async {})))
     }
 
     /// Handle [`remote_page::Msg::DraftLocalPathChanged`] / [`DraftRemotePathChanged`].
@@ -284,22 +292,25 @@ impl CelesteApp {
         &mut self,
         sd_id: SyncDirId,
         excls: Vec<SyncDirExclusion>,
-        leftovers: HashMap<SyncDirExclusionId, usize>,
+        leftovers: HashMap<String, usize>,
     ) -> Task<Message> {
-        self.exclusion_leftovers.retain(|id, _| !excls.iter().any(|e| e.id == *id));
-        self.exclusion_leftovers.extend(leftovers);
+        self.exclusion_leftovers.insert(sd_id, leftovers);
         self.sync_dir_exclusions.insert(sd_id, excls);
         Task::none()
     }
 
-    /// Run `change` against the repository, then reload the sync_dir's exclusions and count the local leftovers under each.
+    /// Run `change` against the repository, then reload the sync_dir's exclusions and count the local leftovers under each, including sub-folders now synced as their own folder.
     fn reload_exclusions<F, Fut>(&self, sd_id: SyncDirId, change: F) -> Task<Message>
     where
         F: FnOnce(Arc<dyn Repository>) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send,
     {
         let repo = self.repo.clone();
-        let local_root = self.all_known_sync_dirs.iter().find(|d| d.id == sd_id).map(|d| d.local_path.clone());
+        let sd = self.all_known_sync_dirs.iter().find(|d| d.id == sd_id);
+        let local_root = sd.map(|d| d.local_path.clone());
+        let auto: Vec<String> = sd
+            .map(|sd| remote_page_auto_excluded(sd, &self.all_known_sync_dirs).into_iter().map(|d| remote_page::relative_to(sd, d).to_owned()).collect())
+            .unwrap_or_default();
         Task::perform(
             async move {
                 change(repo.clone()).await;
@@ -307,10 +318,10 @@ impl CelesteApp {
                 let mut counts = HashMap::new();
                 if let Some(root) = local_root {
                     let items = repo.list_sync_items(sd_id).await.unwrap_or_default();
-                    for excl in &excls {
-                        let n = leftovers::count(&items, &format!("{root}/{}", excl.remote_path));
+                    for relative in excls.iter().map(|e| &e.remote_path).chain(&auto) {
+                        let n = leftovers::count(&items, &format!("{root}/{relative}"));
                         if n > 0 {
-                            counts.insert(excl.id, n);
+                            counts.insert(relative.clone(), n);
                         }
                     }
                 }
@@ -321,20 +332,20 @@ impl CelesteApp {
     }
 
     /// Handle [`remote_page::Msg::RequestCleanLeftovers`] — ask before deleting anything.
-    pub(in crate::app) fn handle_request_clean_leftovers(&mut self, excl_id: SyncDirExclusionId, sd_id: SyncDirId) -> Task<Message> {
+    pub(in crate::app) fn handle_request_clean_leftovers(&mut self, sd_id: SyncDirId, relative: String) -> Task<Message> {
         let Some(sd) = self.all_known_sync_dirs.iter().find(|d| d.id == sd_id) else {
             return Task::none();
         };
-        let Some(excl) = self.sync_dir_exclusions.get(&sd_id).and_then(|v| v.iter().find(|e| e.id == excl_id)) else {
+        let Some(count) = self.exclusion_leftovers.get(&sd_id).and_then(|m| m.get(&relative)).copied() else {
             return Task::none();
         };
         let remote_name = self.remotes.iter().find(|r| r.id == sd.remote_id).map(|r| r.name.clone()).unwrap_or_default();
         self.pending_delete = Some(remote_page::PendingDelete::Leftovers {
             sync_dir: sd_id,
-            root: format!("{}/{}", sd.local_path, excl.remote_path),
-            relative: excl.remote_path.clone(),
+            root: format!("{}/{}", sd.local_path, relative),
+            relative,
             remote_name,
-            count: self.exclusion_leftovers.get(&excl_id).copied().unwrap_or(0),
+            count,
         });
         Task::none()
     }
@@ -350,8 +361,8 @@ impl CelesteApp {
     /// Handle [`Message::LeftoversCleaned`] — report in the folder's log and refresh the button.
     pub(in crate::app) fn handle_leftovers_cleaned(&mut self, sd_id: SyncDirId, relative: String, res: Result<leftovers::Cleaned, String>) -> Task<Message> {
         let line = match res {
-            Ok(leftovers::Cleaned { deleted, kept: 0 }) => tr::tr!("Deleted {} leftover files of the excluded '{}'.", deleted, relative),
-            Ok(leftovers::Cleaned { deleted, kept }) => tr::tr!("Deleted {} leftover files of the excluded '{}'; kept {} added or changed since.", deleted, relative, kept),
+            Ok(leftovers::Cleaned { deleted, kept: 0 }) => tr::tr!("Deleted {} leftover files of '{}'.", deleted, relative),
+            Ok(leftovers::Cleaned { deleted, kept }) => tr::tr!("Deleted {} leftover files of '{}'; kept {} added or changed since.", deleted, relative, kept),
             Err(err) => format!("⚠ {}", tr::tr!("Couldn't delete the leftovers of '{}': {}", relative, err)),
         };
         self.push_log_line(sd_id, line);
@@ -400,7 +411,6 @@ impl CelesteApp {
         excl_id: SyncDirExclusionId,
         sd_id: SyncDirId,
     ) -> Task<Message> {
-        self.exclusion_leftovers.remove(&excl_id);
         self.reload_exclusions(sd_id, move |repo| async move {
             let _ = repo.delete_exclusion(excl_id).await;
         })

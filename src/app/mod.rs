@@ -27,7 +27,7 @@ use crate::{
         ports::Repository,
         remote::{ProviderKind, Remote, RemoteId},
         run_state::{AppState, RunState},
-        sync::{Conflict, Resolution, SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
+        sync::{Conflict, Resolution, SyncDir, SyncDirExclusion, SyncDirId},
     },
     infrastructure::{
         client_router::ClientRouter,
@@ -58,7 +58,7 @@ pub enum Message {
     SyncDirsLoaded(RemoteId, Vec<SyncDir>),
     AllSyncDirsRefreshed(Vec<SyncDir>),
     /// Exclusions of a sync_dir plus, per exclusion, how many synced files are still on this computer.
-    ExclusionsLoaded(SyncDirId, Vec<SyncDirExclusion>, HashMap<SyncDirExclusionId, usize>),
+    ExclusionsLoaded(SyncDirId, Vec<SyncDirExclusion>, HashMap<String, usize>),
     /// Leftovers of an excluded path were deleted (or not); carries the path relative to the sync_dir for the log.
     LeftoversCleaned(SyncDirId, String, Result<leftovers::Cleaned, String>),
     /// Result of the desktop folder chooser (`None` = cancelled / no portal).
@@ -149,8 +149,8 @@ pub struct CelesteApp {
     exclusion_panel: Option<SyncDirId>,
     /// Loaded user-defined exclusions per sync_dir.
     sync_dir_exclusions: HashMap<SyncDirId, Vec<SyncDirExclusion>>,
-    /// Synced files still on this computer under an exclusion, by exclusion; only non-zero counts.
-    exclusion_leftovers: HashMap<SyncDirExclusionId, usize>,
+    /// Synced files still on this computer under an excluded path, by sync_dir and path relative to it; only non-zero counts.
+    exclusion_leftovers: HashMap<SyncDirId, HashMap<String, usize>>,
     /// Draft remote sub-path for the "add exclusion" form per sync_dir.
     draft_exclusion: HashMap<SyncDirId, String>,
     /// Wall-clock timestamp of the last sync completion per remote. Drives
@@ -385,7 +385,7 @@ impl CelesteApp {
             Message::ExclusionsLoaded(sd_id, excls, leftovers) => {
                 self.handle_exclusions_loaded(sd_id, excls, leftovers)
             }
-            Message::Remote(remote_page::Msg::RequestCleanLeftovers(excl_id, sd_id)) => self.handle_request_clean_leftovers(excl_id, sd_id),
+            Message::Remote(remote_page::Msg::RequestCleanLeftovers(sd_id, relative)) => self.handle_request_clean_leftovers(sd_id, relative),
             Message::LeftoversCleaned(sd_id, relative, res) => self.handle_leftovers_cleaned(sd_id, relative, res),
             Message::Remote(remote_page::Msg::ToggleExclusions(sd_id)) => {
                 self.handle_toggle_exclusions(sd_id)
@@ -532,7 +532,7 @@ impl CelesteApp {
                     exclusions_open: self.exclusion_panel == Some(dir.id),
                     auto_excluded: remote_page_auto_excluded(dir, &self.all_known_sync_dirs),
                     custom_excluded: self.sync_dir_exclusions.get(&dir.id).map_or(&[], |v| v.as_slice()),
-                    leftovers: &self.exclusion_leftovers,
+                    leftovers: self.exclusion_leftovers.get(&dir.id),
                     conflicts: self.conflicts.get(&dir.id).map_or(&[], |v| v.as_slice()),
                     draft_exclusion: self.draft_exclusion.get(&dir.id).map_or("", |s| s.as_str()),
                 }

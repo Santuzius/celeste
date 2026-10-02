@@ -61,7 +61,7 @@ pub enum Msg {
     AddExclusion(SyncDirId),
     RemoveExclusion(SyncDirExclusionId, SyncDirId),
     /// Broom on an exclusion: ask before deleting the synced files still on this computer.
-    RequestCleanLeftovers(SyncDirExclusionId, SyncDirId),
+    RequestCleanLeftovers(SyncDirId, String),
     Reauthenticate(RemoteId, String),
     /// Read-only log editor swallows edits but forwards scroll/select actions so users can drag through history.
     LogEditorAction(SyncDirId, text_editor::Action),
@@ -108,8 +108,8 @@ pub struct Folder<'a> {
     pub auto_excluded: Vec<&'a SyncDir>,
     pub custom_excluded: &'a [SyncDirExclusion],
     pub draft_exclusion: &'a str,
-    /// Synced files still on this computer, by exclusion (only non-zero counts).
-    pub leftovers: &'a HashMap<SyncDirExclusionId, usize>,
+    /// Synced files still on this computer, by excluded path relative to the folder (only non-zero counts).
+    pub leftovers: Option<&'a HashMap<String, usize>>,
     /// Files that changed on both sides and wait for a decision.
     pub conflicts: &'a [Conflict],
 }
@@ -389,51 +389,62 @@ fn with_tip<'a>(content: impl Into<Element<'a, Msg>>, tip: &'a str) -> Element<'
     tooltip(content, container(text(tip).size(CAPTION)).padding([4, 8]).style(theme::card), tooltip::Position::Top).into()
 }
 
+/// `desc`'s remote path relative to `sd`, i.e. where it sits inside `sd`.
+pub fn relative_to<'a>(sd: &SyncDir, desc: &'a SyncDir) -> &'a str {
+    if sd.remote_path.is_empty() {
+        desc.remote_path.as_str()
+    } else {
+        desc.remote_path.strip_prefix(&format!("{}/", sd.remote_path)).unwrap_or(&desc.remote_path)
+    }
+}
+
 /// Exclusion list + add form for one sync_dir.
 fn exclusion_panel<'a>(
     sd: &'a SyncDir,
     remote_display: &str,
     auto_excl: &[&'a SyncDir],
     custom_excl: &'a [SyncDirExclusion],
-    leftovers: &HashMap<SyncDirExclusionId, usize>,
+    leftovers: Option<&HashMap<String, usize>>,
     draft: &'a str,
 ) -> Element<'a, Msg> {
     let mut list = column![].spacing(2);
 
-    // Sub-trees owned by another sync folder — read-only.
-    for desc in auto_excl {
-        let relative = if sd.remote_path.is_empty() {
-            desc.remote_path.as_str()
-        } else {
-            desc.remote_path.strip_prefix(&format!("{}/", sd.remote_path)).unwrap_or(&desc.remote_path)
-        };
-        list = list.push(
-            row![
-                muted_icon(icondata::TbFolderOutline, 14.0),
-                text(relative.to_owned()).size(CAPTION).width(Length::Fill),
-                text("synced as its own folder").size(CAPTION).style(theme::muted),
-            ]
-            .spacing(8)
-            .padding([4, 0])
-            .align_y(Alignment::Center),
-        );
-    }
-
-    for excl in custom_excl {
-        // Shown only while there is something to clean up; it disappears once the leftovers are gone.
-        let broom = leftovers.get(&excl.id).map(|&n| {
+    // Shown only while there is something to clean up; it disappears once the leftovers are gone.
+    let broom = |relative: &str| {
+        leftovers.and_then(|m| m.get(relative)).map(|&n| {
             tooltip(
-                button(on_fill_icon(icondata::MdiBroom, 14.0)).padding(4).style(theme::button_warning).on_press(Msg::RequestCleanLeftovers(excl.id, sd.id)),
+                button(on_fill_icon(icondata::MdiBroom, 14.0)).padding(4).style(theme::button_warning).on_press(Msg::RequestCleanLeftovers(sd.id, relative.to_owned())),
                 container(text(format!("Delete the {n} synced files still on this computer")).size(CAPTION)).padding([4, 8]).style(theme::card),
                 tooltip::Position::Top,
             )
-        });
+        })
+    };
+
+    // Sub-trees owned by another sync folder — read-only.
+    for desc in auto_excl {
+        let relative = relative_to(sd, desc);
+        let mut line = row![
+            muted_icon(icondata::TbFolderOutline, 14.0),
+            text(relative.to_owned()).size(CAPTION).width(Length::Fill),
+            text("synced as its own folder").size(CAPTION).style(theme::muted),
+        ]
+        .push(broom(relative))
+        .spacing(8)
+        .align_y(Alignment::Center);
+        // Match the height of the rows with buttons.
+        if leftovers.and_then(|m| m.get(relative)).is_none() {
+            line = line.padding([4, 0]);
+        }
+        list = list.push(line);
+    }
+
+    for excl in custom_excl {
         list = list.push(
             row![
                 muted_icon(icondata::TbFolderOutline, 14.0),
                 text(&excl.remote_path).size(CAPTION).width(Length::Fill),
             ]
-            .push(broom)
+            .push(broom(&excl.remote_path))
             .push(
                 with_tip(
                     button(icon(icondata::TbXOutline, 14.0))
@@ -560,8 +571,8 @@ pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg
         return confirm_card(
             format!("Delete the leftovers of '{relative}'?"),
             column![
-                text(format!("'{relative}' is excluded from sync, but {} still holds {count} files from when it was synced.", fmt_home(root))).size(TEXT),
-                bullet(format!("Only these copies on this computer are deleted. Celeste no longer syncs '{relative}', so {remote_name} keeps its own.")),
+                text(format!("'{relative}' is no longer synced here, but {} still holds {count} files from when it was.", fmt_home(root))).size(TEXT),
+                bullet(format!("Only these copies are deleted; {remote_name} keeps its own.")),
                 bullet("Files added or changed there since the exclusion are kept."),
                 bullet("Folders left empty are removed."),
             ]
