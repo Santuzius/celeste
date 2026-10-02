@@ -101,6 +101,17 @@ func (s *Session) ListDirectory(ctx context.Context, folderLinkID string) ([]*En
 	if folderLinkID == "" {
 		folderLinkID = s.RootLinkID()
 	}
+	if out, ok := s.cachedListing(ctx, false, folderLinkID); ok {
+		return out, nil
+	}
+	out, err := s.listDirectory(ctx, folderLinkID)
+	if err == nil {
+		s.storeListing(false, folderLinkID, out)
+	}
+	return out, err
+}
+
+func (s *Session) listDirectory(ctx context.Context, folderLinkID string) ([]*Entry, error) {
 	folderLink, err := s.getLink(ctx, folderLinkID)
 	if err != nil {
 		return nil, err
@@ -238,6 +249,17 @@ func (s *Session) ListRecursive(ctx context.Context, rootLinkID string) ([]*Entr
 	if rootLinkID == "" {
 		rootLinkID = s.RootLinkID()
 	}
+	if out, ok := s.cachedListing(ctx, true, rootLinkID); ok {
+		return out, nil
+	}
+	out, err := s.listRecursive(ctx, rootLinkID)
+	if err == nil {
+		s.storeListing(true, rootLinkID, out)
+	}
+	return out, err
+}
+
+func (s *Session) listRecursive(ctx context.Context, rootLinkID string) ([]*Entry, error) {
 
 	// ── Phase 1: concurrent ListChildren calls ──────────────────
 

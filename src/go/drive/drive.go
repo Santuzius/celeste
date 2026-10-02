@@ -34,10 +34,11 @@ func (s *Session) bootstrapDrive(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var mainShareID string
+	var mainShareID, volumeID string
 	for i := range volumes {
 		if volumes[i].State == proton.VolumeStateActive {
 			mainShareID = volumes[i].Share.ShareID
+			volumeID = volumes[i].VolumeID
 			break
 		}
 	}
@@ -89,6 +90,7 @@ func (s *Session) bootstrapDrive(ctx context.Context) error {
 	s.defaultAddrKR = addrKR
 	s.rootLink = &rootLink
 	s.signatureAddress = mainShare.Creator
+	s.volumeID = volumeID
 	// Seed the caches with the root link so the first listing
 	// doesn't need to re-fetch it.
 	s.linkCache[rootLink.LinkID] = rootLink

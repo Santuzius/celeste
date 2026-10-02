@@ -34,6 +34,10 @@ fn main() {
         "cargo:rerun-if-changed={}",
         manifest_dir.join("drive").display()
     );
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("proton-ext").display()
+    );
 
     let lib_path = out_dir.join("libceleste_go.a");
     let header_path = out_dir.join("libceleste_go.h");

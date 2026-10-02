@@ -74,6 +74,7 @@ func (s *Session) CreateFolder(ctx context.Context, parentLinkID, name string) (
 	if existing, err := s.findChildByName(ctx, parentLinkID, name, true); err == nil && existing != "" {
 		return existing, nil
 	}
+	defer s.invalidateListings()
 
 	parentLink, err := s.getLink(ctx, parentLinkID)
 	if err != nil {
@@ -221,6 +222,10 @@ func (s *Session) UploadFile(ctx context.Context, parentLinkID, name, srcPath st
 	modTime := stat.ModTime()
 
 	linkID, revisionID, sessionKey, nodeKR, err := s.createFileDraft(ctx, parentLinkID, name, srcPath)
+	if err != nil || revisionID != "" {
+		// The tree changes from here on (or may have, on error); only the hash-match short-circuit leaves it untouched.
+		defer s.invalidateListings()
+	}
 	if err != nil {
 		return "", err
 	}

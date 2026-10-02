@@ -110,6 +110,10 @@ type Session struct {
 	defaultAddrKR    *crypto.KeyRing
 	rootLink         *proton.Link
 	signatureAddress string
+	volumeID         string
+
+	// Listings answered from memory while the volume's event log shows no change (see events.go).
+	listings listingCache
 
 	// Caches — link metadata and decrypted keyrings. Populated
 	// lazily by getLink / linkKR / ListDirectory. Avoids redundant
@@ -477,6 +481,7 @@ func (s *Session) Close() {
 	s.rootLink = nil
 	s.linkCache = nil
 	s.krCache = nil
+	s.invalidateListings()
 	if s.c != nil {
 		s.c.Close()
 		s.c = nil

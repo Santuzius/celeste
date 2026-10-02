@@ -35,6 +35,7 @@ func (s *Session) TrashLink(ctx context.Context, linkID string) error {
 	if linkID == "" {
 		return errors.New("link ID is empty")
 	}
+	defer s.invalidateListings()
 	link, err := s.c.GetLink(ctx, s.mainShare.ShareID, linkID)
 	if err != nil {
 		return err
@@ -61,6 +62,7 @@ func (s *Session) PermanentDeleteLink(ctx context.Context, linkID string) error 
 	if linkID == "" {
 		return errors.New("link ID is empty")
 	}
+	defer s.invalidateListings()
 	link, err := s.c.GetLink(ctx, s.mainShare.ShareID, linkID)
 	if err != nil {
 		return err
