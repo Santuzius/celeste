@@ -37,6 +37,11 @@ pub(super) enum Action {
         local_path: String,
         remote_path: String,
     },
+    /// Present on both sides but not tracked yet (a folder created on both sides): only the DB row is missing. Without it, deleting the folder on one side would bring it back from the other.
+    RecordDbRow {
+        local_path: String,
+        remote_path: String,
+    },
     /// A file exists on both sides and the planner can't tell which copy is right. The applier compares content first (identical copies just get a DB row) and otherwise asks the user — see [`ConflictKind`].
     Conflict {
         local_path: String,
@@ -157,7 +162,7 @@ pub(super) fn log_plan_summary(
 ) {
     let (mut uploads, mut downloads) = (0usize, 0usize);
     let (mut delete_local, mut delete_remote) = (0usize, 0usize);
-    let (mut conflicts, mut clear_rows) = (0usize, 0usize);
+    let (mut conflicts, mut clear_rows, mut record_rows) = (0usize, 0usize, 0usize);
     for a in actions {
         match a {
             Action::Upload { .. } => uploads += 1,
@@ -166,10 +171,11 @@ pub(super) fn log_plan_summary(
             Action::DeleteRemote { .. } => delete_remote += 1,
             Action::Conflict { .. } => conflicts += 1,
             Action::ClearDbRow { .. } => clear_rows += 1,
+            Action::RecordDbRow { .. } => record_rows += 1,
         }
     }
     eprintln!(
-        "sync: plan for remote='{}' dir='{}' — snapshot(db={}, listing={}, walk={}, walk_unreliable={}); actions(upload={}, download={}, delete_local={}, delete_remote={}, conflict={}, clear_db_row={}).",
+        "sync: plan for remote='{}' dir='{}' — snapshot(db={}, listing={}, walk={}, walk_unreliable={}); actions(upload={}, download={}, delete_local={}, delete_remote={}, conflict={}, clear_db_row={}, record_db_row={}).",
         remote.name,
         sync_dir.remote_path,
         snapshot.db.len(),
@@ -182,6 +188,7 @@ pub(super) fn log_plan_summary(
         delete_remote,
         conflicts,
         clear_rows,
+        record_rows,
     );
 }
 
@@ -210,12 +217,19 @@ pub(super) fn ancestor_in_set(path: &str, unreliable: &HashSet<String>) -> bool 
     }
 }
 
+impl Action {
+    /// Only touches the DB, nothing the user would count as a synced change.
+    pub(super) fn is_bookkeeping(&self) -> bool {
+        matches!(self, Action::ClearDbRow { .. } | Action::RecordDbRow { .. })
+    }
+}
+
 fn phase(a: &Action) -> u8 {
     match a {
         Action::Upload { is_dir: true, .. } | Action::Download { is_dir: true, .. } => 0,
         Action::Upload { .. } | Action::Download { .. } => 1,
         Action::Conflict { .. } => 2,
-        Action::ClearDbRow { .. } => 3,
+        Action::ClearDbRow { .. } | Action::RecordDbRow { .. } => 3,
         Action::DeleteLocal { .. } | Action::DeleteRemote { .. } => 4,
     }
 }
@@ -227,6 +241,7 @@ fn a_path(a: &Action) -> &str {
         | Action::DeleteLocal { remote_path, .. }
         | Action::DeleteRemote { remote_path, .. }
         | Action::ClearDbRow { remote_path, .. }
+        | Action::RecordDbRow { remote_path, .. }
         | Action::Conflict { remote_path, .. } => remote_path,
     }
 }
@@ -264,9 +279,11 @@ fn plan_one(
         // record the DB row via an upload (no-op transfer but aligns DB).
         (Some(l), Some(r), None) => {
             if l.is_dir && r.is_dir {
-                // Dirs: nothing to transfer, will be recorded when a
-                // child lands.
-                return None;
+                // Dirs: nothing to transfer, just start tracking it.
+                return Some(Action::RecordDbRow {
+                    local_path: l.absolute_path.clone(),
+                    remote_path: remote_path.to_owned(),
+                });
             }
             if l.is_dir != r.is_dir {
                 // A file on one side, a folder on the other: no content to compare, keep the old newer-wins rule.
@@ -352,7 +369,9 @@ fn plan_one(
                 );
                 return None;
             }
-            if !parent_is_verified(
+            // A sub-folder the walk read without error and found empty was emptied on purpose, so its files go remotely too. The sync folder itself is never in the walk and keeps the stricter check: an empty root more likely means an unmounted disk.
+            let parent_walked = snapshot.local.get(parent_of(&r.path)).is_some_and(|p| p.is_dir);
+            if !parent_walked && !parent_is_verified(
                 &r.path,
                 &snapshot.local,
                 db_by_parent,

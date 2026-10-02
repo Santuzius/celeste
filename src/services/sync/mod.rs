@@ -146,13 +146,14 @@ where
     // multi-hundred-action pass (e.g. first-ever sync of a large
     // remote) leaves the user staring at "Listing…" for as long as
     // the per-action status churn takes to dominate the UI.
-    if !actions.is_empty() {
+    // DB-only actions run silently; the user only hears about real changes.
+    let total = actions.iter().filter(|a| !a.is_bookkeeping()).count();
+    if total > 0 {
         emit_pending(tr::tr!(
             "Applying {} actions (0 done)…",
             actions.len()
         ));
     }
-    let total = actions.len();
     let applied = applier::apply(
         actions,
         &snapshot,

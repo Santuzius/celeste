@@ -647,6 +647,43 @@ fn delete_remote_skipped_when_parent_walk_has_no_db_siblings() {
     }
 }
 
+/// A sub-folder the user emptied (it still exists, just without files) mirrors the deletes remotely; only a missing folder is a reason to doubt the walk.
+#[test]
+fn emptied_sub_folder_mirrors_deletes_remotely() {
+    let tmp = TempDir::new("sync_emptied_dir");
+    fs::create_dir_all(tmp.path.join("dir")).unwrap();
+    let repo = FakeRepo::new();
+    let mut listing = vec![remote_item("dir", true, 1_700_000_000)];
+    for i in 0..3 {
+        repo.insert_item(SyncDirId(1), &format!("{}/dir/file_{i}.txt", tmp.as_str()), &format!("dir/file_{i}.txt"), 1_700_000_000, 1_700_000_000);
+        listing.push(remote_item(&format!("dir/file_{i}.txt"), false, 1_700_000_000));
+    }
+    let client = FakeBackend::default();
+    client.set_list("", Ok(listing));
+
+    let (outcome, _events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert_eq!(client.delete_file_calls.lock().unwrap().len(), 3);
+}
+
+/// A folder that exists on both sides without a DB row gets one, so deleting it later on one side isn't undone from the other.
+#[test]
+fn untracked_folder_on_both_sides_is_recorded() {
+    let tmp = TempDir::new("sync_record_dir");
+    let dir = tmp.path.join("dir");
+    fs::create_dir_all(&dir).unwrap();
+    let repo = FakeRepo::new();
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("dir", true, 1_700_000_000)]));
+    client.set_stat("dir", Ok(Some(remote_item("dir", true, 1_700_000_000))));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(repo.has_item(dir.to_str().unwrap(), "dir"));
+    // Bookkeeping isn't reported as a synced change.
+    assert!(!events.iter().any(|e| matches!(e, SyncEvent::SyncDirStatus { text, .. } if text.starts_with("Done"))));
+}
+
 /// A walk I/O error on a subtree (simulated via chmod 000 so read_dir
 /// fails) must NOT cascade into `DeleteRemote` for items under that
 /// subtree. The unreliable set is the primary guard; the pass ends

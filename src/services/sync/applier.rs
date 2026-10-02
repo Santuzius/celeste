@@ -241,6 +241,13 @@ where
                     &remote_path,
                 ));
             }
+            Action::RecordDbRow {
+                local_path,
+                remote_path,
+            } => {
+                eprintln!("sync: RECORD '{remote_path}' — present on both sides but untracked; tracking it from now on.");
+                record_upsert(repo, sync_dir, &local_path, &remote_path, client, &remote.name, cancel);
+            }
             Action::Conflict {
                 local_path,
                 remote_path,
@@ -414,7 +421,7 @@ fn activity_of(action: &Action) -> Option<SyncActivity> {
         Action::Download { .. } => Some(SyncActivity::Downloading),
         Action::DeleteLocal { .. } | Action::DeleteRemote { .. } => Some(SyncActivity::Deleting),
         Action::Conflict { .. } => Some(SyncActivity::Resolving),
-        Action::ClearDbRow { .. } => None,
+        Action::ClearDbRow { .. } | Action::RecordDbRow { .. } => None,
     }
 }
 
