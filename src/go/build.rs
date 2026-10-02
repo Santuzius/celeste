@@ -97,7 +97,8 @@ fn main() {
         .allowlist_function("ProtonDrive_TrashLink")
         .allowlist_function("ProtonDrive_PermanentDeleteLink")
         .allowlist_type("RcloneRPCResult")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        // The header is our own output; watching it would mark the build script stale after every run and rebuild the Go archive each time.
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new().rerun_on_header_files(false)))
         .generate()
         .expect("Unable to generate bindings");
     bindings

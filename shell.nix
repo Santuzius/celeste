@@ -9,7 +9,11 @@ pkgs.mkShell {
     pkg-config
     go
     rustPlatform.bindgenHook # sets LIBCLANG_PATH + BINDGEN_EXTRA_CLANG_ARGS for librclone-sys
+    mold
   ];
+
+  # Linking the ~70 MB binary dominates incremental dev builds; mold cuts a one-file change from ~12 s to ~3 s. Dev shell only, the Nix package keeps the default linker.
+  RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
 
   # Iced runtime libraries (winit/wgpu pick these at launch) plus librclone's
   # OpenSSL + the rclone CLI. `dbus` is needed by the `keyring` crate's
