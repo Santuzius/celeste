@@ -202,6 +202,18 @@ fn both_sides_changed_is_a_conflict() {
     assert!(events.iter().any(|e| matches!(e, SyncEvent::SyncDirStateChanged { state: crate::domain::run_state::RunState::Warning, .. })));
 }
 
+/// A file waiting for the user doesn't hold up the rest of the folder: other changes in the same pass still go through.
+#[test]
+fn conflict_does_not_block_other_changes() {
+    let (tmp, _local, repo, client) = both_changed("sync_conflict_others");
+    let new_local = tmp.write_file("b.txt", b"b");
+    client.set_list("", Ok(vec![remote_item("a.txt", false, 1_700_000_700), remote_item("c.txt", false, 1_700_000_000)]));
+    let (_outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(conflicts(&events).len(), 1);
+    assert_eq!(*client.copy_to_remote_calls.lock().unwrap(), vec![(new_local.to_str().unwrap().to_owned(), "b.txt".to_owned())]);
+    assert_eq!(client.copy_to_local_calls.lock().unwrap().len(), 1);
+}
+
 /// The user's choice is applied when the file still looks the way the dialog showed it.
 #[test]
 fn resolution_keep_local_uploads() {
