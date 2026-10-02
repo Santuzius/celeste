@@ -68,6 +68,8 @@ nix-shell --run 'cargo run --release'
 
 No global `rustup`, `go`, or system headers are required — everything is pulled in by the shell.
 
+A Snap package is built from `snap/snapcraft.yaml`; see [doc/snap.md](doc/snap.md).
+
 ## Installing with Nix
 Celeste ships a flake, so it works with the Nix package manager on any Linux distribution (flakes enabled).
 

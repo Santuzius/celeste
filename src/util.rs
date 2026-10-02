@@ -8,13 +8,17 @@ pub fn await_future<F: Future>(future: F) -> F::Output {
     futures::executor::block_on(future)
 }
 
+/// The user's real home directory, as the user knows it. Inside a snap `$HOME` points to the snap's private data directory, the real one is in `$SNAP_REAL_HOME`; data files stay under `$HOME` either way.
+pub fn user_home() -> Option<String> {
+    std::env::var("SNAP_REAL_HOME").or_else(|_| std::env::var("HOME")).ok().filter(|h| !h.is_empty())
+}
+
 /// Replace the user's home-directory prefix with `~` for friendlier UI
-/// paths. Falls back to the raw path if `$HOME` isn't set.
+/// paths. Falls back to the raw path if the home directory is unknown.
 pub fn fmt_home(dir: &str) -> String {
-    let Some(home) = std::env::var_os("HOME") else {
+    let Some(home) = user_home() else {
         return dir.to_string();
     };
-    let home = home.into_string().unwrap_or_default();
     match dir.strip_prefix(&home) {
         Some(rest) => "~".to_string() + rest,
         None => dir.to_string(),

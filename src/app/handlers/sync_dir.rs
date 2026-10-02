@@ -435,8 +435,8 @@ impl CelesteApp {
 
 /// Expand a leading `~` to `$HOME`, so typed paths can use the same shorthand the UI displays.
 fn expand_home(path: &str) -> String {
-    match (path.strip_prefix('~'), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => format!("{home}{rest}"),
+    match (path.strip_prefix('~'), crate::util::user_home()) {
+        (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with('/') => format!("{home}{rest}"),
         _ => path.to_owned(),
     }
 }

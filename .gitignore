@@ -15,3 +15,8 @@ temp
 # Nix build output and vendored Go modules (nix/package.nix)
 /result
 /src/go/vendor
+
+# snapcraft (snap/snapcraft.yaml) build dirs in destructive mode
+/parts
+/stage
+/prime

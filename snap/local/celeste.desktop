@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Celeste
+GenericName=File Synchronization Client
+Comment=Sync local folders with Google Drive or Proton Drive
+Exec=celeste --show
+Icon=/usr/share/icons/hicolor/scalable/apps/celeste-icon.svg
+Terminal=false
+Categories=Utility;FileTransfer;Network;
+Keywords=sync;cloud;backup;rclone;
+StartupWMClass=celeste
