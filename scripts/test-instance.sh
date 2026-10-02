@@ -10,6 +10,7 @@
 #   CELESTE_TEST_RESET=1 wipes the test state first.
 #   CELESTE_TEST_BIN=/path/to/celeste runs another build (e.g. an older version for comparisons).
 #   CELESTE_TEST_SHOW=0 starts hidden (tray mode) instead of passing --show.
+#   CELESTE_COLOR_SCHEME=light|dark forces the window theme (e.g. for README screenshots); passed through to Celeste.
 set -euo pipefail
 
 MODE="${1:-xvfb}"
