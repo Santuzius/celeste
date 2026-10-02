@@ -14,7 +14,7 @@
 //!     PROTON_PASSWORD='…' \
 //!     PROTON_TOTP=123456 \            # optional
 //!     PROTON_MAILBOX_PASSWORD='…' \   # optional, two-password mode only
-//!     nix-shell --run "cargo run --manifest-path native-go/Cargo.toml \
+//!     nix-shell --run "cargo run --manifest-path src/go/Cargo.toml \
 //!         --example proton_login"
 //!
 //! On success you should see a UID, the saved credential file path,
@@ -24,7 +24,7 @@
 
 use std::{env, path::PathBuf};
 
-use celeste_native_sys::{self as native, proton};
+use celeste_go::{self as native, proton};
 
 fn main() {
     // One-time Go runtime + rclone/native init.

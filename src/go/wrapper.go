@@ -4,7 +4,7 @@
 //
 // Built as:
 //
-//	go build --buildmode=c-archive -o libceleste_native.a .
+//	go build --buildmode=c-archive -o libceleste_go.a .
 //
 // One Go runtime, both feature sets. See the integration plan for
 // why we can't have two independent Go archives coexisting in the
@@ -27,12 +27,12 @@ import (
 	"reflect"
 	"unsafe"
 
-	"celeste/native-go/drive"
-	"celeste/native-go/rclonewatch"
+	"celeste/go/drive"
+	"celeste/go/rclonewatch"
 
 	"github.com/rclone/rclone/librclone/librclone"
 
-	// Only the rclone backends Celeste can talk to: drive for Google Drive, dropbox, pcloud and webdav for remotes added by older Celeste versions, and local for the copies between disk and remote. Every other backend (S3, Azure, …) only cost build time and binary size. Rclone's protondrive backend stays out in any case: it links henrybear327/go-proton-api, which collides with the ProtonMail/go-proton-api our own Drive layer (native-go/drive/) uses.
+	// Only the rclone backends Celeste can talk to: drive for Google Drive, dropbox, pcloud and webdav for remotes added by older Celeste versions, and local for the copies between disk and remote. Every other backend (S3, Azure, …) only cost build time and binary size. Rclone's protondrive backend stays out in any case: it links henrybear327/go-proton-api, which collides with the ProtonMail/go-proton-api our own Drive layer (src/go/drive/) uses.
 	_ "github.com/rclone/rclone/backend/drive"
 	_ "github.com/rclone/rclone/backend/dropbox"
 	_ "github.com/rclone/rclone/backend/local"
@@ -42,7 +42,7 @@ import (
 	_ "github.com/rclone/rclone/fs/operations"
 	_ "github.com/rclone/rclone/fs/sync"
 
-	// Our own Drive layer (native-go/drive/) imports go-proton-api
+	// Our own Drive layer (src/go/drive/) imports go-proton-api
 	// directly. Proton-API-Bridge was removed in Phase 7 after the
 	// port was validated — the only remaining ties to it are attribution
 	// comments in files that started as ports of its code.
@@ -106,7 +106,7 @@ func RcloneFreeString(str *C.char) {
 // Calls are shaped as "takes one JSON string, returns one JSON string".
 // The Rust side marshals arguments into a small request struct and
 // reads the return value as a result envelope — see
-// `native-go/src/lib.rs`. Caller is responsible for freeing every
+// `src/go/src/lib.rs`. Caller is responsible for freeing every
 // returned *C.char with RcloneFreeString (same Go allocator).
 //
 // Error handling: any result that's not an outright success returns
@@ -184,7 +184,7 @@ func ProtonDrive_Version() *C.char {
 	// Build a fresh Manager just to exercise the symbol path; we throw
 	// it away immediately. No network traffic.
 	_ = proton.New(proton.WithAppVersion(drive.AppVersion))
-	return C.CString("celeste-native proton-api bound")
+	return C.CString("celeste-go proton-api bound")
 }
 
 // ProtonDrive_SetAppVersion sets the `x-pm-appversion` header sent by every later session. Input `{"version":"..."}`; call once at startup, before any login or resume.

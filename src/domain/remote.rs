@@ -77,7 +77,7 @@ pub struct Remote {
     /// native auth flow are stamped `Backend::NativeProton`.
     pub backend: Backend,
     /// For native-backend remotes, the filesystem path to the
-    /// persisted session blob that `celeste-native-sys` reads with
+    /// persisted session blob that `celeste-go` reads with
     /// `ProtonDrive_ResumeSession`. `None` for rclone remotes.
     pub session_path: Option<String>,
 }

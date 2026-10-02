@@ -6,7 +6,7 @@ import (
 
 	"github.com/ProtonMail/go-proton-api"
 
-	"celeste/native-go/proton-ext"
+	"celeste/go/proton-ext"
 )
 
 // FileDetails describes a file's active revision for the conflict dialog and the identical-content check: plaintext size, the modification time the uploader recorded and the SHA-1 of the content, all from the revision's encrypted extended attributes. Revisions without them only carry ModTimeUnix (from the link).

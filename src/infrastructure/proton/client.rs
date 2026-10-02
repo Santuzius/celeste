@@ -33,7 +33,7 @@ use crate::domain::{
     sync::{FileDetails, ListFilter, RemoteItem},
 };
 
-/// Native ProtonDrive adapter. Owns the session UID the native-go
+/// Native ProtonDrive adapter. Owns the session UID the celeste-go
 /// layer returns from `ProtonDrive_Login` / `ProtonDrive_ResumeSession`.
 #[derive(Clone, Debug)]
 pub struct NativeProtonClient {

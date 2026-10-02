@@ -15,7 +15,7 @@
 
 let
   cargoToml = lib.importTOML ../Cargo.toml;
-  version = cargoToml.package.version;
+  version = cargoToml.workspace.package.version;
 
   # The project's dev shell is the single source of build and runtime dependencies.
   shell = import ../shell.nix { inherit pkgs; };

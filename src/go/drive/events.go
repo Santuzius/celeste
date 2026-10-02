@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"celeste/native-go/proton-ext"
+	"celeste/go/proton-ext"
 )
 
 const (

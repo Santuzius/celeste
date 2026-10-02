@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"celeste/native-go/drive"
+	"celeste/go/drive"
 
 	"github.com/ProtonMail/go-proton-api"
 )

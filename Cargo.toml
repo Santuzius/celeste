@@ -1,6 +1,6 @@
 [package]
 name = "celeste"
-version = "0.18.0"
+version.workspace = true
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = [
@@ -8,6 +8,13 @@ authors = [
     "Alexander Menzel <menzel.alexander@proton.me>",
 ]
 repository = "https://github.com/Santuzius/celeste"
+
+# The Go archive crate shares the app's version and lock file.
+[workspace]
+members = ["src/go"]
+
+[workspace.package]
+version = "0.18.0"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive", "env"] }
@@ -38,8 +45,8 @@ libc = "0.2"
 resvg = { version = "0.47", default-features = false }
 # Celeste's combined Go archive — provides the librclone RPC surface
 # plus the native ProtonDrive entry points. See `src/go/` for the Go
-# side. Aliased as `celeste_go` to reflect the dual-backend nature.
-celeste_go = { package = "celeste-native-sys", path = "src/go" }
+# side.
+celeste-go = { path = "src/go" }
 notify-rust = "4"
 sea-orm = { version = "0.10.7", features = ["sqlx-sqlite", "runtime-async-std-rustls", "macros"] }
 sea-orm-migration = "0.10.7"

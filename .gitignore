@@ -9,12 +9,6 @@
 /src/go/libceleste_go.a
 /src/go/libceleste_go.h
 
-# Cargo's per-crate artefacts when the sys crate is built standalone
-# (e.g. `cargo run --manifest-path src/go/Cargo.toml --example …`).
-# The authoritative Cargo.lock lives at the repo root alongside the
-# main Celeste crate.
-/src/go/target
-/src/go/Cargo.lock
 
 temp
 

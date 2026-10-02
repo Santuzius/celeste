@@ -28,7 +28,7 @@ import (
 )
 
 // Auth carries the credential bits a request needs. Populate from the
-// celeste/native-go/drive Session's exposed fields. HostURL is optional;
+// celeste/go/drive Session's exposed fields. HostURL is optional;
 // when blank we fall back to upstream's `proton.DefaultHostURL` so this
 // package and upstream stay pinned to the same endpoint.
 type Auth struct {

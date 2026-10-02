@@ -755,7 +755,7 @@ dependencies = [
 name = "celeste"
 version = "0.18.0"
 dependencies = [
- "celeste-native-sys",
+ "celeste-go",
  "clap 4.6.1",
  "dbus",
  "futures",
@@ -778,8 +778,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "celeste-native-sys"
-version = "0.1.0"
+name = "celeste-go"
+version = "0.18.0"
 dependencies = [
  "bindgen",
  "serde",

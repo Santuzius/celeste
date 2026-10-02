@@ -1,4 +1,4 @@
-module celeste/native-go
+module celeste/go
 
 go 1.26.1
 
