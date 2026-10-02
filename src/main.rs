@@ -91,6 +91,9 @@ fn main() {
     celeste_go::initialize();
     // Prove the combined Go archive loaded — cheap (no network).
     eprintln!("celeste: native-go identity = {}", celeste_go::proton_drive_version());
+    // Proton's naming scheme for third-party Drive clients.
+    celeste_go::proton::set_app_version(concat!("external-drive-celeste@", env!("CARGO_PKG_VERSION"), "-stable"))
+        .expect("failed to set the Proton app version");
     celeste_go::rpc(
         "config/setpath",
         json!({ "path": rclone_config }).to_string(),

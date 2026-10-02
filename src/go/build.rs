@@ -74,6 +74,7 @@ fn main() {
         .allowlist_function("RcloneRPC")
         .allowlist_function("RcloneFreeString")
         .allowlist_function("ProtonDrive_Version")
+        .allowlist_function("ProtonDrive_SetAppVersion")
         .allowlist_function("ProtonDrive_Login")
         .allowlist_function("ProtonDrive_Logout")
         .allowlist_function("ProtonDrive_SaveSession")

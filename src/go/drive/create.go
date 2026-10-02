@@ -18,6 +18,7 @@ package drive
 // existing file's node keyring + session key for block encryption.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -753,8 +754,21 @@ func (s *Session) uploadBlocks(
 	linkID, revisionID string,
 ) ([]byte, int64, []int64, string, error) {
 	type pendingBlock struct {
-		info proton.BlockUploadInfo
+		info protonext.BlockUploadInfo
 		data []byte
+	}
+
+	verification, err := protonext.GetVerificationData(ctx, s.protonextAuth(), s.volumeID, linkID, revisionID)
+	if err != nil {
+		return nil, 0, nil, "", fmt.Errorf("block verification data: %w", err)
+	}
+	// The server checks blocks against the key in its content key packet; make sure that's the key the blocks are encrypted with.
+	serverKey, err := nodeKR.DecryptSessionKey(verification.ContentKeyPacket)
+	if err != nil {
+		return nil, 0, nil, "", fmt.Errorf("block verification key: %w", err)
+	}
+	if !bytes.Equal(serverKey.Key, sessionKey.Key) {
+		return nil, 0, nil, "", errors.New("block verification: content key on the server differs from the upload key")
 	}
 
 	var (
@@ -770,18 +784,18 @@ func (s *Session) uploadBlocks(
 		if len(pending) == 0 {
 			return nil
 		}
-		list := make([]proton.BlockUploadInfo, len(pending))
+		list := make([]protonext.BlockUploadInfo, len(pending))
 		for i := range pending {
 			list[i] = pending[i].info
 		}
-		uploadReq := proton.BlockUploadReq{
+		uploadReq := protonext.BlockUploadReq{
 			AddressID:  s.mainShare.AddressID,
 			ShareID:    s.mainShare.ShareID,
 			LinkID:     linkID,
 			RevisionID: revisionID,
 			BlockList:  list,
 		}
-		uploadLinks, err := s.c.RequestBlockUpload(ctx, uploadReq)
+		uploadLinks, err := protonext.RequestBlockUpload(ctx, s.protonextAuth(), uploadReq)
 		if err != nil {
 			return err
 		}
@@ -839,11 +853,14 @@ func (s *Session) uploadBlocks(
 		manifest = append(manifest, hash[:]...)
 
 		pending = append(pending, pendingBlock{
-			info: proton.BlockUploadInfo{
+			info: protonext.BlockUploadInfo{
 				Index:        blockIdx,
 				Size:         int64(len(encData)),
 				EncSignature: encSigArm,
 				Hash:         base64.StdEncoding.EncodeToString(hash[:]),
+				Verifier: protonext.BlockVerifier{
+					Token: base64.StdEncoding.EncodeToString(protonext.VerificationToken(verification.VerificationCode, encData)),
+				},
 			},
 			data: encData,
 		})

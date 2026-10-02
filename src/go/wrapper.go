@@ -239,6 +239,20 @@ func ProtonDrive_Version() *C.char {
 	return C.CString("celeste-native proton-api bound")
 }
 
+// ProtonDrive_SetAppVersion sets the `x-pm-appversion` header sent by every later session. Input `{"version":"..."}`; call once at startup, before any login or resume.
+//
+//export ProtonDrive_SetAppVersion
+func ProtonDrive_SetAppVersion(paramsJSON *C.char) *C.char {
+	var p struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(C.GoString(paramsJSON)), &p); err != nil {
+		return errResult(err)
+	}
+	drive.SetAppVersion(p.Version)
+	return okResult(nil)
+}
+
 // ProtonDrive_Login performs a full username+password (+ optional
 // TOTP / mailbox password) login. Input JSON follows
 // `drive.LoginParams`; on success the result data is a

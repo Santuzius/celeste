@@ -51,13 +51,15 @@ func newProtonHTTPTransport() *http.Transport {
 	return t
 }
 
-// AppVersion sent in the `AppVersion` header for every Proton API
-// call. Proton's server validates the platform prefix against a
-// whitelist; we follow rclone's proven format and piggyback on the
-// `macos-drive` platform slot with our own version + tag so the
-// upstream-side rate-limit telemetry still distinguishes Celeste
-// from rclone.
-const AppVersion = "macos-drive@1.0.0-alpha.1+rclone"
+// AppVersion is sent as `x-pm-appversion` on every Proton API call. Proton's guidelines for third-party Drive clients ask for `external-drive-{name}@{semver}-{channel}`; Celeste sets its real version through SetAppVersion at startup, before any session exists.
+var AppVersion = "external-drive-celeste@0.0.0-dev"
+
+// SetAppVersion replaces AppVersion. Call it before the first Login or Resume.
+func SetAppVersion(v string) {
+	if v != "" {
+		AppVersion = v
+	}
+}
 
 // Errors that can surface through the FFI boundary. Message text is
 // the only thing the Rust side sees — keep them short and actionable.

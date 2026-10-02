@@ -246,6 +246,8 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
         }
         Some(p) if p.is_proton_drive() => {
+            // Wording required by Proton's guidelines for third-party Drive clients.
+            body = body.push(instruction("This is a third-party application not officially supported by Proton."));
             body = body.push(field("E-mail", input("example@proton.me", &draft.user, Msg::UserChanged)));
             body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
             body = body.push(field("2FA code", input("only if two-factor authentication is on", &draft.totp, Msg::TotpChanged)));

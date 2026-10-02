@@ -84,6 +84,15 @@ pub mod proton {
     use super::{call_json, ffi, invoke_raw};
     use std::path::Path;
 
+    /// Set the app identity Proton sees in `x-pm-appversion`. Call once at startup, before any login or resume.
+    pub fn set_app_version(version: &str) -> Result<(), String> {
+        invoke_raw(
+            |payload| unsafe { ffi::ProtonDrive_SetAppVersion(payload) },
+            &serde_json::json!({ "version": version }),
+        )?;
+        Ok(())
+    }
+
     /// Credentials required for a fresh login. `mailbox_password` is
     /// only needed for two-password accounts; `two_fa` only for those
     /// with TOTP enabled — when required and missing, `login` returns
