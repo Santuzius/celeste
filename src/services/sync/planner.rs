@@ -37,16 +37,20 @@ pub(super) enum Action {
         local_path: String,
         remote_path: String,
     },
-    /// Reserved for the case where a future planner version refuses to
-    /// pick a side on simultaneous local+remote drift. Today's planner
-    /// always picks newer-mtime, so this is unreachable — but the apply
-    /// + summary code keep the arm so reintroducing it stays a one-line
-    /// change.
-    #[allow(dead_code)]
+    /// A file exists on both sides and the planner can't tell which copy is right. The applier compares content first (identical copies just get a DB row) and otherwise asks the user — see [`ConflictKind`].
     Conflict {
         local_path: String,
         remote_path: String,
+        kind: ConflictKind,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ConflictKind {
+    /// Both copies changed since the last sync.
+    BothChanged,
+    /// Both copies existed before the first sync. Without a content digest to compare (pCloud, WebDAV, Dropbox) the newer one wins as before, so a first sync of two large trees doesn't turn into hundreds of questions.
+    BothNew,
 }
 
 pub(super) fn plan(snapshot: &Snapshot, sync_dir: &SyncDir) -> Vec<Action> {
@@ -264,19 +268,19 @@ fn plan_one(
                 // child lands.
                 return None;
             }
-            if l.mtime_secs > r.mod_time.unix_timestamp() {
-                Some(Action::Upload {
-                    local_path: l.absolute_path.clone(),
-                    remote_path: remote_path.to_owned(),
-                    is_dir: l.is_dir,
-                })
-            } else {
-                Some(Action::Download {
-                    local_path: l.absolute_path.clone(),
-                    remote_path: remote_path.to_owned(),
-                    is_dir: r.is_dir,
-                })
+            if l.is_dir != r.is_dir {
+                // A file on one side, a folder on the other: no content to compare, keep the old newer-wins rule.
+                return Some(if l.mtime_secs > r.mod_time.unix_timestamp() {
+                    Action::Upload { local_path: l.absolute_path.clone(), remote_path: remote_path.to_owned(), is_dir: l.is_dir }
+                } else {
+                    Action::Download { local_path: l.absolute_path.clone(), remote_path: remote_path.to_owned(), is_dir: r.is_dir }
+                });
             }
+            Some(Action::Conflict {
+                local_path: l.absolute_path.clone(),
+                remote_path: remote_path.to_owned(),
+                kind: ConflictKind::BothNew,
+            })
         }
         // Was tracked, remote gone — mirror delete locally. Require a
         // DB-tracked sibling of this item to also appear in the listing;
@@ -328,7 +332,19 @@ fn plan_one(
         //   2. Sibling presence. Weaker backstop for paths whose
         //      ancestors look healthy but whose parent holds other
         //      DB-tracked rows that didn't make the walk either.
-        (None, Some(r), Some(_)) => {
+        (None, Some(r), Some(db)) => {
+            // Deleted here, edited there: the edit wins, so nothing the user changed is lost. Fetch it back instead of deleting it.
+            if !r.is_dir && r.mod_time.unix_timestamp() > db.last_remote_timestamp {
+                eprintln!(
+                    "sync: SWAP DeleteRemote → Download for '{}' — remote changed since the last sync; restoring it locally.",
+                    r.path,
+                );
+                return Some(Action::Download {
+                    local_path: derive_local_path(&r.path, sync_dir),
+                    remote_path: r.path.clone(),
+                    is_dir: false,
+                });
+            }
             if ancestor_in_set(&r.path, &snapshot.walk_unreliable) {
                 eprintln!(
                     "sync: SKIP DeleteRemote for '{}' — local walk reported an error on this path or an ancestor; preserving remote copy.",
@@ -371,28 +387,22 @@ fn plan_one(
                     remote_path: remote_path.to_owned(),
                     is_dir: r.is_dir,
                 }),
-                // Both sides drifted since the last recorded sync.
-                // Don't stall on a Conflict — pick the side with the
-                // newer current mtime and propagate it over the other.
-                // Ties go to local on the assumption that the user is
-                // the active editor (Celeste's typical workloads —
-                // game saves, dotfiles, notes — are local-driven).
-                // Two dirs against each other still no-op since the
-                // contents land via their children.
+                // Both sides drifted since the last recorded sync: the user decides, unless the content turns out identical. Two dirs against each other still no-op since the contents land via their children.
                 (true, true) => {
                     if l.is_dir && r.is_dir {
                         None
-                    } else if l.mtime_secs >= r.mod_time.unix_timestamp() {
-                        Some(Action::Upload {
-                            local_path: l.absolute_path.clone(),
-                            remote_path: remote_path.to_owned(),
-                            is_dir: l.is_dir,
+                    } else if l.is_dir != r.is_dir {
+                        // File on one side, folder on the other: nothing to compare, the newer one wins.
+                        Some(if l.mtime_secs >= r.mod_time.unix_timestamp() {
+                            Action::Upload { local_path: l.absolute_path.clone(), remote_path: remote_path.to_owned(), is_dir: l.is_dir }
+                        } else {
+                            Action::Download { local_path: l.absolute_path.clone(), remote_path: remote_path.to_owned(), is_dir: r.is_dir }
                         })
                     } else {
-                        Some(Action::Download {
+                        Some(Action::Conflict {
                             local_path: l.absolute_path.clone(),
                             remote_path: remote_path.to_owned(),
-                            is_dir: r.is_dir,
+                            kind: ConflictKind::BothChanged,
                         })
                     }
                 }

@@ -275,6 +275,26 @@ pub mod proton {
         )
     }
 
+    /// Plaintext size, recorded modification time and SHA-1 of a file's active revision. Matches `drive.FileDetails`.
+    #[derive(Clone, Debug, serde::Deserialize)]
+    pub struct FileDetails {
+        pub size: i64,
+        pub has_size: bool,
+        pub mod_time_unix: i64,
+        #[serde(default)]
+        pub sha1: String,
+    }
+
+    /// Fresh details of a file for conflict handling. `Ok(None)` for folders and inactive links.
+    pub fn file_details(uid: &str, link_id: &str) -> Result<Option<FileDetails>, String> {
+        // `data` is null for folders, which `call_json` would treat as a malformed reply.
+        let data = invoke_raw(
+            |payload| unsafe { ffi::ProtonDrive_FileDetails(payload) },
+            &serde_json::json!({ "uid": uid, "link_id": link_id }),
+        )?;
+        data.map(|v| serde_json::from_value(v).map_err(|e| format!("invalid response shape: {e}"))).transpose()
+    }
+
     /// Metadata for a single link. Returns `Ok(None)` when the link
     /// exists but is not in the active state (matches the semantics
     /// the sync engine's `stat` port expects from its client trait).

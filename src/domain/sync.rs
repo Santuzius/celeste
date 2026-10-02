@@ -58,6 +58,49 @@ pub struct RemoteItem {
     pub mod_time: OffsetDateTime,
 }
 
+/// One side of a file as the conflict dialog shows it. `size` and `sha1` are `None` where the backend doesn't report them; `mod_time` is the time the file was last modified (for Proton the time recorded by the uploading app).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileDetails {
+    pub size: Option<u64>,
+    pub mod_time: OffsetDateTime,
+    /// Lowercase hex SHA-1 of the content.
+    pub sha1: Option<String>,
+}
+
+/// A file that changed on both sides since the last sync, or that exists on both sides with different content before it was ever synced. Nothing is transferred for it until the user picks a version; every pass detects it again, so resolving it by hand (deleting or replacing one copy) also clears it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Conflict {
+    pub local_path: String,
+    pub remote_path: String,
+    pub local: FileDetails,
+    pub remote: FileDetails,
+    /// Timestamps the sync engine compares (local mtime, remote listing time), in Unix seconds. A [`Resolution`] only applies while both are unchanged.
+    pub local_stamp: i64,
+    pub remote_stamp: i64,
+    /// Both copies existed before the file was ever synced (rather than both being edited since the last sync).
+    pub first_sync: bool,
+}
+
+/// What the user picked in the conflict dialog.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConflictChoice {
+    /// Overwrite the remote copy with the local one.
+    KeepLocal,
+    /// Overwrite the local copy with the remote one.
+    KeepRemote,
+    /// Rename the local copy to `local_name` (same folder), then fetch the remote one; the renamed file is uploaded as a new file.
+    KeepBoth { local_name: String },
+}
+
+/// A choice waiting for the next sync pass. Dropped unused if the file changed again since the dialog showed it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Resolution {
+    pub remote_path: String,
+    pub choice: ConflictChoice,
+    pub local_stamp: i64,
+    pub remote_stamp: i64,
+}
+
 /// Filter for `list` calls — matches rclone's `dirsOnly` / `filesOnly` options.
 #[derive(Clone, Copy, Debug)]
 pub enum ListFilter {

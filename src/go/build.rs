@@ -90,6 +90,7 @@ fn main() {
         .allowlist_function("ProtonDrive_ListDirectory")
         .allowlist_function("ProtonDrive_ListRecursive")
         .allowlist_function("ProtonDrive_Stat")
+        .allowlist_function("ProtonDrive_FileDetails")
         .allowlist_function("ProtonDrive_DownloadFile")
         .allowlist_function("ProtonDrive_CreateFolder")
         .allowlist_function("ProtonDrive_UploadFile")

@@ -14,7 +14,7 @@ use crate::{
     domain::{
         remote::{Remote, RemoteId},
         run_state::RunState,
-        sync::{SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
+        sync::{Conflict, SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
     },
     screens::{main_page::{status_label, NO_FOLDERS}, settings},
     theme::{self, CAPTION, HEADING, PAGE_PADDING, ROW_SPACING, SECTION_SPACING, TEXT, TITLE},
@@ -62,6 +62,8 @@ pub enum Msg {
     Reauthenticate(RemoteId, String),
     /// Read-only log editor swallows edits but forwards scroll/select actions so users can drag through history.
     LogEditorAction(SyncDirId, text_editor::Action),
+    /// Open the conflict dialog for the file with this remote path.
+    OpenConflict(SyncDirId, String),
 }
 
 /// What the user is about to delete, pending confirmation. Stored at the app level and rendered by [`confirm_delete_overlay`].
@@ -101,6 +103,8 @@ pub struct Folder<'a> {
     pub auto_excluded: Vec<&'a SyncDir>,
     pub custom_excluded: &'a [SyncDirExclusion],
     pub draft_exclusion: &'a str,
+    /// Files that changed on both sides and wait for a decision.
+    pub conflicts: &'a [Conflict],
 }
 
 pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
@@ -276,10 +280,16 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
     let remote_display = if sd.remote_path.is_empty() { "/".to_owned() } else { format!("/{}", sd.remote_path) };
 
     // Second caption line: live progress while syncing, the latest problem while in trouble, otherwise the plain state.
-    let detail = match folder.state {
-        RunState::Syncing(_) => folder.latest_line.unwrap_or(status_label(folder.state)),
-        RunState::Warning | RunState::Error => folder.latest_problem.unwrap_or(status_label(folder.state)),
-        state => status_label(state),
+    let conflict_note = match folder.conflicts.len() {
+        0 => None,
+        1 => Some("1 file differs on both sides — choose which version to keep".to_owned()),
+        n => Some(format!("{n} files differ on both sides — choose which version to keep")),
+    };
+    let detail: String = match folder.state {
+        RunState::Syncing(_) => folder.latest_line.unwrap_or(status_label(folder.state)).to_owned(),
+        _ if conflict_note.is_some() => conflict_note.unwrap_or_default(),
+        RunState::Warning | RunState::Error => folder.latest_problem.unwrap_or(status_label(folder.state)).to_owned(),
+        state => status_label(state).to_owned(),
     };
     let detail_text = text(detail).size(CAPTION).wrapping(Wrapping::WordOrGlyph);
     let detail_text = if matches!(folder.state, RunState::Error) {
@@ -326,6 +336,28 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
     .align_y(Alignment::Center);
 
     let mut card = column![top].spacing(10);
+
+    if !folder.conflicts.is_empty() {
+        let mut list = column![].spacing(4);
+        for conflict in folder.conflicts {
+            let relative = conflict.local_path.strip_prefix(&format!("{}/", sd.local_path)).unwrap_or(&conflict.local_path);
+            list = list.push(
+                row![
+                    icon(icondata::TbAlertTriangleOutline, 16.0).style(|theme: &iced::Theme, _| iced::widget::svg::Style {
+                        color: Some(theme::status_color(theme, RunState::Warning)),
+                    }),
+                    text(relative.to_owned()).size(TEXT).wrapping(Wrapping::WordOrGlyph).width(Length::Fill),
+                    button(text("Resolve…").size(TEXT))
+                        .padding([5, 12])
+                        .style(theme::button_secondary)
+                        .on_press(Msg::OpenConflict(sd.id, conflict.remote_path.clone())),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            );
+        }
+        card = card.push(container(list).padding([8, 10]).width(Length::Fill).style(theme::well));
+    }
 
     if let Some(content) = folder.log {
         let sd_id = sd.id;

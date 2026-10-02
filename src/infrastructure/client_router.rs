@@ -11,7 +11,7 @@ use std::{
 
 use crate::domain::{
     ports::{BackendClient, Cancel},
-    sync::{ListFilter, RemoteItem},
+    sync::{FileDetails, ListFilter, RemoteItem},
 };
 
 pub struct ClientRouter {
@@ -67,6 +67,9 @@ impl BackendClient for ClientRouter {
         cancel: &Cancel,
     ) -> Result<Vec<RemoteItem>, String> {
         self.pick(remote).list(remote, path, recursive, filter, cancel)
+    }
+    fn details(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        self.pick(remote).details(remote, path, cancel)
     }
     fn mkdir(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
         self.pick(remote).mkdir(remote, path, cancel)

@@ -20,7 +20,7 @@ use std::{
 
 use crate::domain::{
     ports::{BackendClient, Cancel},
-    sync::{ListFilter, RemoteItem},
+    sync::{FileDetails, ListFilter, RemoteItem},
 };
 use crate::services::secrets;
 
@@ -140,6 +140,15 @@ impl BackendClient for LibrcloneClient {
             cached.entries.insert(key, items.clone());
         }
         Ok(items)
+    }
+
+    fn details(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        let item = rpc::sync::details(remote, path).map_err(|err| err.error)?;
+        Ok(item.filter(|item| !item.is_dir).map(|item| FileDetails {
+            size: u64::try_from(item.size).ok(),
+            mod_time: item.mod_time,
+            sha1: item.hashes.get("sha1").filter(|h| !h.is_empty()).map(|h| h.to_lowercase()),
+        }))
     }
 
     fn mkdir(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<(), String> {

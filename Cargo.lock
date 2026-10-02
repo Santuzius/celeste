@@ -771,6 +771,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha1",
  "time",
  "tokio",
  "tr",

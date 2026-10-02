@@ -19,8 +19,8 @@ use std::{
 use super::{
     remote::{Remote, RemoteId, SyncPolicy},
     sync::{
-        ListFilter, RemoteItem, SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId,
-        SyncItem, SyncItemId,
+        FileDetails, ListFilter, RemoteItem, SyncDir, SyncDirExclusion, SyncDirExclusionId,
+        SyncDirId, SyncItem, SyncItemId,
     },
 };
 
@@ -197,6 +197,14 @@ pub trait BackendClient: Send + Sync {
         filter: ListFilter,
         cancel: &Cancel,
     ) -> Result<Vec<RemoteItem>, String>;
+    /// Fresh (never cached) details of a file for conflict handling: size and SHA-1 where the backend knows them. `Ok(None)` when the path doesn't exist or is a folder. The default only has the modification time from `stat`.
+    fn details(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        Ok(self.stat(remote, path, cancel)?.filter(|item| !item.is_dir).map(|item| FileDetails {
+            size: None,
+            mod_time: item.mod_time,
+            sha1: None,
+        }))
+    }
     fn mkdir(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String>;
     fn delete_file(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String>;
     fn purge(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String>;

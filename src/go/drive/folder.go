@@ -158,7 +158,8 @@ func (s *Session) Stat(ctx context.Context, linkID string) (*Entry, error) {
 	if linkID == "" {
 		linkID = s.RootLinkID()
 	}
-	link, err := s.getLink(ctx, linkID)
+	// Fresh from the API: callers record the timestamp the sync engine compares against, and a cached link would still show the revision before an upload.
+	link, err := s.refreshLink(ctx, linkID)
 	if err != nil {
 		return nil, err
 	}

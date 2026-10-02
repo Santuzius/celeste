@@ -45,6 +45,8 @@ sea-orm = { version = "0.10.7", features = ["sqlx-sqlite", "runtime-async-std-ru
 sea-orm-migration = "0.10.7"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+# SHA-1 of local files, compared with the digest Proton and Google Drive keep per file to spot identical copies; already a transitive dependency.
+sha1 = "0.10.6"
 time = { version = "0.3.47", features = ["serde-well-known"] }
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "sync"] }
 tr = "0.1.11"

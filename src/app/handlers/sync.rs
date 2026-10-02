@@ -123,6 +123,8 @@ impl CelesteApp {
         let rclone = self.rclone.clone();
         let events_tx = self.events_tx.clone();
         let stderr_capture = self.stderr_capture.clone();
+        // The user's conflict choices go to this pass; one that no longer fits is simply dropped and the conflict reported again.
+        let resolutions = self.resolutions.remove(&id).unwrap_or_default();
         Task::perform(
             async move {
                 let remote = match repo.find_remote(id).await {
@@ -170,6 +172,7 @@ impl CelesteApp {
                             &*repo,
                             &*rclone,
                             &all_sync_dirs,
+                            resolutions.get(&sd.id).map_or(&[], |v| v.as_slice()),
                             emit.clone(),
                             &flag,
                             rate_limit_seen_since.clone(),

@@ -86,6 +86,11 @@ impl CelesteApp {
             } => {
                 self.sync_state.transition_dir(remote_id, sync_dir_id, state);
             }
+            SyncEvent::SyncDirConflicts {
+                remote_id,
+                sync_dir_id,
+                conflicts,
+            } => self.handle_conflicts_reported(remote_id, sync_dir_id, conflicts),
             SyncEvent::RemoteStarted { .. }
             | SyncEvent::RemoteCompleted { .. }
             | SyncEvent::RemoteFailed { .. }

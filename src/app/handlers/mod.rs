@@ -2,6 +2,7 @@
 //! [`super::CelesteApp`] that the root `update()` dispatch in
 //! [`super`] (`app/mod.rs`) calls into.
 
+pub(super) mod conflicts;
 pub(super) mod events;
 pub(super) mod remotes;
 pub(super) mod sync;

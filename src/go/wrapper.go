@@ -413,6 +413,28 @@ func ProtonDrive_DownloadFile(paramsJSON *C.char) *C.char {
 	return okResult(nil)
 }
 
+// ProtonDrive_FileDetails returns plaintext size, modification time and SHA-1 of a file. Input `{"uid":"...","link_id":"..."}`; result data is a `drive.FileDetails`, or null for folders and inactive links.
+//
+//export ProtonDrive_FileDetails
+func ProtonDrive_FileDetails(paramsJSON *C.char) *C.char {
+	var p struct {
+		UID    string `json:"uid"`
+		LinkID string `json:"link_id"`
+	}
+	if err := json.Unmarshal([]byte(C.GoString(paramsJSON)), &p); err != nil {
+		return errResult(err)
+	}
+	sess, err := drive.Lookup(p.UID)
+	if err != nil {
+		return errResult(err)
+	}
+	details, err := sess.FileDetails(context.Background(), p.LinkID)
+	if err != nil {
+		return errResult(err)
+	}
+	return okResult(details)
+}
+
 // ProtonDrive_CreateFolder creates a folder named `name` under
 // `parent_link_id` (empty parent = session root). Input
 // `{"uid":"...","parent_link_id":"...","name":"..."}`; result data

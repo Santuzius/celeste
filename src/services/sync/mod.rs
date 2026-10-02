@@ -22,7 +22,7 @@ use crate::domain::{
     ports::{BackendClient, Cancel, Repository, is_cancelled as cancel_check},
     remote::Remote,
     run_state::{RunState, SyncActivity},
-    sync::{SyncDir, SyncError},
+    sync::{Resolution, SyncDir, SyncError},
 };
 
 mod applier;
@@ -58,6 +58,7 @@ pub fn run<FE, FD>(
     repo: &dyn Repository,
     client: &dyn BackendClient,
     all_sync_dirs: &[SyncDir],
+    resolutions: &[Resolution],
     emit: FE,
     cancel: &Cancel,
     rate_limit_seen_since: FD,
@@ -152,16 +153,28 @@ where
         ));
     }
     let total = actions.len();
-    let failed = applier::apply(
+    let applied = applier::apply(
         actions,
         &snapshot,
         remote,
         sync_dir,
         repo,
         client,
+        resolutions,
         &emit,
         cancel,
     );
+    // The complete list replaces the previous one, so conflicts the user resolved by hand disappear. A cancelled pass only saw part of them.
+    if !applied.cancelled {
+        emit(SyncEvent::SyncDirConflicts {
+            remote_id: remote.id,
+            sync_dir_id: sync_dir.id,
+            conflicts: applied.conflicts.clone(),
+        });
+    }
+    let failed = applied.failures;
+    // Conflicts waiting for the user are neither synced nor failed.
+    let total = total - applied.conflicts.len();
 
     // Checkpoint any auth-token rotation that happened during listing or
     // apply so it lands in the keyring before the process can exit. A

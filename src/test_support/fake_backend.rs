@@ -9,13 +9,15 @@ use std::{collections::HashMap, sync::Mutex};
 
 use crate::domain::{
     ports::{BackendClient, Cancel},
-    sync::{ListFilter, RemoteItem},
+    sync::{FileDetails, ListFilter, RemoteItem},
 };
 
 pub struct FakeBackend {
     pub stat_map: Mutex<HashMap<String, Result<Option<RemoteItem>, String>>>,
     pub stat_sequence: Mutex<HashMap<String, Vec<Result<Option<RemoteItem>, String>>>>,
     pub list_map: Mutex<HashMap<String, Result<Vec<RemoteItem>, String>>>,
+    /// SHA-1 reported by `details` per path; without an entry `details` falls back to `stat` without a digest.
+    pub sha1_map: Mutex<HashMap<String, String>>,
     pub copy_to_remote_result: Mutex<Result<(), String>>,
     pub copy_to_local_result: Mutex<Result<(), String>>,
     pub delete_file_result: Mutex<Result<(), String>>,
@@ -37,6 +39,7 @@ impl Default for FakeBackend {
             stat_map: Mutex::new(HashMap::new()),
             stat_sequence: Mutex::new(HashMap::new()),
             list_map: Mutex::new(HashMap::new()),
+            sha1_map: Mutex::new(HashMap::new()),
             copy_to_remote_result: Mutex::new(Ok(())),
             copy_to_local_result: Mutex::new(Ok(())),
             delete_file_result: Mutex::new(Ok(())),
@@ -70,6 +73,9 @@ impl FakeBackend {
             .lock()
             .unwrap()
             .insert(path.to_owned(), responses);
+    }
+    pub fn set_sha1(&self, path: &str, sha1: &str) {
+        self.sha1_map.lock().unwrap().insert(path.to_owned(), sha1.to_owned());
     }
     pub fn set_list(&self, path: &str, resp: Result<Vec<RemoteItem>, String>) {
         self.list_map.lock().unwrap().insert(path.to_owned(), resp);
@@ -120,6 +126,10 @@ impl BackendClient for FakeBackend {
             Some(r) => r.clone(),
             None => Ok(vec![]),
         }
+    }
+    fn details(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        let sha1 = self.sha1_map.lock().unwrap().get(path).cloned();
+        Ok(self.stat(remote, path, cancel)?.filter(|item| !item.is_dir).map(|item| FileDetails { size: None, mod_time: item.mod_time, sha1 }))
     }
     fn mkdir(&self, _remote: &str, path: &str, _cancel: &Cancel) -> Result<(), String> {
         self.mkdir_calls.lock().unwrap().push(path.to_owned());

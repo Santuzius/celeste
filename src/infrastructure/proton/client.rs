@@ -30,7 +30,7 @@ use celeste_go::proton as proton_ffi;
 
 use crate::domain::{
     ports::{BackendClient, Cancel, is_cancelled},
-    sync::{ListFilter, RemoteItem},
+    sync::{FileDetails, ListFilter, RemoteItem},
 };
 
 /// Native ProtonDrive adapter. Owns the session UID the native-go
@@ -210,6 +210,17 @@ impl BackendClient for NativeProtonClient {
             .map(|e| entry_to_remote_item(e, &trimmed))
             .collect();
         Ok(out)
+    }
+
+    fn details(&self, _remote: &str, path: &str, cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        let Some(link_id) = self.resolve_path(path, cancel)? else {
+            return Ok(None);
+        };
+        Ok(proton_ffi::file_details(&self.uid, &link_id)?.map(|d| FileDetails {
+            size: d.has_size.then_some(d.size).and_then(|s| u64::try_from(s).ok()),
+            mod_time: OffsetDateTime::from_unix_timestamp(d.mod_time_unix).unwrap_or(OffsetDateTime::UNIX_EPOCH),
+            sha1: (!d.sha1.is_empty()).then(|| d.sha1.to_lowercase()),
+        }))
     }
 
     fn mkdir(&self, _remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
@@ -426,6 +437,9 @@ impl BackendClient for PendingProtonClient {
         cancel: &Cancel,
     ) -> Result<Vec<RemoteItem>, String> {
         self.resolve()?.list(remote, path, recursive, filter, cancel)
+    }
+    fn details(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        self.resolve()?.details(remote, path, cancel)
     }
     fn mkdir(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
         self.resolve()?.mkdir(remote, path, cancel)

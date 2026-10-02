@@ -1,7 +1,7 @@
 use super::{
     remote::RemoteId,
     run_state::RunState,
-    sync::{SyncDirId, SyncError},
+    sync::{Conflict, SyncDirId, SyncError},
 };
 
 /// Events the sync services emit. UI adapters subscribe and translate into
@@ -42,6 +42,12 @@ pub enum SyncEvent {
         remote_id: RemoteId,
         sync_dir_id: SyncDirId,
         error: SyncError,
+    },
+    /// The files of a sync dir that changed on both sides and wait for the user, as of the pass that just ran. Replaces the previous list; empty when there are none.
+    SyncDirConflicts {
+        remote_id: RemoteId,
+        sync_dir_id: SyncDirId,
+        conflicts: Vec<Conflict>,
     },
     /// Per-sync-dir coarse run-state transition. Drives the status icon on
     /// the remote page. The `RunState` variants the sync engine emits are

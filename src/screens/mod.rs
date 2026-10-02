@@ -3,6 +3,7 @@
 
 pub mod about;
 pub mod add_remote;
+pub mod conflict;
 pub mod main_page;
 pub mod remote_page;
 pub mod settings;

@@ -27,7 +27,7 @@ use crate::{
         ports::Repository,
         remote::{ProviderKind, Remote, RemoteId},
         run_state::{AppState, RunState},
-        sync::{SyncDir, SyncDirExclusion, SyncDirId},
+        sync::{Conflict, Resolution, SyncDir, SyncDirExclusion, SyncDirId},
     },
     infrastructure::{
         client_router::ClientRouter,
@@ -35,7 +35,7 @@ use crate::{
         stderr_capture::{self, CaptureHandle},
         tray::{self, TrayAction, TrayUpdate},
     },
-    screens::{about, add_remote, main_page, remote_page, settings},
+    screens::{about, add_remote, conflict, main_page, remote_page, settings},
     theme,
 };
 
@@ -51,6 +51,7 @@ pub enum Message {
     Settings(settings::Msg),
     AddRemote(add_remote::Msg),
     About(about::Msg),
+    Conflict(conflict::Msg),
     AddRemoteResult(Result<RemoteId, String>),
     RemotesLoaded(Vec<Remote>),
     SyncDirsLoaded(RemoteId, Vec<SyncDir>),
@@ -157,6 +158,12 @@ pub struct CelesteApp {
     settings_open: bool,
     /// The About dialog is shown.
     about_open: bool,
+    /// Files per sync dir that changed on both sides, as reported by the last pass.
+    conflicts: HashMap<SyncDirId, Vec<Conflict>>,
+    /// The user's choices, handed to the remote's next pass.
+    resolutions: HashMap<RemoteId, HashMap<SyncDirId, Vec<Resolution>>>,
+    /// Open conflict dialog.
+    conflict_dialog: Option<conflict::Dialog>,
     /// In-progress Add Remote form. Some(...) while the screen is shown.
     add_remote_draft: Option<add_remote::Draft>,
     /// Sender handed to us by the subscription worker; sync code clones this
@@ -218,6 +225,9 @@ impl CelesteApp {
             sync_dir_drafts: HashMap::new(),
             settings_open: false,
             about_open: false,
+            conflicts: HashMap::new(),
+            resolutions: HashMap::new(),
+            conflict_dialog: None,
             add_remote_draft: None,
             events_tx: None,
             cancel_flags: HashMap::new(),
@@ -380,6 +390,8 @@ impl CelesteApp {
             Message::Remote(remote_page::Msg::LogEditorAction(sd_id, action)) => {
                 self.handle_log_editor_action(sd_id, action)
             }
+            Message::Remote(remote_page::Msg::OpenConflict(sd_id, remote_path)) => self.handle_open_conflict(sd_id, remote_path),
+            Message::Conflict(sub) => self.handle_conflict_msg(sub),
 
             // Sync lifecycle ----------------------------------------
             Message::SyncStarted(id) => self.handle_sync_started(id),
@@ -432,6 +444,8 @@ impl CelesteApp {
         if let Some(draft) = self.add_remote_draft.as_ref() {
             let dismiss = draft.can_cancel().then_some(Message::AddRemote(add_remote::Msg::Cancel));
             stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
+        } else if let Some(dialog) = self.conflict_dialog.as_ref() {
+            stack![base, remote_page::modal(conflict::view(dialog).map(Message::Conflict), None)].into()
         } else if let Some(pending) = self.pending_delete.as_ref() {
             stack![base, remote_page::confirm_delete_overlay(pending).map(Message::Remote)].into()
         } else if let Some(remote) = self.settings_open.then(|| self.selected_remote()).flatten() {
@@ -449,6 +463,9 @@ impl CelesteApp {
     /// Close the topmost dialog or open panel.
     fn handle_escape(&mut self) -> Task<Message> {
         if self.pending_delete.take().is_some() {
+            return Task::none();
+        }
+        if self.conflict_dialog.take().is_some() {
             return Task::none();
         }
         if std::mem::take(&mut self.about_open) {
@@ -503,6 +520,7 @@ impl CelesteApp {
                     exclusions_open: self.exclusion_panel == Some(dir.id),
                     auto_excluded: remote_page_auto_excluded(dir, &self.all_known_sync_dirs),
                     custom_excluded: self.sync_dir_exclusions.get(&dir.id).map_or(&[], |v| v.as_slice()),
+                    conflicts: self.conflicts.get(&dir.id).map_or(&[], |v| v.as_slice()),
                     draft_exclusion: self.draft_exclusion.get(&dir.id).map_or("", |s| s.as_str()),
                 }
             })

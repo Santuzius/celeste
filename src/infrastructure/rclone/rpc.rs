@@ -210,6 +210,12 @@ pub struct BackendRemoteItem {
     pub name: String,
     #[serde(rename = "ModTime", with = "time::serde::rfc3339")]
     pub mod_time: OffsetDateTime,
+    /// -1 when the backend doesn't know it.
+    #[serde(rename = "Size", default)]
+    pub size: i64,
+    /// Only filled when requested (see [`sync::details`]); keys are rclone hash names such as `sha1`.
+    #[serde(rename = "Hashes", default)]
+    pub hashes: std::collections::HashMap<String, String>,
 }
 
 /// The types of items to show in an `operations/list` command.
@@ -281,6 +287,23 @@ pub mod sync {
             .to_string(),
         );
 
+        match resp {
+            Ok(json_str) => Ok(serde_json::from_str::<BackendStat>(&json_str).unwrap().item),
+            Err(json_str) => Err(serde_json::from_str(&json_str).unwrap()),
+        }
+    }
+
+    /// Like [`stat`], with the SHA-1 of the content where the backend has one (Google Drive does).
+    pub fn details(remote_name: &str, path: &str) -> Result<Option<BackendRemoteItem>, RcloneError> {
+        let resp = run(
+            "operations/stat",
+            &json!({
+                "fs": get_remote_name(remote_name),
+                "remote": util::strip_slashes(path),
+                "opt": { "showHash": true, "hashTypes": ["sha1"] }
+            })
+            .to_string(),
+        );
         match resp {
             Ok(json_str) => Ok(serde_json::from_str::<BackendStat>(&json_str).unwrap().item),
             Err(json_str) => Err(serde_json::from_str(&json_str).unwrap()),

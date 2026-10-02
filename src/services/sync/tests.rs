@@ -17,7 +17,7 @@ use crate::{
     domain::{
         events::SyncEvent,
         ports::cancel_never,
-        sync::{SyncDirId, SyncError},
+        sync::{Conflict, ConflictChoice, Resolution, SyncDirId, SyncError},
     },
     test_support::{remote, remote_item, sync_dir, touch_mtime, FakeBackend, FakeRepo, TempDir},
 };
@@ -26,6 +26,15 @@ fn run_full(
     tmp: &TempDir,
     repo: &FakeRepo,
     client: &FakeBackend,
+) -> (Outcome, Vec<SyncEvent>) {
+    run_resolving(tmp, repo, client, &[])
+}
+
+fn run_resolving(
+    tmp: &TempDir,
+    repo: &FakeRepo,
+    client: &FakeBackend,
+    resolutions: &[Resolution],
 ) -> (Outcome, Vec<SyncEvent>) {
     let r = remote(1, "TestRemote");
     let sd = sync_dir(1, 1, tmp.as_str(), "");
@@ -37,6 +46,7 @@ fn run_full(
         repo,
         client,
         &[],
+        resolutions,
         |e| captured.lock().unwrap().push(e),
         &cancel,
         |_| false,
@@ -154,86 +164,125 @@ fn remote_deleted_mirrors_locally() {
     assert!(!repo.has_item(local.to_str().unwrap(), "gone.txt"));
 }
 
-/// Both sides changed since last sync — newer-mtime wins. Remote is
-/// strictly newer than local here (1_700_000_700 vs 1_700_000_500), so
-/// we expect a Download. No `BothMoreCurrent` error is emitted.
-#[test]
-fn both_sides_changed_remote_newer_downloads() {
-    let tmp = TempDir::new("sync_conflict_remote_newer");
+fn conflicts(events: &[SyncEvent]) -> Vec<Conflict> {
+    events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            SyncEvent::SyncDirConflicts { conflicts, .. } => Some(conflicts.clone()),
+            _ => None,
+        })
+        .expect("pass reported no conflict list")
+}
+
+/// Local copy at 1_700_000_500 and remote copy at 1_700_000_700, both edited since the sync at 1_700_000_000.
+fn both_changed(name: &str) -> (TempDir, PathBuf, FakeRepo, FakeBackend) {
+    let tmp = TempDir::new(name);
     let local = tmp.write_file("a.txt", b"v2");
     touch_mtime(&local, 1_700_000_500);
     let repo = FakeRepo::new();
-    repo.insert_item(
-        SyncDirId(1),
-        local.to_str().unwrap(),
-        "a.txt",
-        1_700_000_000,
-        1_700_000_000,
-    );
-
+    repo.insert_item(SyncDirId(1), local.to_str().unwrap(), "a.txt", 1_700_000_000, 1_700_000_000);
     let client = FakeBackend::default();
     client.set_list("", Ok(vec![remote_item("a.txt", false, 1_700_000_700)]));
-
-    let (outcome, events) = run_full(&tmp, &repo, &client);
-    assert_eq!(outcome, Outcome::Synced);
-    assert!(
-        !errors(&events)
-            .iter()
-            .any(|e| matches!(e, SyncError::BothMoreCurrent(..))),
-        "newer-mtime resolution should not emit BothMoreCurrent",
-    );
-    let downloads = client.copy_to_local_calls.lock().unwrap();
-    assert_eq!(
-        downloads.len(),
-        1,
-        "expected exactly one download, got {downloads:?}",
-    );
-    assert!(
-        client.copy_to_remote_calls.lock().unwrap().is_empty(),
-        "should not upload when remote is newer",
-    );
+    client.set_stat("a.txt", Ok(Some(remote_item("a.txt", false, 1_700_000_700))));
+    (tmp, local, repo, client)
 }
 
-/// Both sides changed since last sync — local mtime is strictly newer
-/// than remote so we expect an Upload. Mirrors the case the user hit
-/// after a slow-train upload: remote drifted but local was edited
-/// further still, so local should win.
+/// Both sides changed since the last sync: nothing is transferred, the file is reported as a conflict and the folder goes to Warning.
 #[test]
-fn both_sides_changed_local_newer_uploads() {
-    let tmp = TempDir::new("sync_conflict_local_newer");
-    let local = tmp.write_file("a.txt", b"v2");
-    touch_mtime(&local, 1_700_000_900);
-    let repo = FakeRepo::new();
-    repo.insert_item(
-        SyncDirId(1),
-        local.to_str().unwrap(),
-        "a.txt",
-        1_700_000_000,
-        1_700_000_000,
-    );
+fn both_sides_changed_is_a_conflict() {
+    let (tmp, local, repo, client) = both_changed("sync_conflict_reported");
+    let (_outcome, events) = run_full(&tmp, &repo, &client);
+    let reported = conflicts(&events);
+    assert_eq!(reported.len(), 1);
+    assert_eq!(reported[0].local_path, local.to_str().unwrap());
+    assert_eq!((reported[0].local_stamp, reported[0].remote_stamp), (1_700_000_500, 1_700_000_700));
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+    assert!(events.iter().any(|e| matches!(e, SyncEvent::SyncDirStateChanged { state: crate::domain::run_state::RunState::Warning, .. })));
+}
 
+/// The user's choice is applied when the file still looks the way the dialog showed it.
+#[test]
+fn resolution_keep_local_uploads() {
+    let (tmp, _local, repo, client) = both_changed("sync_conflict_keep_local");
+    let resolution = Resolution { remote_path: "a.txt".into(), choice: ConflictChoice::KeepLocal, local_stamp: 1_700_000_500, remote_stamp: 1_700_000_700 };
+    let (_outcome, events) = run_resolving(&tmp, &repo, &client, &[resolution]);
+    assert!(conflicts(&events).is_empty());
+    assert_eq!(client.copy_to_remote_calls.lock().unwrap().len(), 1);
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+}
+
+/// A choice made for an older state of the file is not applied; the conflict is reported again.
+#[test]
+fn stale_resolution_is_ignored() {
+    let (tmp, _local, repo, client) = both_changed("sync_conflict_stale");
+    let resolution = Resolution { remote_path: "a.txt".into(), choice: ConflictChoice::KeepRemote, local_stamp: 1_700_000_400, remote_stamp: 1_700_000_700 };
+    let (_outcome, events) = run_resolving(&tmp, &repo, &client, &[resolution]);
+    assert_eq!(conflicts(&events).len(), 1);
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+}
+
+/// Keep both renames the local copy and fetches the remote one under the original name.
+#[test]
+fn resolution_keep_both_renames_and_downloads() {
+    let (tmp, local, repo, client) = both_changed("sync_conflict_keep_both");
+    let resolution = Resolution {
+        remote_path: "a.txt".into(),
+        choice: ConflictChoice::KeepBoth { local_name: "a (1).txt".into() },
+        local_stamp: 1_700_000_500,
+        remote_stamp: 1_700_000_700,
+    };
+    let (_outcome, _events) = run_resolving(&tmp, &repo, &client, &[resolution]);
+    assert!(local.with_file_name("a (1).txt").exists());
+    let downloads = client.copy_to_local_calls.lock().unwrap();
+    assert_eq!(downloads.len(), 1);
+    assert_eq!(downloads[0].1, "a.txt");
+}
+
+/// Identical content on both sides is no conflict, only a DB update.
+#[test]
+fn identical_content_is_no_conflict() {
+    let (tmp, _local, repo, client) = both_changed("sync_conflict_identical");
+    let expected = {
+        use sha1::{Digest, Sha1};
+        Sha1::digest(b"v2").iter().map(|b| format!("{b:02x}")).collect::<String>()
+    };
+    client.set_sha1("a.txt", &expected);
+    let (_outcome, events) = run_full(&tmp, &repo, &client);
+    assert!(conflicts(&events).is_empty());
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+}
+
+/// Deleted locally but edited remotely: the edit wins and is downloaded instead of deleted.
+#[test]
+fn remote_edit_beats_local_delete() {
+    let tmp = TempDir::new("sync_edit_beats_delete");
+    let local = tmp.path.join("a.txt");
+    let repo = FakeRepo::new();
+    repo.insert_item(SyncDirId(1), local.to_str().unwrap(), "a.txt", 1_700_000_000, 1_700_000_000);
     let client = FakeBackend::default();
     client.set_list("", Ok(vec![remote_item("a.txt", false, 1_700_000_700)]));
+    let (_outcome, _events) = run_full(&tmp, &repo, &client);
+    assert!(client.delete_file_calls.lock().unwrap().is_empty());
+    assert_eq!(client.copy_to_local_calls.lock().unwrap().len(), 1);
+}
 
-    let (outcome, events) = run_full(&tmp, &repo, &client);
-    assert_eq!(outcome, Outcome::Synced);
-    assert!(
-        !errors(&events)
-            .iter()
-            .any(|e| matches!(e, SyncError::BothMoreCurrent(..))),
-        "newer-mtime resolution should not emit BothMoreCurrent",
-    );
-    let uploads = client.copy_to_remote_calls.lock().unwrap();
-    assert_eq!(
-        uploads.len(),
-        1,
-        "expected exactly one upload, got {uploads:?}",
-    );
-    assert_eq!(uploads[0].1, "a.txt", "uploaded the wrong remote path");
-    assert!(
-        client.copy_to_local_calls.lock().unwrap().is_empty(),
-        "should not download when local is newer",
-    );
+/// The listing still shows the old remote copy (cached), but the remote changed meanwhile: the upload turns into a conflict instead of overwriting it.
+#[test]
+fn upload_rechecks_remote_before_overwriting() {
+    let tmp = TempDir::new("sync_preflight_upload");
+    let local = tmp.write_file("a.txt", b"v2");
+    touch_mtime(&local, 1_700_000_500);
+    let repo = FakeRepo::new();
+    repo.insert_item(SyncDirId(1), local.to_str().unwrap(), "a.txt", 1_700_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("a.txt", false, 1_700_000_000)]));
+    client.set_stat("a.txt", Ok(Some(remote_item("a.txt", false, 1_700_000_800))));
+    let (_outcome, events) = run_full(&tmp, &repo, &client);
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    assert_eq!(conflicts(&events).len(), 1);
 }
 
 /// Upload that fails with "source gone" after planning — raced with a
@@ -295,6 +344,7 @@ fn cancellation_between_snapshot_and_apply_stops_the_pass() {
         &repo,
         &client,
         &[],
+        &[],
         |e| captured.lock().unwrap().push(e),
         &cancel,
         |_| false,
@@ -341,6 +391,7 @@ fn rate_limit_probe_short_circuits_to_degraded() {
         &sd,
         &repo,
         &client,
+        &[],
         &[],
         |e| captured.lock().unwrap().push(e),
         &cancel,
