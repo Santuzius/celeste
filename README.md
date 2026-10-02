@@ -25,12 +25,17 @@ Celeste is a GUI file synchronization client
 - Two-way sync
 - Connecting to multiple cloud providers at the same time
 - Ability to add multiple local directories to the same remote
+- Conflict resolution: a file changed on both sides is never overwritten silently; you keep the local version, the remote one, or both
 - All credentials are stored at rest in the native Linux keyring
 - Background operation: when the window is closed, only the taskbar icon is displayed
 - Light/dark theme
 
-## Screenshot
-![Celeste's main window with two remotes and several synced folders](doc/img/Screenshot.png)
+## Screenshots
+![Celeste's main window in the dark theme, with two remotes and several synced folders](doc/img/Screenshot_dark.png)
+
+![The same window in the light theme](doc/img/Screenshot_light.png)
+
+![Resolving a file that changed both locally and on Google Drive](doc/img/Screenshot_conflict.png)
 
 ## Used components:
 - [rclone](https://rclone.org/) for Google Drive
