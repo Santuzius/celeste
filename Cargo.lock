@@ -2247,6 +2247,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "412c95f764f89aad1a8505aa4273d931b66d5a26d1e6609a37243784a9128ad9"
 dependencies = [
  "icondata_core",
+ "icondata_mdi",
  "icondata_tb",
 ]
 
@@ -2255,6 +2256,15 @@ name = "icondata_core"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c97be924215abd5e630d84e95a47c710138a6559b4c55039f4f33aa897fa859"
+
+[[package]]
+name = "icondata_mdi"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9517acba09219ff7caebd797b2db68f09b3621c6bc848fe9894f2d30e4f6cdb"
+dependencies = [
+ "icondata_core",
+]
 
 [[package]]
 name = "icondata_tb"

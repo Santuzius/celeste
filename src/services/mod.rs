@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod editor_temp;
+pub mod leftovers;
 pub mod remote_lifecycle;
 pub mod secrets;
 pub mod sync;

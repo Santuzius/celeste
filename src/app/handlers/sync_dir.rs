@@ -2,17 +2,18 @@
 //! per-remote settings (interval + enabled toggle), and the read-only
 //! log editor's scroll/select pass-through.
 
-use std::sync::atomic::Ordering;
+use std::{collections::HashMap, sync::{atomic::Ordering, Arc}};
 
 use iced::{widget::text_editor, Task};
 
 use crate::{
     domain::{
-        ports::BackendClient,
+        ports::{BackendClient, Repository},
         remote::RemoteId,
         sync::{SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
     },
-    screens::{main_page, settings},
+    screens::{main_page, remote_page, settings},
+    services::leftovers,
 };
 
 use super::super::{local_paths_overlap, CelesteApp, Message};
@@ -283,9 +284,78 @@ impl CelesteApp {
         &mut self,
         sd_id: SyncDirId,
         excls: Vec<SyncDirExclusion>,
+        leftovers: HashMap<SyncDirExclusionId, usize>,
     ) -> Task<Message> {
+        self.exclusion_leftovers.retain(|id, _| !excls.iter().any(|e| e.id == *id));
+        self.exclusion_leftovers.extend(leftovers);
         self.sync_dir_exclusions.insert(sd_id, excls);
         Task::none()
+    }
+
+    /// Run `change` against the repository, then reload the sync_dir's exclusions and count the local leftovers under each.
+    fn reload_exclusions<F, Fut>(&self, sd_id: SyncDirId, change: F) -> Task<Message>
+    where
+        F: FnOnce(Arc<dyn Repository>) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send,
+    {
+        let repo = self.repo.clone();
+        let local_root = self.all_known_sync_dirs.iter().find(|d| d.id == sd_id).map(|d| d.local_path.clone());
+        Task::perform(
+            async move {
+                change(repo.clone()).await;
+                let excls = repo.list_exclusions(sd_id).await.unwrap_or_default();
+                let mut counts = HashMap::new();
+                if let Some(root) = local_root {
+                    let items = repo.list_sync_items(sd_id).await.unwrap_or_default();
+                    for excl in &excls {
+                        let n = leftovers::count(&items, &format!("{root}/{}", excl.remote_path));
+                        if n > 0 {
+                            counts.insert(excl.id, n);
+                        }
+                    }
+                }
+                (excls, counts)
+            },
+            move |(excls, counts)| Message::ExclusionsLoaded(sd_id, excls, counts),
+        )
+    }
+
+    /// Handle [`remote_page::Msg::RequestCleanLeftovers`] — ask before deleting anything.
+    pub(in crate::app) fn handle_request_clean_leftovers(&mut self, excl_id: SyncDirExclusionId, sd_id: SyncDirId) -> Task<Message> {
+        let Some(sd) = self.all_known_sync_dirs.iter().find(|d| d.id == sd_id) else {
+            return Task::none();
+        };
+        let Some(excl) = self.sync_dir_exclusions.get(&sd_id).and_then(|v| v.iter().find(|e| e.id == excl_id)) else {
+            return Task::none();
+        };
+        let remote_name = self.remotes.iter().find(|r| r.id == sd.remote_id).map(|r| r.name.clone()).unwrap_or_default();
+        self.pending_delete = Some(remote_page::PendingDelete::Leftovers {
+            sync_dir: sd_id,
+            root: format!("{}/{}", sd.local_path, excl.remote_path),
+            relative: excl.remote_path.clone(),
+            remote_name,
+            count: self.exclusion_leftovers.get(&excl_id).copied().unwrap_or(0),
+        });
+        Task::none()
+    }
+
+    /// Confirmed: delete the leftovers off the UI thread.
+    pub(in crate::app) fn handle_clean_leftovers(&mut self, sd_id: SyncDirId, root: String, relative: String) -> Task<Message> {
+        let repo = self.repo.clone();
+        Task::perform(async move { leftovers::clean(repo.as_ref(), sd_id, &root).await }, move |res| {
+            Message::LeftoversCleaned(sd_id, relative.clone(), res)
+        })
+    }
+
+    /// Handle [`Message::LeftoversCleaned`] — report in the folder's log and refresh the button.
+    pub(in crate::app) fn handle_leftovers_cleaned(&mut self, sd_id: SyncDirId, relative: String, res: Result<leftovers::Cleaned, String>) -> Task<Message> {
+        let line = match res {
+            Ok(leftovers::Cleaned { deleted, kept: 0 }) => tr::tr!("Deleted {} leftover files of the excluded '{}'.", deleted, relative),
+            Ok(leftovers::Cleaned { deleted, kept }) => tr::tr!("Deleted {} leftover files of the excluded '{}'; kept {} added or changed since.", deleted, relative, kept),
+            Err(err) => format!("⚠ {}", tr::tr!("Couldn't delete the leftovers of '{}': {}", relative, err)),
+        };
+        self.push_log_line(sd_id, line);
+        self.reload_exclusions(sd_id, |_| async {})
     }
 
     /// Handle [`remote_page::Msg::ToggleExclusions`] — toggle the panel
@@ -296,11 +366,7 @@ impl CelesteApp {
             Task::none()
         } else {
             self.exclusion_panel = Some(sd_id);
-            let repo = self.repo.clone();
-            Task::perform(
-                async move { repo.list_exclusions(sd_id).await.unwrap_or_default() },
-                move |excls| Message::ExclusionsLoaded(sd_id, excls),
-            )
+            self.reload_exclusions(sd_id, |_| async {})
         }
     }
 
@@ -324,14 +390,9 @@ impl CelesteApp {
             return Task::none();
         }
         self.draft_exclusion.insert(sd_id, String::new());
-        let repo = self.repo.clone();
-        Task::perform(
-            async move {
-                let _ = repo.insert_exclusion(sd_id, path).await;
-                repo.list_exclusions(sd_id).await.unwrap_or_default()
-            },
-            move |excls| Message::ExclusionsLoaded(sd_id, excls),
-        )
+        self.reload_exclusions(sd_id, move |repo| async move {
+            let _ = repo.insert_exclusion(sd_id, path).await;
+        })
     }
 
     pub(in crate::app) fn handle_remove_exclusion(
@@ -339,14 +400,10 @@ impl CelesteApp {
         excl_id: SyncDirExclusionId,
         sd_id: SyncDirId,
     ) -> Task<Message> {
-        let repo = self.repo.clone();
-        Task::perform(
-            async move {
-                let _ = repo.delete_exclusion(excl_id).await;
-                repo.list_exclusions(sd_id).await.unwrap_or_default()
-            },
-            move |excls| Message::ExclusionsLoaded(sd_id, excls),
-        )
+        self.exclusion_leftovers.remove(&excl_id);
+        self.reload_exclusions(sd_id, move |repo| async move {
+            let _ = repo.delete_exclusion(excl_id).await;
+        })
     }
 
     /// Handle [`remote_page::Msg::LogEditorAction`] — drop edit

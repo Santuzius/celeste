@@ -290,6 +290,17 @@ pub fn button_danger(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// Action that clears a warning (e.g. the broom on an exclusion with leftovers): filled in the warning tone.
+pub fn button_warning(theme: &Theme, status: button::Status) -> button::Style {
+    let t = tones(theme);
+    let base = button_base(t.warning, Color::WHITE, t.warning);
+    match status {
+        button::Status::Active | button::Status::Pressed => base,
+        button::Status::Hovered => button_base(Color { a: 0.85, ..t.warning }, Color::WHITE, t.warning),
+        button::Status::Disabled => disabled(base),
+    }
+}
+
 /// Borderless icon / toolbar button that only shows a background on hover.
 pub fn button_flat(theme: &Theme, status: button::Status) -> button::Style {
     let t = tones(theme);

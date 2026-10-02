@@ -23,7 +23,7 @@ keyring = { version = "3.6", default-features = false, features = ["sync-secret-
 # Status-icon SVGs for the per-sync-dir cards and the system-tray
 # pixmaps. Only the icon packs we actually pull from are enabled so
 # we don't compile the rest of the icondata corpus.
-icondata = { version = "0.7", default-features = false, features = ["tabler-icons"] }
+icondata = { version = "0.7", default-features = false, features = ["tabler-icons", "material-design-icons"] }
 # Direct handle on the `IconData` struct so we can stitch a Tabler
 # cloud body together with refresh-arrow tips into a custom static —
 # the facade re-exports the `Icon` alias but not the underlying

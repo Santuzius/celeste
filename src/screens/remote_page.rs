@@ -1,6 +1,6 @@
 //! Per-remote page: status header, sync folders (each with an optional activity log and exclusion panel), the add-folder form and the remote's settings.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use iced::{
     widget::{
@@ -20,6 +20,7 @@ use crate::{
     theme::{self, CAPTION, HEADING, PAGE_PADDING, ROW_SPACING, SECTION_SPACING, TEXT, TITLE},
     util::fmt_home,
     widgets::{
+        bullet,
         icon::{icon, muted_icon, on_fill_icon, status_icon},
         text,
     },
@@ -59,6 +60,8 @@ pub enum Msg {
     DraftExclusionChanged(SyncDirId, String),
     AddExclusion(SyncDirId),
     RemoveExclusion(SyncDirExclusionId, SyncDirId),
+    /// Broom on an exclusion: ask before deleting the synced files still on this computer.
+    RequestCleanLeftovers(SyncDirExclusionId, SyncDirId),
     Reauthenticate(RemoteId, String),
     /// Read-only log editor swallows edits but forwards scroll/select actions so users can drag through history.
     LogEditorAction(SyncDirId, text_editor::Action),
@@ -72,6 +75,8 @@ pub enum PendingDelete {
     Remote(RemoteId, String),
     /// `remote_label` is the display form (`Name:/path`) for the dialog text.
     SyncDir { local: String, remote: String, remote_label: String },
+    /// Synced files still on this computer under an excluded path. `root` is the absolute local path, `relative` the exclusion as the user typed it.
+    Leftovers { sync_dir: SyncDirId, root: String, relative: String, remote_name: String, count: usize },
 }
 
 /// Everything the page renders, prepared by the app.
@@ -103,6 +108,8 @@ pub struct Folder<'a> {
     pub auto_excluded: Vec<&'a SyncDir>,
     pub custom_excluded: &'a [SyncDirExclusion],
     pub draft_exclusion: &'a str,
+    /// Synced files still on this computer, by exclusion (only non-zero counts).
+    pub leftovers: &'a HashMap<SyncDirExclusionId, usize>,
     /// Files that changed on both sides and wait for a decision.
     pub conflicts: &'a [Conflict],
 }
@@ -372,7 +379,7 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
     }
 
     if folder.exclusions_open {
-        card = card.push(exclusion_panel(sd, &remote_display, &folder.auto_excluded, folder.custom_excluded, folder.draft_exclusion));
+        card = card.push(exclusion_panel(sd, &remote_display, &folder.auto_excluded, folder.custom_excluded, folder.leftovers, folder.draft_exclusion));
     }
 
     container(card).padding([12, 14]).width(Length::Fill).style(theme::card).into()
@@ -388,6 +395,7 @@ fn exclusion_panel<'a>(
     remote_display: &str,
     auto_excl: &[&'a SyncDir],
     custom_excl: &'a [SyncDirExclusion],
+    leftovers: &HashMap<SyncDirExclusionId, usize>,
     draft: &'a str,
 ) -> Element<'a, Msg> {
     let mut list = column![].spacing(2);
@@ -412,10 +420,21 @@ fn exclusion_panel<'a>(
     }
 
     for excl in custom_excl {
+        // Shown only while there is something to clean up; it disappears once the leftovers are gone.
+        let broom = leftovers.get(&excl.id).map(|&n| {
+            tooltip(
+                button(on_fill_icon(icondata::MdiBroom, 14.0)).padding(4).style(theme::button_warning).on_press(Msg::RequestCleanLeftovers(excl.id, sd.id)),
+                container(text(format!("Delete the {n} synced files still on this computer")).size(CAPTION)).padding([4, 8]).style(theme::card),
+                tooltip::Position::Top,
+            )
+        });
         list = list.push(
             row![
                 muted_icon(icondata::TbFolderOutline, 14.0),
                 text(&excl.remote_path).size(CAPTION).width(Length::Fill),
+            ]
+            .push(broom)
+            .push(
                 with_tip(
                     button(icon(icondata::TbXOutline, 14.0))
                         .padding(4)
@@ -423,7 +442,7 @@ fn exclusion_panel<'a>(
                         .on_press(Msg::RemoveExclusion(excl.id, sd.id)),
                     "Sync this again",
                 ),
-            ]
+            )
             .spacing(8)
             .align_y(Alignment::Center),
         );
@@ -537,12 +556,27 @@ pub fn settings_dialog<'a>(remote: &'a Remote, auth_needed: bool) -> Element<'a,
 
 /// Dimmed backdrop + centred confirmation card for a pending delete.
 pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg> {
+    if let PendingDelete::Leftovers { root, relative, remote_name, count, .. } = pending {
+        return confirm_card(
+            format!("Delete the leftovers of '{relative}'?"),
+            column![
+                text(format!("'{relative}' is excluded from sync, but {} still holds {count} files from when it was synced.", fmt_home(root))).size(TEXT),
+                bullet(format!("Only these copies on this computer are deleted. Celeste no longer syncs '{relative}', so {remote_name} keeps its own.")),
+                bullet("Files added or changed there since the exclusion are kept."),
+                bullet("Folders left empty are removed."),
+            ]
+            .spacing(6)
+            .into(),
+            format!("Delete {count} files"),
+        );
+    }
     let (title, body, confirm) = match pending {
         PendingDelete::Remote(_id, name) => (
             format!("Remove {name}?"),
             "Celeste stops syncing this remote and forgets its folders and exclusions. No files are deleted — neither on this computer nor in the cloud.".to_owned(),
             "Remove remote",
         ),
+        PendingDelete::Leftovers { .. } => unreachable!("handled above"),
         PendingDelete::SyncDir { local, remote_label, .. } => {
             (
                 "Stop syncing this folder?".to_owned(),
@@ -555,10 +589,14 @@ pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg
         }
     };
 
+    confirm_card(title, text(body).size(TEXT).into(), confirm.to_owned())
+}
+
+fn confirm_card<'a>(title: String, body: Element<'a, Msg>, confirm: String) -> Element<'a, Msg> {
     let card = container(
         column![
             text(title).size(HEADING + 2.0),
-            text(body).size(TEXT),
+            body,
             row![
                 Space::new().width(Length::Fill),
                 button(text("Cancel").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::CancelDelete),

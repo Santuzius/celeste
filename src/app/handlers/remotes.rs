@@ -494,6 +494,9 @@ impl CelesteApp {
             Some(remote_page::PendingDelete::SyncDir { local, remote, .. }) => {
                 self.handle_delete_sync_dir(local, remote)
             }
+            Some(remote_page::PendingDelete::Leftovers { sync_dir, root, relative, .. }) => {
+                self.handle_clean_leftovers(sync_dir, root, relative)
+            }
             None => Task::none(),
         }
     }
