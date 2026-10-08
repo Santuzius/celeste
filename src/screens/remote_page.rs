@@ -128,6 +128,7 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
         .spacing(2)
         .width(Length::Fill),
         backoff_hint(page.next_sync),
+        start_pause_button(remote),
         button(row![icon(icondata::TbRefreshOutline, 16.0), text("Sync now").size(TEXT)].spacing(6).align_y(Alignment::Center))
             .padding([6, 12])
             .style(theme::button_secondary)
@@ -260,6 +261,23 @@ fn status_line(page: &Page<'_>) -> String {
         RunState::Waiting => next("Waiting for the first sync"),
         state => next(status_label(state)),
     }
+}
+
+/// Switches automatic sync like the toggle in the settings: green Start while paused, yellow Pause while running.
+fn start_pause_button<'a>(remote: &Remote) -> Element<'a, Msg> {
+    let running = remote.policy.enabled;
+    let (glyph, label, style, tip): (_, _, fn(&iced::Theme, button::Status) -> button::Style, _) = if running {
+        (icondata::TbPlayerPauseFilled, "Pause", theme::button_warning, "Stop syncing in the background")
+    } else {
+        (icondata::TbPlayerPlayFilled, "Start", theme::button_success, "Sync in the background again")
+    };
+    with_tip(
+        button(row![on_fill_icon(glyph, 16.0), text(label).size(TEXT)].spacing(6).align_y(Alignment::Center))
+            .padding([6, 12])
+            .style(style)
+            .on_press(Msg::Settings(settings::Msg::EnabledToggled(!running))),
+        tip,
+    )
 }
 
 /// ⚠ with an explanation while the scheduler is backing off after rate-limit warnings.

@@ -46,6 +46,8 @@ pub struct Tones {
     pub on_accent: Color,
     pub success: Color,
     pub warning: Color,
+    /// Problems that need attention (warnings, sign-in needed); yellow `warning` marks a deliberate pause.
+    pub caution: Color,
     pub danger: Color,
     pub danger_hover: Color,
     /// Background of destructive buttons (white text on it), darker than `danger` in dark mode for contrast.
@@ -67,6 +69,7 @@ const LIGHT: Tones = Tones {
     on_accent: rgb(0xffffff),
     success: rgb(0x2a8a4f),
     warning: rgb(0xb7790f),
+    caution: rgb(0xd0601b),
     danger: rgb(0xc4372f),
     danger_hover: rgb(0xa92e27),
     danger_fill: rgb(0xc4372f),
@@ -87,6 +90,7 @@ const DARK: Tones = Tones {
     on_accent: rgb(0x0e1520),
     success: rgb(0x4cbb73),
     warning: rgb(0xe3a93a),
+    caution: rgb(0xef8a42),
     danger: rgb(0xe5584f),
     danger_hover: rgb(0xec7068),
     danger_fill: rgb(0xc0392f),
@@ -139,10 +143,11 @@ pub fn tones(theme: &Theme) -> &'static Tones {
 pub fn status_color(theme: &Theme, state: RunState) -> Color {
     let t = tones(theme);
     match state {
-        RunState::Waiting | RunState::Paused => t.muted,
+        RunState::Waiting => t.muted,
+        RunState::Paused => t.warning,
         RunState::Synced => t.success,
         RunState::Syncing(_) => t.accent,
-        RunState::Warning | RunState::AuthNeeded => t.warning,
+        RunState::Warning | RunState::AuthNeeded => t.caution,
         RunState::Error => t.danger,
     }
 }
@@ -297,6 +302,17 @@ pub fn button_warning(theme: &Theme, status: button::Status) -> button::Style {
     match status {
         button::Status::Active | button::Status::Pressed => base,
         button::Status::Hovered => button_base(Color { a: 0.85, ..t.warning }, Color::WHITE, t.warning),
+        button::Status::Disabled => disabled(base),
+    }
+}
+
+/// Starts something that is paused: filled in the success tone.
+pub fn button_success(theme: &Theme, status: button::Status) -> button::Style {
+    let t = tones(theme);
+    let base = button_base(t.success, Color::WHITE, t.success);
+    match status {
+        button::Status::Active | button::Status::Pressed => base,
+        button::Status::Hovered => button_base(Color { a: 0.85, ..t.success }, Color::WHITE, t.success),
         button::Status::Disabled => disabled(base),
     }
 }

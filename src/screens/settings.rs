@@ -1,7 +1,7 @@
-//! Per-remote settings card: automatic sync on/off, interval, account status and removal — one labelled row each, in the style of KDE / Windows 11 settings pages.
+//! Per-remote settings card: interval, account status and removal (automatic sync is switched by the Start / Pause button on the remote page) — one labelled row each, in the style of KDE / Windows 11 settings pages.
 
 use iced::{
-    widget::{button, column, container, row, rule, toggler, tooltip},
+    widget::{button, column, container, row, rule, tooltip},
     Alignment, Element, Length,
 };
 
@@ -13,6 +13,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// From the Start / Pause button on the remote page.
     EnabledToggled(bool),
     IntervalChanged(Interval),
     Reauthenticate(RemoteId, String),
@@ -51,12 +52,6 @@ pub fn view(remote: &Remote, auth_needed: bool) -> Element<'_, Msg> {
     };
 
     let rows = column![
-        setting_row(
-            "Automatic sync",
-            "Sync this remote in the background at the interval below.",
-            toggler(remote.policy.enabled).on_toggle(Msg::EnabledToggled).size(20).into(),
-        ),
-        rule::horizontal(1).style(theme::separator),
         setting_row("Interval", "How often Celeste checks for changes on both sides.", interval_control.into()),
         rule::horizontal(1).style(theme::separator),
         setting_row(
