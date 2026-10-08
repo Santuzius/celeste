@@ -71,6 +71,7 @@ fn main() {
     }
 
     legacy_config_dir::run(&data_dir);
+    services::autostart::refresh();
     fold_stale_rclone_into_keyring(&data_dir);
 
     let rclone_config = match util::get_runtime_dir() {

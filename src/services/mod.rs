@@ -5,6 +5,7 @@
 //! against in-memory fakes.
 
 pub mod auth;
+pub mod autostart;
 pub mod editor_temp;
 pub mod leftovers;
 pub mod remote_lifecycle;

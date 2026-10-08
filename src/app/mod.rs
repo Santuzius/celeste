@@ -35,8 +35,8 @@ use crate::{
         stderr_capture::{self, CaptureHandle},
         tray::{self, TrayAction, TrayUpdate},
     },
-    screens::{about, add_remote, conflict, main_page, remote_page, settings},
-    services::leftovers,
+    screens::{about, add_remote, conflict, main_page, preferences, remote_page, settings},
+    services::{autostart, leftovers},
     theme,
 };
 
@@ -52,6 +52,7 @@ pub enum Message {
     Settings(settings::Msg),
     AddRemote(add_remote::Msg),
     About(about::Msg),
+    Preferences(preferences::Msg),
     Conflict(conflict::Msg),
     AddRemoteResult(Result<RemoteId, String>),
     RemotesLoaded(Vec<Remote>),
@@ -166,6 +167,12 @@ pub struct CelesteApp {
     settings_open: bool,
     /// The About dialog is shown.
     about_open: bool,
+    /// The Preferences dialog is shown.
+    preferences_open: bool,
+    /// Start at login, as last read from or written to the autostart entry.
+    autostart: bool,
+    /// Why switching autostart failed, shown in the Preferences dialog.
+    autostart_error: Option<String>,
     /// Files per sync dir that changed on both sides, as reported by the last pass.
     conflicts: HashMap<SyncDirId, Vec<Conflict>>,
     /// The user's choices, handed to the remote's next pass.
@@ -235,6 +242,9 @@ impl CelesteApp {
             sync_dir_drafts: HashMap::new(),
             settings_open: false,
             about_open: false,
+            preferences_open: false,
+            autostart: autostart::enabled(),
+            autostart_error: None,
             conflicts: HashMap::new(),
             resolutions: HashMap::new(),
             conflict_dialog: None,
@@ -341,6 +351,26 @@ impl CelesteApp {
             }
             Message::Main(main_page::Msg::OpenAbout) => {
                 self.about_open = true;
+                Task::none()
+            }
+            Message::Main(main_page::Msg::OpenPreferences) => {
+                self.preferences_open = true;
+                self.autostart = autostart::enabled();
+                self.autostart_error = None;
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::Close) => {
+                self.preferences_open = false;
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::AutostartToggled(on)) => {
+                match autostart::set(on) {
+                    Ok(()) => {
+                        self.autostart = on;
+                        self.autostart_error = None;
+                    }
+                    Err(err) => self.autostart_error = Some(format!("Could not change {}: {err}", autostart::entry_path().display())),
+                }
                 Task::none()
             }
             Message::About(about::Msg::Close) => {
@@ -463,6 +493,9 @@ impl CelesteApp {
         } else if let Some(remote) = self.settings_open.then(|| self.selected_remote()).flatten() {
             let auth_needed = self.display_state(remote) == RunState::AuthNeeded;
             stack![base, remote_page::settings_dialog(remote, auth_needed).map(Message::Remote)].into()
+        } else if self.preferences_open {
+            let dialog = preferences::view(self.autostart, self.autostart_error.as_deref()).map(Message::Preferences);
+            stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
         } else {
@@ -480,7 +513,7 @@ impl CelesteApp {
         if self.conflict_dialog.take().is_some() {
             return Task::none();
         }
-        if std::mem::take(&mut self.about_open) {
+        if std::mem::take(&mut self.preferences_open) || std::mem::take(&mut self.about_open) {
             return Task::none();
         }
         if let Some(draft) = &self.add_remote_draft {

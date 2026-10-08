@@ -29,6 +29,8 @@ apps:
   celeste:
     command: usr/bin/celeste
     desktop: usr/share/applications/celeste.desktop
+    # The entry Celeste writes to $XDG_CONFIG_HOME/autostart (on by default, Preferences switches it); snapd starts the app from it at login.
+    autostart: celeste.desktop
     # Wayland, X11, OpenGL/Vulkan through the GPU interface, portals (folder chooser, colour scheme), notifications and the GNOME runtime libraries.
     extensions: [gnome]
     plugs:

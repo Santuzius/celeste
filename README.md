@@ -28,6 +28,7 @@ Celeste is a GUI file synchronization client
 - Conflict resolution: a file changed on both sides is never overwritten silently; you keep the local version, the remote one, or both
 - All credentials are stored at rest in the native Linux keyring
 - Background operation: when the window is closed, only the taskbar icon is displayed
+- Starts at login in the tray; switch this off under Preferences
 - Light/dark theme
 
 ## Screenshots
@@ -94,7 +95,7 @@ Add the flake as an input — this one line is all you need in `inputs`:
 celeste.url = "github:Santuzius/celeste";
 ```
 
-Then enable it through the NixOS module (installs Celeste, its menu entry and an autostart entry that starts it in the tray):
+Then enable it through the NixOS module (installs Celeste, its menu entry and a system-wide autostart entry that starts it in the tray; Celeste's own per-user entry from Preferences takes precedence over it):
 
 ```nix
 # flake.nix outputs, inside nixosSystem { modules = [ … ]; }

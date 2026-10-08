@@ -22,6 +22,7 @@ pub enum Msg {
     Selected(RemoteId),
     RefreshAll,
     AddRemote,
+    OpenPreferences,
     OpenAbout,
 }
 
@@ -42,6 +43,7 @@ pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>) -> Elemen
         container(rule::horizontal(1).style(theme::separator)).padding([4, 0]),
         flat_row(icondata::TbPlusOutline, "Add remote", Msg::AddRemote),
         flat_row(icondata::TbRefreshOutline, "Sync all now", Msg::RefreshAll),
+        flat_row(icondata::TbAdjustmentsHorizontalOutline, "Preferences", Msg::OpenPreferences),
         flat_row(icondata::TbInfoCircleOutline, "About Celeste", Msg::OpenAbout),
     ]
     .spacing(2);

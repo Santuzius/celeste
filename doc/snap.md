@@ -36,4 +36,4 @@ What to check on a real desktop:
 3. **Upload.** `snapcraft login`, then `snapcraft upload --release=stable celeste_<version>_amd64.snap` (and arm64, e.g. via `snapcraft remote-build`).
 4. **Store page.** Screenshots (`doc/img/`), the privacy policy link (`PRIVACY.md`) and the contact are set in the dashboard.
 
-Not covered yet: autostart. Snaps only start automatically when the app writes its desktop file to `~/snap/<name>/current/.config/autostart/` itself (with `autostart:` in `snapcraft.yaml`); Celeste has no autostart setting so far, the Nix module does it on NixOS.
+Autostart: Celeste writes `celeste.desktop` to `$XDG_CONFIG_HOME/autostart`, which in the Snap is `~/snap/<name>/current/.config/autostart/`; `autostart:` in `snapcraft.yaml` lets snapd start it from there at login. Worth checking on a real desktop too: after a login Celeste runs in the tray, and switching it off in Preferences keeps it from starting.
