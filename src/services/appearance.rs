@@ -37,12 +37,54 @@ impl ThemeChoice {
     }
 }
 
+/// Colour of the tray icon. Panels don't always follow the system colour scheme, hence the reversed and fixed variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TrayIconChoice {
+    /// White on a dark system scheme, black on a light one.
+    #[default]
+    System,
+    /// The other way round, for a light panel in a dark scheme or vice versa.
+    Reversed,
+    White,
+    Black,
+}
+
+impl TrayIconChoice {
+    pub const ALL: [TrayIconChoice; 4] = [TrayIconChoice::System, TrayIconChoice::Reversed, TrayIconChoice::White, TrayIconChoice::Black];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TrayIconChoice::System => "System",
+            TrayIconChoice::Reversed => "Reversed system",
+            TrayIconChoice::White => "White",
+            TrayIconChoice::Black => "Black",
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            TrayIconChoice::System => "system",
+            TrayIconChoice::Reversed => "reversed",
+            TrayIconChoice::White => "white",
+            TrayIconChoice::Black => "black",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            // Written by the first version of this setting.
+            "light" => Some(TrayIconChoice::White),
+            "dark" => Some(TrayIconChoice::Black),
+            other => Self::ALL.into_iter().find(|c| c.key() == other),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Appearance {
     /// Colour scheme of the window.
     pub window: ThemeChoice,
-    /// Colour of the tray icon itself: Light is a white icon for dark panels, Dark a black one for light panels.
-    pub tray_icon: ThemeChoice,
+    pub tray_icon: TrayIconChoice,
 }
 
 impl Appearance {
@@ -53,9 +95,9 @@ impl Appearance {
         };
         for line in content.lines() {
             let Some((key, value)) = line.split_once('=') else { continue };
-            match (key.trim(), ThemeChoice::parse(value)) {
-                ("window", Some(choice)) => appearance.window = choice,
-                ("tray_icon", Some(choice)) => appearance.tray_icon = choice,
+            match key.trim() {
+                "window" => appearance.window = ThemeChoice::parse(value).unwrap_or_default(),
+                "tray_icon" => appearance.tray_icon = TrayIconChoice::parse(value).unwrap_or_default(),
                 _ => {}
             }
         }
@@ -79,7 +121,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("celeste-appearance-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(Appearance::load(&dir), Appearance::default());
-        let chosen = Appearance { window: ThemeChoice::Dark, tray_icon: ThemeChoice::Light };
+        let chosen = Appearance { window: ThemeChoice::Dark, tray_icon: TrayIconChoice::Reversed };
         chosen.save(&dir).unwrap();
         assert_eq!(Appearance::load(&dir), chosen);
         let _ = std::fs::remove_dir_all(&dir);

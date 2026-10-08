@@ -37,7 +37,7 @@ use crate::{
     },
     screens::{about, add_remote, conflict, main_page, preferences, remote_page, settings},
     services::{
-        appearance::{Appearance, ThemeChoice},
+        appearance::{Appearance, ThemeChoice, TrayIconChoice},
         autostart, leftovers,
     },
     theme,
@@ -644,12 +644,15 @@ impl CelesteApp {
 
     pub(in crate::app) fn push_tray_theme(&self) {
         if let Some(tx) = self.tray_tx.as_ref() {
-            // The tray picks the glyph that contrasts with the given scheme: a light icon for Dark, a dark one for Light.
-            let mode = match self.appearance.tray_icon {
-                ThemeChoice::System => self.system_theme,
-                ThemeChoice::Light => iced_theme::Mode::Dark,
-                ThemeChoice::Dark => iced_theme::Mode::Light,
+            // The tray picks the glyph that contrasts with the given scheme: the white icon for Dark, the black one for Light (and None).
+            let dark = self.system_theme == iced_theme::Mode::Dark;
+            let white = match self.appearance.tray_icon {
+                TrayIconChoice::System => dark,
+                TrayIconChoice::Reversed => !dark,
+                TrayIconChoice::White => true,
+                TrayIconChoice::Black => false,
             };
+            let mode = if white { iced_theme::Mode::Dark } else { iced_theme::Mode::Light };
             let _ = tx.try_send(TrayUpdate::Theme(mode));
         }
     }

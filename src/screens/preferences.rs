@@ -6,7 +6,7 @@ use iced::{
 };
 
 use crate::{
-    services::appearance::{Appearance, ThemeChoice},
+    services::appearance::{Appearance, ThemeChoice, TrayIconChoice},
     theme::{self, CAPTION, HEADING, TEXT},
     widgets::text,
 };
@@ -14,19 +14,19 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Msg {
     WindowThemeChanged(ThemeChoice),
-    TrayIconChanged(ThemeChoice),
+    TrayIconChanged(TrayIconChoice),
     AutostartToggled(bool),
     Close,
 }
 
 pub fn view<'a>(appearance: Appearance, autostart: bool, error: Option<&'a str>) -> Element<'a, Msg> {
     let rows = column![
-        setting_row("Theme", "Colours of this window.", segmented(appearance.window, Msg::WindowThemeChanged)),
+        setting_row("Theme", "Colours of this window.", segmented(&ThemeChoice::ALL, ThemeChoice::label, appearance.window, Msg::WindowThemeChanged)),
         rule::horizontal(1).style(theme::separator),
         setting_row(
             "Tray icon",
-            "Light is a white icon for dark panels, Dark a black one for light panels.",
-            segmented(appearance.tray_icon, Msg::TrayIconChanged),
+            "Colour of the icon in the panel.",
+            segmented(&TrayIconChoice::ALL, TrayIconChoice::label, appearance.tray_icon, Msg::TrayIconChanged),
         ),
         rule::horizontal(1).style(theme::separator),
         setting_row(
@@ -52,10 +52,10 @@ pub fn view<'a>(appearance: Appearance, autostart: bool, error: Option<&'a str>)
     container(content).padding(22).max_width(560).style(theme::dialog).into()
 }
 
-/// System / Light / Dark as one button group; the chosen one stays highlighted.
-fn segmented<'a>(current: ThemeChoice, on_pick: fn(ThemeChoice) -> Msg) -> Element<'a, Msg> {
-    let buttons = ThemeChoice::ALL.into_iter().map(|choice| {
-        button(text(choice.label()).size(TEXT))
+/// The options as one button group; the chosen one stays highlighted.
+fn segmented<'a, T: Copy + PartialEq + 'a>(options: &[T], label: fn(T) -> &'static str, current: T, on_pick: fn(T) -> Msg) -> Element<'a, Msg> {
+    let buttons = options.iter().map(|&choice| {
+        button(text(label(choice)).size(TEXT))
             .padding([4, 12])
             .style(theme::button_toggle(choice == current))
             .on_press(on_pick(choice))
