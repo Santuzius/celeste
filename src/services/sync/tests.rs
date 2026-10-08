@@ -188,7 +188,7 @@ fn both_changed(name: &str) -> (TempDir, PathBuf, FakeRepo, FakeBackend) {
     (tmp, local, repo, client)
 }
 
-/// Both sides changed since the last sync: nothing is transferred, the file is reported as a conflict and the folder goes to Warning.
+/// Both sides changed since the last sync: nothing is transferred and the file is reported as a conflict. The pass itself doesn't set Warning; the app does, for the conflicts it still shows.
 #[test]
 fn both_sides_changed_is_a_conflict() {
     let (tmp, local, repo, client) = both_changed("sync_conflict_reported");
@@ -199,7 +199,7 @@ fn both_sides_changed_is_a_conflict() {
     assert_eq!((reported[0].local_stamp, reported[0].remote_stamp), (1_700_000_500, 1_700_000_700));
     assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
     assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
-    assert!(events.iter().any(|e| matches!(e, SyncEvent::SyncDirStateChanged { state: crate::domain::run_state::RunState::Warning, .. })));
+    assert!(!events.iter().any(|e| matches!(e, SyncEvent::SyncDirStateChanged { state: crate::domain::run_state::RunState::Warning, .. })));
 }
 
 /// A file waiting for the user doesn't hold up the rest of the folder: other changes in the same pass still go through.

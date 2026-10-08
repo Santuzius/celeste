@@ -278,12 +278,8 @@ where
                     });
                 match chosen {
                     None => {
+                        // No Warning state from here: the app sets it for the conflicts it still shows, which leaves out files the user decided on while this pass ran.
                         eprintln!("sync: CONFLICT '{remote_path}' changed on both sides — waiting for the user.");
-                        emit(SyncEvent::SyncDirStateChanged {
-                            remote_id: remote.id,
-                            sync_dir_id: sync_dir.id,
-                            state: RunState::Warning,
-                        });
                         conflicts.push(conflict);
                     }
                     Some(ConflictChoice::KeepLocal) => {

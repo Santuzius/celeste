@@ -43,6 +43,8 @@ use crate::{
 mod handlers;
 mod log;
 
+use handlers::conflicts::CONFLICT_LINE_PREFIXES;
+
 /// Messages the root application dispatches. Screen-level messages are
 /// wrapped by variants; service results fire their own.
 #[derive(Debug, Clone)]
@@ -559,7 +561,8 @@ impl CelesteApp {
                     state: self.sync_state.dir_state(remote.id, dir.id),
                     latest_line: self.sync_dir_pass_line.get(&dir.id).map(String::as_str),
                     latest_problem: lines
-                        .and_then(|l| l.iter().rev().find(|line| line.text.starts_with('⚠')))
+                        // Conflicts have their own row; their log lines would outlive the decision here.
+                        .and_then(|l| l.iter().rev().find(|line| line.text.starts_with('⚠') && !CONFLICT_LINE_PREFIXES.iter().any(|p| line.text.starts_with(p))))
                         .map(|l| l.text.as_str()),
                     log: self.sync_dir_log_content.get(&dir.id),
                     exclusions_open: self.exclusion_panel == Some(dir.id),
