@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-10-02
+Last updated: 2026-10-08
 
 Celeste is a desktop file synchronization client for Linux, maintained by Alexander Menzel ([github.com/Santuzius](https://github.com/Santuzius)). This policy describes how Celeste handles your data, including data it accesses through Google APIs.
 
@@ -25,6 +25,7 @@ Celeste is a desktop file synchronization client for Linux, maintained by Alexan
 - While Celeste runs, the Google Drive tokens are also written to `$XDG_RUNTIME_DIR/celeste/rclone.conf`, the configuration file of the rclone library Celeste uses. That directory is in memory, readable only by you, and emptied when you log out.
 - A local database in your user data directory holds the sync configuration (connected accounts by name, folder pairs, exclusions, schedule) and, for every synced file, its local and cloud path and the modification times seen at the last sync, to detect changes.
 - Celeste writes no log files. It prints diagnostic lines, which include file and folder names, to its standard error output. If your desktop starts Celeste (e.g. through autostart), the desktop may keep that output in the system journal or a session log.
+- Preferences: the colour choices are kept in `appearance.conf` next to the database, and "Start Celeste when you log in" is the desktop's autostart entry `~/.config/autostart/celeste.desktop`.
 - Nothing is stored anywhere else by Celeste.
 
 ## How data is shared
@@ -51,7 +52,7 @@ Celeste's use and transfer of information received from Google APIs adheres to t
 
 - Removing a remote in Celeste deletes its stored credentials and its local sync state.
 - You can revoke Celeste's access to your Google account at any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Signed-in Proton sessions can be ended in your Proton account settings under Security.
-- Uninstalling Celeste and deleting its data directory (`~/.local/share/celeste`, or `~/snap/celeste` for the Snap) removes everything Celeste stored. Your synced files are left in place, locally and in the cloud.
+- Uninstalling Celeste and deleting its data directory (`~/.local/share/celeste`, or `~/snap/celeste` for the Snap) removes everything Celeste stored, apart from the autostart entry (`~/.config/autostart/celeste.desktop`). Your synced files are left in place, locally and in the cloud.
 
 ## Children
 

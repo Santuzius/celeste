@@ -36,7 +36,10 @@ use crate::{
         tray::{self, TrayAction, TrayUpdate},
     },
     screens::{about, add_remote, conflict, main_page, preferences, remote_page, settings},
-    services::{autostart, leftovers},
+    services::{
+        appearance::{Appearance, ThemeChoice},
+        autostart, leftovers,
+    },
     theme,
 };
 
@@ -173,8 +176,10 @@ pub struct CelesteApp {
     preferences_open: bool,
     /// Start at login, as last read from or written to the autostart entry.
     autostart: bool,
-    /// Why switching autostart failed, shown in the Preferences dialog.
-    autostart_error: Option<String>,
+    /// Colour choices for the window and the tray icon.
+    appearance: Appearance,
+    /// Why saving a preference failed, shown in the Preferences dialog.
+    preferences_error: Option<String>,
     /// Files per sync dir that changed on both sides, as reported by the last pass.
     conflicts: HashMap<SyncDirId, Vec<Conflict>>,
     /// The user's choices, handed to the remote's next pass.
@@ -246,7 +251,8 @@ impl CelesteApp {
             about_open: false,
             preferences_open: false,
             autostart: autostart::enabled(),
-            autostart_error: None,
+            appearance: Appearance::load(&crate::util::get_data_dir()),
+            preferences_error: None,
             conflicts: HashMap::new(),
             resolutions: HashMap::new(),
             conflict_dialog: None,
@@ -282,7 +288,7 @@ impl CelesteApp {
     }
 
     fn theme(&self, _id: window::Id) -> Theme {
-        theme::celeste_theme(self.system_theme)
+        theme::celeste_theme(self.resolved_mode(self.appearance.window))
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -358,20 +364,28 @@ impl CelesteApp {
             Message::Main(main_page::Msg::OpenPreferences) => {
                 self.preferences_open = true;
                 self.autostart = autostart::enabled();
-                self.autostart_error = None;
+                self.preferences_error = None;
                 Task::none()
             }
             Message::Preferences(preferences::Msg::Close) => {
                 self.preferences_open = false;
                 Task::none()
             }
+            Message::Preferences(preferences::Msg::WindowThemeChanged(choice)) => {
+                self.set_appearance(Appearance { window: choice, ..self.appearance });
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::TrayIconChanged(choice)) => {
+                self.set_appearance(Appearance { tray_icon: choice, ..self.appearance });
+                Task::none()
+            }
             Message::Preferences(preferences::Msg::AutostartToggled(on)) => {
                 match autostart::set(on) {
                     Ok(()) => {
                         self.autostart = on;
-                        self.autostart_error = None;
+                        self.preferences_error = None;
                     }
-                    Err(err) => self.autostart_error = Some(format!("Could not change {}: {err}", autostart::entry_path().display())),
+                    Err(err) => self.preferences_error = Some(format!("Could not change {}: {err}", autostart::entry_path().display())),
                 }
                 Task::none()
             }
@@ -496,7 +510,7 @@ impl CelesteApp {
             let auth_needed = self.display_state(remote) == RunState::AuthNeeded;
             stack![base, remote_page::settings_dialog(remote, auth_needed).map(Message::Remote)].into()
         } else if self.preferences_open {
-            let dialog = preferences::view(self.autostart, self.autostart_error.as_deref()).map(Message::Preferences);
+            let dialog = preferences::view(self.appearance, self.autostart, self.preferences_error.as_deref()).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
@@ -612,9 +626,31 @@ impl CelesteApp {
     /// Push the cached system colour-scheme into the tray. Used both
     /// on the [`Message::TrayReady`] handshake (to seed the initial
     /// tone) and on every subsequent `SystemThemeChanged`.
+    /// The colour scheme a theme choice stands for right now.
+    fn resolved_mode(&self, choice: ThemeChoice) -> iced_theme::Mode {
+        match choice {
+            ThemeChoice::System => self.system_theme,
+            ThemeChoice::Light => iced_theme::Mode::Light,
+            ThemeChoice::Dark => iced_theme::Mode::Dark,
+        }
+    }
+
+    /// Store a changed appearance and apply it; the window re-reads it through `theme()`.
+    fn set_appearance(&mut self, appearance: Appearance) {
+        self.appearance = appearance;
+        self.preferences_error = appearance.save(&crate::util::get_data_dir()).err().map(|err| format!("Could not save the colour choice: {err}"));
+        self.push_tray_theme();
+    }
+
     pub(in crate::app) fn push_tray_theme(&self) {
         if let Some(tx) = self.tray_tx.as_ref() {
-            let _ = tx.try_send(TrayUpdate::Theme(self.system_theme));
+            // The tray picks the glyph that contrasts with the given scheme: a light icon for Dark, a dark one for Light.
+            let mode = match self.appearance.tray_icon {
+                ThemeChoice::System => self.system_theme,
+                ThemeChoice::Light => iced_theme::Mode::Dark,
+                ThemeChoice::Dark => iced_theme::Mode::Light,
+            };
+            let _ = tx.try_send(TrayUpdate::Theme(mode));
         }
     }
 }
