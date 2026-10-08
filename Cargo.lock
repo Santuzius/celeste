@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "celeste"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "celeste-go",
  "clap 4.6.1",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "celeste-go"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "bindgen",
  "serde",
