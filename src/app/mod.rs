@@ -402,7 +402,7 @@ impl CelesteApp {
             Message::Remote(remote_page::Msg::LogEditorAction(sd_id, action)) => {
                 self.handle_log_editor_action(sd_id, action)
             }
-            Message::Remote(remote_page::Msg::OpenConflict(sd_id, remote_path)) => self.handle_open_conflict(sd_id, remote_path),
+            Message::Remote(remote_page::Msg::OpenConflicts(sd_id)) => self.handle_open_conflicts(sd_id),
             Message::Conflict(sub) => self.handle_conflict_msg(sub),
 
             // Sync lifecycle ----------------------------------------

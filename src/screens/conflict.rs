@@ -29,6 +29,9 @@ pub enum Msg {
     KeepRemote,
     KeepBoth,
     Cancel,
+    /// Skip to the previous / next conflict of the same folder.
+    Previous,
+    Next,
 }
 
 /// The open dialog.
@@ -40,12 +43,15 @@ pub struct Dialog {
     pub conflict: Conflict,
     /// New name for the local copy when keeping both.
     pub new_name: String,
+    /// Index of this conflict among the folder's open conflicts, and how many there are.
+    pub position: usize,
+    pub total: usize,
 }
 
 impl Dialog {
-    pub fn new(remote_id: RemoteId, remote_name: String, sync_dir_id: SyncDirId, conflict: Conflict) -> Self {
+    pub fn new(remote_id: RemoteId, remote_name: String, sync_dir_id: SyncDirId, conflict: Conflict, position: usize, total: usize) -> Self {
         let new_name = file_name(&conflict.local_path).to_owned();
-        Self { remote_id, remote_name, sync_dir_id, conflict, new_name }
+        Self { remote_id, remote_name, sync_dir_id, conflict, new_name, position, total }
     }
 
     /// The new name is usable for "keep both": changed, a plain file name, and free in the folder.
@@ -170,9 +176,24 @@ pub fn view(dialog: &Dialog) -> Element<'_, Msg> {
     .spacing(ROW_SPACING)
     .align_y(Alignment::Center);
 
+    let title = text(if c.first_sync { "File exists on both sides" } else { "File changed on both sides" }).size(HEADING + 2.0);
+    let mut header = row![title, Space::new().width(Length::Fill)].align_y(Alignment::Center);
+    if dialog.total > 1 {
+        let arrow = |glyph: icondata::Icon, msg: Option<Msg>| button(icon(glyph, 16.0)).padding(5).style(theme::button_flat).on_press_maybe(msg);
+        header = header.push(
+            row![
+                arrow(icondata::TbChevronLeftOutline, (dialog.position > 0).then_some(Msg::Previous)),
+                text(format!("{}/{}", dialog.position + 1, dialog.total)).size(TEXT),
+                arrow(icondata::TbChevronRightOutline, (dialog.position + 1 < dialog.total).then_some(Msg::Next)),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center),
+        );
+    }
+
     container(
         column![
-            text(if c.first_sync { "File exists on both sides" } else { "File changed on both sides" }).size(HEADING + 2.0),
+            header,
             text(if c.first_sync {
                 format!("'{}' exists on this computer and on {remote} with different content. Which version do you want to keep? The other one is overwritten.", file_name(&c.local_path))
             } else {

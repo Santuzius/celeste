@@ -125,8 +125,8 @@ impl CelesteApp {
         let rclone = self.rclone.clone();
         let events_tx = self.events_tx.clone();
         let stderr_capture = self.stderr_capture.clone();
-        // The user's conflict choices go to this pass; one that no longer fits is simply dropped and the conflict reported again.
-        let resolutions = self.resolutions.remove(&id).unwrap_or_default();
+        // The user's conflict choices go to this pass; one that no longer fits is simply dropped and the conflict reported again. They stay pending until a pass reports back on them, so a cancelled pass doesn't lose them.
+        let resolutions = self.resolutions.get(&id).cloned().unwrap_or_default();
         Task::perform(
             async move {
                 let remote = match repo.find_remote(id).await {

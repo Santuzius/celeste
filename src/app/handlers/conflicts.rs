@@ -15,8 +15,13 @@ use crate::{
 use super::super::{CelesteApp, Message};
 
 impl CelesteApp {
-    /// A pass reported the complete conflict list of a sync dir. New entries are logged once (not on every pass); an open dialog follows its file or closes when the file is no longer in conflict.
-    pub(in crate::app) fn handle_conflicts_reported(&mut self, remote_id: RemoteId, sync_dir_id: SyncDirId, conflicts: Vec<Conflict>) {
+    /// A pass reported the complete conflict list of a sync dir. New entries are logged once (not on every pass); files the user already decided on stay hidden until a pass that was given that choice reports back; an open dialog follows its file or moves on to the one now at its position.
+    pub(in crate::app) fn handle_conflicts_reported(&mut self, remote_id: RemoteId, sync_dir_id: SyncDirId, mut conflicts: Vec<Conflict>, handled: Vec<Resolution>) {
+        let pending = self.resolutions.get_mut(&remote_id).and_then(|dirs| dirs.get_mut(&sync_dir_id));
+        if let Some(pending) = pending {
+            pending.retain(|r| !handled.contains(r));
+            conflicts.retain(|c| !pending.iter().any(|r| r.remote_path == c.remote_path));
+        }
         let known = self.conflicts.remove(&sync_dir_id).unwrap_or_default();
         for c in &conflicts {
             if !known.iter().any(|k| k.remote_path == c.remote_path) {
@@ -26,27 +31,41 @@ impl CelesteApp {
         }
         if !conflicts.is_empty() {
             self.sync_state.transition_dir(remote_id, sync_dir_id, RunState::Warning);
-        }
-        if let Some(dialog) = self.conflict_dialog.as_mut().filter(|d| d.sync_dir_id == sync_dir_id) {
-            match conflicts.iter().find(|c| c.remote_path == dialog.conflict.remote_path) {
-                Some(current) => dialog.conflict = current.clone(),
-                None => self.conflict_dialog = None,
-            }
-        }
-        if !conflicts.is_empty() {
             self.conflicts.insert(sync_dir_id, conflicts);
+        }
+        let Some(dialog) = self.conflict_dialog.as_mut().filter(|d| d.sync_dir_id == sync_dir_id) else {
+            return;
+        };
+        let list = self.conflicts.get(&sync_dir_id).map_or(&[][..], |v| v.as_slice());
+        match list.iter().position(|c| c.remote_path == dialog.conflict.remote_path) {
+            Some(i) => {
+                dialog.conflict = list[i].clone();
+                dialog.position = i;
+                dialog.total = list.len();
+            }
+            None => {
+                let position = dialog.position;
+                self.show_conflict(sync_dir_id, position);
+            }
         }
     }
 
-    pub(in crate::app) fn handle_open_conflict(&mut self, sync_dir_id: SyncDirId, remote_path: String) -> Task<Message> {
-        let Some(conflict) = self.conflicts.get(&sync_dir_id).and_then(|list| list.iter().find(|c| c.remote_path == remote_path)) else {
-            return Task::none();
+    pub(in crate::app) fn handle_open_conflicts(&mut self, sync_dir_id: SyncDirId) -> Task<Message> {
+        self.show_conflict(sync_dir_id, 0);
+        Task::none()
+    }
+
+    /// Open the dialog on the folder's conflict at `position` (or the last one), close it when none is left.
+    fn show_conflict(&mut self, sync_dir_id: SyncDirId, position: usize) {
+        self.conflict_dialog = None;
+        let Some(list) = self.conflicts.get(&sync_dir_id).filter(|l| !l.is_empty()) else {
+            return;
         };
         let Some(remote) = self.remotes.iter().find(|r| self.sync_dirs.get(&r.id).is_some_and(|dirs| dirs.iter().any(|d| d.id == sync_dir_id))) else {
-            return Task::none();
+            return;
         };
-        self.conflict_dialog = Some(conflict::Dialog::new(remote.id, remote.name.clone(), sync_dir_id, conflict.clone()));
-        Task::none()
+        let position = position.min(list.len() - 1);
+        self.conflict_dialog = Some(conflict::Dialog::new(remote.id, remote.name.clone(), sync_dir_id, list[position].clone(), position, list.len()));
     }
 
     pub(in crate::app) fn handle_conflict_msg(&mut self, msg: conflict::Msg) -> Task<Message> {
@@ -65,6 +84,12 @@ impl CelesteApp {
             // The conflict stays and is checked again on every pass; maybe the user sorts it out by hand.
             conflict::Msg::Cancel => {
                 self.conflict_dialog = None;
+                return Task::none();
+            }
+            conflict::Msg::Previous | conflict::Msg::Next => {
+                let (sync_dir_id, position) = (dialog.sync_dir_id, dialog.position);
+                let position = if matches!(msg, conflict::Msg::Previous) { position.saturating_sub(1) } else { position + 1 };
+                self.show_conflict(sync_dir_id, position);
                 return Task::none();
             }
             conflict::Msg::KeepLocal => ConflictChoice::KeepLocal,
@@ -88,6 +113,8 @@ impl CelesteApp {
         if let Some(list) = self.conflicts.get_mut(&dialog.sync_dir_id) {
             list.retain(|c| c.remote_path != dialog.conflict.remote_path);
         }
+        // The next conflict moves up to the same position (2/9 → 2/8).
+        self.show_conflict(dialog.sync_dir_id, dialog.position);
         self.handle_refresh_now(dialog.remote_id)
     }
 }

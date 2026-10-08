@@ -94,7 +94,8 @@ impl CelesteApp {
                 remote_id,
                 sync_dir_id,
                 conflicts,
-            } => self.handle_conflicts_reported(remote_id, sync_dir_id, conflicts),
+                resolutions,
+            } => self.handle_conflicts_reported(remote_id, sync_dir_id, conflicts, resolutions),
             SyncEvent::RemoteStarted { .. }
             | SyncEvent::RemoteCompleted { .. }
             | SyncEvent::RemoteFailed { .. }

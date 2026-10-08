@@ -1,7 +1,7 @@
 use super::{
     remote::RemoteId,
     run_state::RunState,
-    sync::{Conflict, SyncDirId, SyncError},
+    sync::{Conflict, Resolution, SyncDirId, SyncError},
 };
 
 /// Events the sync services emit. UI adapters subscribe and translate into
@@ -48,6 +48,8 @@ pub enum SyncEvent {
         remote_id: RemoteId,
         sync_dir_id: SyncDirId,
         conflicts: Vec<Conflict>,
+        /// The user's choices this pass was given (applied, or dropped because the file changed again). Choices made while the pass ran aren't in here, so the app keeps hiding those files.
+        resolutions: Vec<Resolution>,
     },
     /// Per-sync-dir coarse run-state transition. Drives the status icon on
     /// the remote page. The `RunState` variants the sync engine emits are

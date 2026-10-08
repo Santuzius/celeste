@@ -171,6 +171,7 @@ where
             remote_id: remote.id,
             sync_dir_id: sync_dir.id,
             conflicts: applied.conflicts.clone(),
+            resolutions: resolutions.to_vec(),
         });
     }
     let failed = applied.failures;
