@@ -20,3 +20,6 @@ temp
 /parts
 /stage
 /prime
+
+# Local overrides to sibling clones (see .cargo/config.toml)
+/.cargo/config.toml

@@ -16,13 +16,21 @@ members = ["src/go"]
 [workspace.package]
 version = "0.20.0"
 
+# cdylib for Android (loaded by IcedActivity), rlib for the desktop binary in src/main.rs.
+[lib]
+name = "celeste"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 clap = { version = "4.6.1", features = ["derive", "env"] }
 # XDG desktop portal (folder chooser). Already pulled in by the keyring
 # backend, so this adds nothing to the build.
 dbus = "0.9"
 futures = "0.3.32"
-iced = { version = "0.14", features = ["tokio", "lazy", "svg"] }
+# iced from the fork that runs it on Android (branch `android-0.14`, see github.com/Santuzius/iced_android). `x11` only satisfies iced's check that Unix targets pick a display server; nothing of it is built for Android. The desktop-only features are added below.
+iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "tokio", "lazy", "svg", "x11"] }
+# Soft keyboard, insets, back gesture and fonts on Android; does nothing on desktop.
+iced_android = { git = "https://github.com/Santuzius/iced_android", features = ["emoji"] }
 # OS keyring (libsecret / Secret-Service) for the Proton session blobs
 # and the rclone config file. Sync API + pure-Rust crypto so we don't
 # pull zbus/tokio or OpenSSL into the dependency graph.
@@ -57,3 +65,6 @@ sha1 = "0.10.6"
 time = { version = "0.3.47", features = ["serde-well-known"] }
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "sync"] }
 tr = "0.1.11"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", default-features = false, features = ["wayland", "linux-theme-detection", "thread-pool"] }
