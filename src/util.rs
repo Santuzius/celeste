@@ -88,3 +88,12 @@ pub fn strip_slashes(string: &str) -> String {
         .unwrap_or(stripped_prefix)
         .to_string()
 }
+
+/// Hands memory the allocator has freed but kept back to the OS. glibc keeps freed heap pages for reuse, so after the window and its GPU resources are gone Celeste would otherwise stay at its window-open size while sitting in the tray.
+pub fn release_freed_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: malloc_trim only walks the allocator's own free lists.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}

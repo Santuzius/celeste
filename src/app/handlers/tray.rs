@@ -115,6 +115,7 @@ impl CelesteApp {
             // Nobody can see the expanded logs any more; free their
             // shaped text buffers while Celeste sits in the tray.
             self.sync_dir_log_content.clear();
+            crate::util::release_freed_memory();
         }
         Task::none()
     }
