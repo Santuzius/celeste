@@ -22,7 +22,7 @@ static CONTEXT: OnceLock<(JavaVM, GlobalRef)> = OnceLock::new();
 #[unsafe(no_mangle)]
 extern "system" fn Java_io_github_santuzius_celeste_CelesteApplication_nativeInit(env: JNIEnv, _: JClass, application: JObject) {
     // sqlx logs every query and wgpu its whole adapter at info level.
-    let filter = android_logger::FilterBuilder::new().parse("info,sqlx=warn,wgpu_core=warn,wgpu_hal=error,iced_wgpu=warn").build();
+    let filter = android_logger::FilterBuilder::new().parse("info,sqlx=warn,wgpu_core=error,wgpu_hal=error,iced_wgpu=warn,iced_winit=warn").build();
     android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("celeste").with_filter(filter));
     std::panic::set_hook(Box::new(|info| log::error!("{info}")));
     match (env.get_java_vm(), env.new_global_ref(application)) {
