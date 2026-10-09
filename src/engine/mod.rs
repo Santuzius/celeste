@@ -181,7 +181,16 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Input>, snapshot_tx
 /// Shows the summary that changed where the platform wants it: the desktop tray reads the snapshots itself, Android shows it in the sync service's notification.
 #[cfg(target_os = "android")]
 fn status_changed(status: &crate::infrastructure::tray::TrayStatus) {
-    crate::infrastructure::android::show_sync_status(&crate::infrastructure::tray::description_for(status));
+    use crate::infrastructure::tray::{description_for, TrayStatus};
+    // "Up to date" with the time of the last sync, which Android shows as an age that stays current; the engine only reports changes.
+    match status {
+        TrayStatus::Done { last_sync_ago: Some(ago) } => {
+            let at = std::time::SystemTime::now() - *ago;
+            let millis = at.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+            crate::infrastructure::android::show_sync_status("Up to date", millis);
+        }
+        _ => crate::infrastructure::android::show_sync_status(&description_for(status), 0),
+    }
 }
 
 #[cfg(not(target_os = "android"))]

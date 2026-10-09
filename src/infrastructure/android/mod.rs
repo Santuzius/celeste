@@ -97,11 +97,12 @@ pub fn open_url(url: &str) {
 }
 
 /// Starts the foreground service that keeps the process, and with it syncing, alive while Celeste is not on screen, or updates its notification text.
-pub fn show_sync_status(text: &str) {
+/// `since_millis` (Unix time, 0 for none) is shown as the age of the status, e.g. of the last sync.
+pub fn show_sync_status(text: &str, since_millis: i64) {
     with_context(|env, context| {
         let class = bridge(env, context)?;
         let text = env.new_string(text)?;
-        env.call_static_method(class, "showSyncStatus", "(Landroid/content/Context;Ljava/lang/String;)V", &[JValue::Object(context), JValue::Object(&text)])?;
+        env.call_static_method(class, "showSyncStatus", "(Landroid/content/Context;Ljava/lang/String;J)V", &[JValue::Object(context), JValue::Object(&text), JValue::Long(since_millis)])?;
         Ok(())
     });
 }

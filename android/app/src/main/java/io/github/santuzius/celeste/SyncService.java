@@ -16,13 +16,15 @@ public class SyncService extends Service {
 
     private static volatile SyncService running;
     private static volatile String status = "Starting…";
+    private static volatile long statusSince;
 
     /** Starts the sync engine without a GUI, unless it already runs. */
     static native void nativeStartEngine();
 
-    /** Shows `text` as the sync status, starting the service if needed. */
-    static void show(Context context, String text) {
+    /** Shows `text` as the sync status, with `sinceMillis` (0 for none) as its age, starting the service if needed. */
+    static void show(Context context, String text, long sinceMillis) {
         status = text;
+        statusSince = sinceMillis;
         SyncService service = running;
         if (service != null) {
             context.getSystemService(NotificationManager.class).notify(NOTIFICATION_ID, service.notification());
@@ -77,7 +79,8 @@ public class SyncService extends Service {
                 .setContentTitle(status)
                 .setContentIntent(Bridge.openApp(this))
                 .setOngoing(true)
-                .setShowWhen(false)
+                .setWhen(statusSince)
+                .setShowWhen(statusSince != 0)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .build();
     }

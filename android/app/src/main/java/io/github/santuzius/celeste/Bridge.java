@@ -93,9 +93,9 @@ public final class Bridge {
         context.getSystemService(NotificationManager.class).notify(text.hashCode(), notification);
     }
 
-    /** The one-line sync status: starts the sync service with it, or updates the service's notification. */
-    public static void showSyncStatus(Context context, String text) {
-        SyncService.show(context, text);
+    /** The one-line sync status: starts the sync service with it, or updates the service's notification. `sinceMillis` (0 for none) is shown as the status's age. */
+    public static void showSyncStatus(Context context, String text, long sinceMillis) {
+        SyncService.show(context, text, sinceMillis);
     }
 
     /** Keeps the CPU running while a sync pass runs, so it finishes with the screen off; Android would otherwise suspend it halfway. */
