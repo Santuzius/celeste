@@ -487,7 +487,7 @@ fn exclusion_panel<'a>(
         leftovers.and_then(|m| m.get(relative)).map(|&n| {
             tooltip(
                 button(on_fill_icon(icondata::MdiBroom, 14.0)).padding(4).style(theme::button_warning).on_press(Msg::RequestCleanLeftovers(sd.id, relative.to_owned())),
-                container(text(format!("Delete the {n} synced files still on this computer")).size(CAPTION)).padding([4, 8]).style(theme::card),
+                container(text(format!("Delete the {n} synced files still on {}", crate::util::THIS_DEVICE)).size(CAPTION)).padding([4, 8]).style(theme::card),
                 tooltip::Position::Top,
             )
         })
@@ -577,12 +577,12 @@ fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &
             row![text(label).size(TEXT).width(Length::Fixed(FORM_LABEL_WIDTH)), input].spacing(ROW_SPACING).align_y(Alignment::Center).into()
         }
     };
-    let (here, local_example) = if cfg!(target_os = "android") { ("On this device", "e.g. /storage/emulated/0/Documents") } else { ("On this computer", "e.g. /home/you/Documents/Scans") };
+    let local_example = if cfg!(target_os = "android") { "e.g. /storage/emulated/0/Documents" } else { "e.g. /home/you/Documents/Scans" };
 
     let mut col = column![
         text("Add a folder").size(TEXT),
         field(
-            here.to_owned(),
+            format!("On {}", crate::util::THIS_DEVICE),
             row![
                 text_input(local_example, draft_local)
                     .on_input(Msg::DraftLocalPathChanged)
@@ -669,7 +669,7 @@ pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg
     let (title, body, confirm) = match pending {
         PendingDelete::Remote(_id, name) => (
             format!("Remove {name}?"),
-            "Celeste stops syncing this remote and forgets its folders and exclusions. No files are deleted — neither on this computer nor in the cloud.".to_owned(),
+            format!("Celeste stops syncing this remote and forgets its folders and exclusions. No files are deleted — neither on {} nor in the cloud.", crate::util::THIS_DEVICE),
             "Remove remote",
         ),
         PendingDelete::Leftovers { .. } => unreachable!("handled above"),
@@ -677,8 +677,9 @@ pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg
             (
                 "Stop syncing this folder?".to_owned(),
                 format!(
-                    "{} and {remote_label} will no longer be kept in sync. No files are deleted — neither on this computer nor in the cloud.",
-                    fmt_home(local)
+                    "{} and {remote_label} will no longer be kept in sync. No files are deleted — neither on {} nor in the cloud.",
+                    fmt_home(local),
+                    crate::util::THIS_DEVICE
                 ),
                 "Stop syncing",
             )

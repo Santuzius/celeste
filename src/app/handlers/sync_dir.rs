@@ -90,11 +90,12 @@ impl CelesteApp {
         };
         let local = expand_home(local.trim());
         if local.is_empty() {
-            self.add_sync_dir_error = Some("Choose a folder on this computer.".to_owned());
+            self.add_sync_dir_error = Some(format!("Choose a folder on {}.", crate::util::THIS_DEVICE));
             return Task::none();
         }
         if !local.starts_with('/') {
-            self.add_sync_dir_error = Some("Use an absolute path, e.g. /home/you/Documents or ~/Documents.".to_owned());
+            let example = if cfg!(target_os = "android") { "/storage/emulated/0/Documents" } else { "/home/you/Documents or ~/Documents" };
+            self.add_sync_dir_error = Some(format!("Use an absolute path, e.g. {example}."));
             return Task::none();
         }
         // Normalise to match the on-disk contract: the local path is

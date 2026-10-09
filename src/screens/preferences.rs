@@ -20,21 +20,22 @@ pub enum Msg {
 }
 
 pub fn view<'a>(appearance: Appearance, autostart: bool, error: Option<&'a str>) -> Element<'a, Msg> {
-    let rows = column![
-        setting_row("Theme", "Colours of this window.", segmented(&ThemeChoice::ALL, ThemeChoice::label, appearance.window, Msg::WindowThemeChanged)),
-        rule::horizontal(1).style(theme::separator),
-        setting_row(
+    let android = cfg!(target_os = "android");
+    let mut rows = column![setting_row("Theme", "Colours of this window.", segmented(&ThemeChoice::ALL, ThemeChoice::label, appearance.window, Msg::WindowThemeChanged))];
+    // Android has no tray.
+    if !android {
+        rows = rows.push(rule::horizontal(1).style(theme::separator)).push(setting_row(
             "Tray icon",
             "Colour of the icon in the panel.",
             segmented(&TrayIconChoice::ALL, TrayIconChoice::label, appearance.tray_icon, Msg::TrayIconChanged),
-        ),
-        rule::horizontal(1).style(theme::separator),
-        setting_row(
-            "Start Celeste when you log in",
-            "It starts hidden in the system tray and syncs in the background.",
-            toggler(autostart).on_toggle(Msg::AutostartToggled).size(20).into(),
-        ),
-    ];
+        ));
+    }
+    let (autostart_label, autostart_hint) = if android {
+        ("Start Celeste when the device starts", "It syncs in the background, with its status in a silent notification.")
+    } else {
+        ("Start Celeste when you log in", "It starts hidden in the system tray and syncs in the background.")
+    };
+    rows = rows.push(rule::horizontal(1).style(theme::separator)).push(setting_row(autostart_label, autostart_hint, toggler(autostart).on_toggle(Msg::AutostartToggled).size(20).into()));
 
     let mut content = column![
         text("Preferences").size(HEADING + 2.0),

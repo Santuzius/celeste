@@ -77,6 +77,15 @@ pub fn notify(title: &str, text: &str) {
     });
 }
 
+/// Holds (`true`) or releases a partial wakelock, which keeps the CPU running with the screen off.
+pub fn keep_awake(awake: bool) {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        env.call_static_method(class, "keepAwake", "(Landroid/content/Context;Z)V", &[JValue::Object(context), JValue::Bool(awake.into())])?;
+        Ok(())
+    });
+}
+
 /// Opens `url` in the default browser.
 pub fn open_url(url: &str) {
     with_context(|env, context| {

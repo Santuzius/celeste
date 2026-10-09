@@ -467,8 +467,11 @@ impl CelesteApp {
                 self.add_folder_open = false;
                 Task::none()
             }
-            Message::Foreground(true) if self.window_id.is_none() => self.handle_tray_click(TrayAction::Open),
-            Message::Foreground(true) => Task::none(),
+            Message::Foreground(true) => {
+                // A new activity starts with the system's bar colours.
+                self.update_system_bars();
+                if self.window_id.is_none() { self.handle_tray_click(TrayAction::Open) } else { Task::none() }
+            }
             // Off screen the GUI only costs memory; the engine keeps syncing.
             Message::Foreground(false) => self.handle_tray_click(TrayAction::Hide),
         };
@@ -654,6 +657,12 @@ impl CelesteApp {
         self.appearance = appearance;
         self.preferences_error = appearance.save(&crate::util::get_data_dir()).err().map(|err| format!("Could not save the colour choice: {err}"));
         self.push_tray_theme();
+        self.update_system_bars();
+    }
+
+    /// Android: light icons in the status and navigation bars on the dark theme, dark ones on the light theme.
+    pub(in crate::app) fn update_system_bars(&self) {
+        iced_android::set_system_bars_dark(self.resolved_mode(self.appearance.window) == iced_theme::Mode::Dark);
     }
 
     pub(in crate::app) fn push_tray_theme(&self) {

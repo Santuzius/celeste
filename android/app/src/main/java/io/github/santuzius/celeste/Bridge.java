@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.provider.DocumentsContract;
 import android.provider.Settings;
 import android.security.keystore.KeyGenParameterSpec;
@@ -42,7 +43,11 @@ public final class Bridge {
     private static final String KEY_ALIAS = "celeste-secrets";
     private static final int IV_LENGTH = 12;
 
+    /** A long pass ends with this, should the engine never say it ended. */
+    private static final long WAKE_LOCK_TIMEOUT_MS = 60 * 60 * 1000;
+
     private static WeakReference<Activity> activity = new WeakReference<>(null);
+    private static PowerManager.WakeLock wakeLock;
 
     private Bridge() {}
 
@@ -91,6 +96,19 @@ public final class Bridge {
     /** The one-line sync status: starts the sync service with it, or updates the service's notification. */
     public static void showSyncStatus(Context context, String text) {
         SyncService.show(context, text);
+    }
+
+    /** Keeps the CPU running while a sync pass runs, so it finishes with the screen off; Android would otherwise suspend it halfway. */
+    public static synchronized void keepAwake(Context context, boolean awake) {
+        if (wakeLock == null) {
+            wakeLock = context.getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "celeste:sync");
+            wakeLock.setReferenceCounted(false);
+        }
+        if (awake) {
+            wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
+        } else if (wakeLock.isHeld()) {
+            wakeLock.release();
+        }
     }
 
     /** Opens a link in the default browser. */

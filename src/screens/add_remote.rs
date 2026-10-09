@@ -327,7 +327,7 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
                 let mut col = column![text("Waiting for you to finish in the browser…").size(TEXT)].spacing(6);
                 // Wrong browser, or none at all? The link works in any browser on this computer.
                 if handle.url().is_some() {
-                    col = col.push(text("If no browser opened (or the wrong one), open the authorization link in any browser on this computer.").size(CAPTION).style(theme::muted));
+                    col = col.push(text(format!("If no browser opened (or the wrong one), open the authorization link in any browser on {}.", crate::util::THIS_DEVICE)).size(CAPTION).style(theme::muted));
                     col = col.push(
                         row![
                             button(text("Copy link").size(CAPTION)).padding([5, 12]).style(theme::button_secondary).on_press(Msg::CopyAuthLink),

@@ -119,7 +119,7 @@ pub fn view(dialog: &Dialog) -> Element<'_, Msg> {
     };
 
     let sides = row![
-        side("On this computer".to_owned(), fmt_home(&c.local_path), icondata::TbDeviceDesktopOutline, &c.local),
+        side(format!("On {}", crate::util::THIS_DEVICE), fmt_home(&c.local_path), if cfg!(target_os = "android") { icondata::TbDeviceMobileOutline } else { icondata::TbDeviceDesktopOutline }, &c.local),
         side(format!("On {remote}"), format!("{remote}:/{}", c.remote_path), icondata::TbCloudOutline, &c.remote),
     ]
     .spacing(24);
@@ -195,9 +195,9 @@ pub fn view(dialog: &Dialog) -> Element<'_, Msg> {
         column![
             header,
             text(if c.first_sync {
-                format!("'{}' exists on this computer and on {remote} with different content. Which version do you want to keep? The other one is overwritten.", file_name(&c.local_path))
+                format!("'{}' exists on {} and on {remote} with different content. Which version do you want to keep? The other one is overwritten.", file_name(&c.local_path), crate::util::THIS_DEVICE)
             } else {
-                format!("'{}' was changed on this computer and on {remote} since the last sync. Which version do you want to keep? The other one is overwritten.", file_name(&c.local_path))
+                format!("'{}' was changed on {} and on {remote} since the last sync. Which version do you want to keep? The other one is overwritten.", file_name(&c.local_path), crate::util::THIS_DEVICE)
             })
             .size(TEXT),
             sides,

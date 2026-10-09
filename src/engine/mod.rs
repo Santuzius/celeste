@@ -151,9 +151,15 @@ fn spawn(repo: Arc<dyn Repository>, backend: Arc<dyn BackendClient>, stderr: Cap
 /// The engine loop: sleeps until an input arrives or a remote is due, handles everything that is ready, starts due passes and publishes one snapshot per round.
 async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Input>, snapshot_tx: watch::Sender<Arc<Snapshot>>) {
     core.reload().await;
+    let mut busy = false;
     loop {
         core.start_due(Instant::now());
-        snapshot_tx.send_replace(Arc::new(core.snapshot()));
+        let snapshot = Arc::new(core.snapshot());
+        if busy != !snapshot.syncing.is_empty() {
+            busy = !busy;
+            busy_changed(busy);
+        }
+        snapshot_tx.send_replace(snapshot);
         if let Some(status) = core.take_status_change() {
             status_changed(&status);
         }
@@ -180,6 +186,15 @@ fn status_changed(status: &crate::infrastructure::tray::TrayStatus) {
 
 #[cfg(not(target_os = "android"))]
 fn status_changed(_status: &crate::infrastructure::tray::TrayStatus) {}
+
+/// A pass started while none ran (`true`), or the last one ended. On Android the device stays awake in between, so a pass that started finishes even when the screen goes off.
+#[cfg(target_os = "android")]
+fn busy_changed(busy: bool) {
+    crate::infrastructure::android::keep_awake(busy);
+}
+
+#[cfg(not(target_os = "android"))]
+fn busy_changed(_busy: bool) {}
 
 /// True when an error message indicates an auth failure across any backend. Delegates to the per-backend translators so the classification lives exactly once.
 pub(crate) fn is_auth_failure(msg: &str) -> bool {

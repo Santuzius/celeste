@@ -25,7 +25,7 @@ pub enum Msg {
 pub fn view<'a>() -> Element<'a, Msg> {
     let link = |label: &'a str, url: &'static str| button(text(label).size(CAPTION)).padding([5, 12]).style(theme::button_secondary).on_press(Msg::Open(url));
 
-    let credits = column![
+    let mut credits = column![
         text("Credits").size(TEXT),
         bullet("Hunter Wittenborn (hwittenborn): idea and original code of Celeste"),
         bullet("Adrien Facélina: app icon, adapted for this fork"),
@@ -34,6 +34,10 @@ pub fn view<'a>() -> Element<'a, Msg> {
         bullet("rclone, iced and Tabler Icons"),
     ]
     .spacing(4);
+    // The emoji font iced_android bundles for Android 15+; its licence asks for this credit.
+    if cfg!(target_os = "android") {
+        credits = credits.push(bullet("Emoji on Android 15+: Twemoji by Twitter, CC-BY 4.0"));
+    }
 
     let copyright = column![
         text("© 2022–2024 Hunter Wittenborn").size(CAPTION).style(theme::muted),
@@ -54,7 +58,7 @@ pub fn view<'a>() -> Element<'a, Msg> {
             ]
             .spacing(14)
             .align_y(Alignment::Center),
-            text("Two-way file sync between folders on this computer and Google Drive or Proton Drive.").size(TEXT),
+            text(format!("Two-way file sync between folders on {} and Google Drive or Proton Drive.", crate::util::THIS_DEVICE)).size(TEXT),
             row![link("Source", REPOSITORY), link("Privacy policy", PRIVACY_POLICY), link("Original project", UPSTREAM)].spacing(ROW_SPACING),
             credits,
             copyright,

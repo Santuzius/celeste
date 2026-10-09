@@ -4,6 +4,9 @@ use futures::future::Future;
 
 /// Block the current thread on a future. Safe from any thread;
 /// `block_on` has no main-context requirements.
+/// How the UI names the machine Celeste runs on.
+pub const THIS_DEVICE: &str = if cfg!(target_os = "android") { "this device" } else { "this computer" };
+
 pub fn await_future<F: Future>(future: F) -> F::Output {
     futures::executor::block_on(future)
 }

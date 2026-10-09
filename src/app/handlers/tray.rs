@@ -49,6 +49,7 @@ impl CelesteApp {
         }
         self.system_theme = mode;
         self.push_tray_theme();
+        self.update_system_bars();
         Task::none()
     }
 
