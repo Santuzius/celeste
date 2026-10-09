@@ -10,7 +10,7 @@ use crate::{
         remote::{Remote, RemoteId},
         run_state::{RunState, SyncActivity},
     },
-    theme::{self, CAPTION, NAV_WIDTH, ROW_SPACING, TEXT},
+    theme::{self, CAPTION, ROW_SPACING, TEXT},
     widgets::{
         icon::{icon, muted_icon, status_icon},
         text,
@@ -24,6 +24,8 @@ pub enum Msg {
     AddRemote,
     OpenPreferences,
     OpenAbout,
+    /// Compact layout: open the drawer.
+    OpenDrawer,
 }
 
 /// One navigation entry.
@@ -33,7 +35,8 @@ pub struct NavEntry<'a> {
     pub has_folders: bool,
 }
 
-pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>) -> Element<'a, Msg> {
+/// The remotes with the app-wide actions below them: the left pane on the desktop, the drawer in the compact layout (`width` says which).
+pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>, width: Length) -> Element<'a, Msg> {
     let mut list = column![].spacing(2);
     for entry in entries {
         list = list.push(nav_item(entry, selected));
@@ -59,7 +62,7 @@ pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>) -> Elemen
         .spacing(ROW_SPACING),
     )
     .padding(10)
-    .width(Length::Fixed(NAV_WIDTH))
+    .width(width)
     .height(Length::Fill)
     .style(theme::nav_pane)
     .into()
@@ -126,6 +129,22 @@ pub fn status_label(state: RunState) -> &'static str {
         RunState::Error => "Sync failed",
         RunState::Waiting => "Waiting",
     }
+}
+
+/// Top bar of the compact layout while no remote is selected: just the drawer button and the app's name.
+pub fn compact_bar<'a>() -> Element<'a, Msg> {
+    container(
+        row![
+            button(icon(icondata::TbMenu2Outline, 20.0)).padding(8).style(theme::button_flat).on_press(Msg::OpenDrawer),
+            text("Celeste").size(theme::HEADING),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+    )
+    .padding([6, 4])
+    .width(Length::Fill)
+    .style(theme::header_bar)
+    .into()
 }
 
 /// Content shown while no remote is configured.

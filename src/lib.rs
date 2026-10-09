@@ -12,7 +12,7 @@ pub mod theme;
 pub mod util;
 pub mod widgets;
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use sea_orm::Database;
 use serde_json::json;
@@ -37,25 +37,39 @@ use crate::{
     services::secrets,
 };
 
-/// Entry point on Android, called by NativeActivity for the first activity of the process. With `iced_android` it keeps running after the activity is destroyed, so syncing goes on while the sync service keeps the process alive; later activities attach to it.
+/// Entry point on Android, called by NativeActivity for the first activity of the process. With `iced_android` it keeps running after the activity is destroyed, so syncing goes on while the sync service keeps the process alive; later activities attach to it. `CelesteApplication` has already set up the environment and logging.
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(app: iced_android::AndroidApp) {
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("celeste"));
-    std::panic::set_hook(Box::new(|info| log::error!("{info}")));
-
-    let Some(files) = app.internal_data_path() else {
-        log::error!("Android gave no internal data path");
-        return;
-    };
-    infrastructure::android::set_dirs(&files);
     iced_android::init(app);
-
     start(true);
 }
 
-/// Sets up storage, the Go archive and the database, then runs the app until it quits. `show` opens the main window right away instead of starting hidden in the tray.
+/// What the GUI and the engine share, set up once per process by [`services`].
+struct Services {
+    repo: Arc<dyn Repository>,
+    router: Arc<ClientRouter>,
+    engine: engine::Handle,
+}
+
+/// Sets up storage, the Go archive and the database and starts the sync engine, once per process. `None` when another process owns the data dir.
+fn services() -> Option<&'static Services> {
+    static SERVICES: OnceLock<Option<Services>> = OnceLock::new();
+    SERVICES.get_or_init(set_up).as_ref()
+}
+
+/// Starts the sync engine without a GUI, e.g. from Android's sync service after a reboot.
+pub fn start_engine() {
+    services();
+}
+
+/// Runs the app until it quits, setting it up first unless the engine already runs. `show` opens the main window right away instead of starting hidden in the tray.
 pub fn start(show: bool) {
+    let Some(services) = services() else { return };
+    iced_run(services.repo.clone(), services.router.clone(), services.engine.clone(), show).expect("iced app exited with error");
+}
+
+fn set_up() -> Option<Services> {
     // Tap stderr before the Go runtime can grab it — that's the
     // only way to catch the `WARN[...] Too many requests` lines rclone's
     // backends emit when they silently retry a 429. Falls back to a no-op
@@ -75,7 +89,7 @@ pub fn start(show: bool) {
 
     // Bail out before touching the DB or keyring when another process already owns this data dir.
     if let infrastructure::single_instance::Instance::Secondary = infrastructure::single_instance::acquire(&data_dir) {
-        return;
+        return None;
     }
 
     legacy_config_dir::run(&data_dir);
@@ -138,7 +152,7 @@ pub fn start(show: bool) {
     let router = Arc::new(ClientRouter::new(default_client));
     resume_native_sessions(&*repo, &router);
     let engine = engine::start(repo.clone(), router.clone(), stderr).clone();
-    iced_run(repo, router, engine, show).expect("iced app exited with error");
+    Some(Services { repo, router, engine })
 }
 
 /// Sweep an `<data_dir>/rclone.conf` left behind by a prior version

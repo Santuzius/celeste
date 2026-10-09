@@ -1,48 +1,51 @@
 //! What Celeste needs from Android's Java side: the Keystore for credentials, the folder picker, notifications and the sync service that keeps the process alive. The Java half is android/app/src/main/java/io/github/santuzius/celeste/.
 //!
-//! Calls go through the Application's class loader (from `ndk-context`), so they also work while no activity exists, e.g. after the user swiped Celeste away and the service keeps syncing.
+//! `CelesteApplication` hands over the Java VM and the Application when the process starts, before any activity or service, so calls also work while no activity exists, e.g. when the sync service started the engine after a reboot. They go through the Application's class loader.
 
 pub mod folders;
 pub mod secrets;
 
-use std::path::Path;
+use std::sync::OnceLock;
 
 use jni::{
-    objects::{JClass, JObject, JValue},
+    objects::{GlobalRef, JClass, JObject, JValue},
     JNIEnv, JavaVM,
 };
 
 /// The Java class with Celeste's static helpers.
 const BRIDGE: &str = "io.github.santuzius.celeste.Bridge";
 
-/// Points the XDG and temp directories Celeste, Go and rclone use at the app's private storage; Android sets none of them. Call first in `android_main`, before any other thread starts.
-pub fn set_dirs(files: &Path) {
-    let run = files.join("run");
-    let cache = files.join("cache");
-    for dir in [&run, &cache] {
-        let _ = std::fs::create_dir_all(dir);
+/// The process's Java VM and its Application, from [`CelesteApplication.nativeInit`](Java_io_github_santuzius_celeste_CelesteApplication_nativeInit).
+static CONTEXT: OnceLock<(JavaVM, GlobalRef)> = OnceLock::new();
+
+/// Called by `CelesteApplication.onCreate`, first thing in every process, after it has pointed the XDG and temp directories at the app's private storage (from Java, so the Go runtime sees them too).
+#[unsafe(no_mangle)]
+extern "system" fn Java_io_github_santuzius_celeste_CelesteApplication_nativeInit(env: JNIEnv, _: JClass, application: JObject) {
+    // sqlx logs every query and wgpu its whole adapter at info level.
+    let filter = android_logger::FilterBuilder::new().parse("info,sqlx=warn,wgpu_core=warn,wgpu_hal=error,iced_wgpu=warn").build();
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("celeste").with_filter(filter));
+    std::panic::set_hook(Box::new(|info| log::error!("{info}")));
+    match (env.get_java_vm(), env.new_global_ref(application)) {
+        (Ok(vm), Ok(application)) => {
+            let _ = CONTEXT.set((vm, application));
+        }
+        _ => log::error!("no Java VM or Application"),
     }
-    // SAFETY: called on the only thread that exists yet.
-    unsafe {
-        std::env::set_var("HOME", files);
-        std::env::set_var("XDG_DATA_HOME", files);
-        std::env::set_var("XDG_CONFIG_HOME", files);
-        std::env::set_var("XDG_CACHE_HOME", &cache);
-        std::env::set_var("XDG_RUNTIME_DIR", &run);
-        // Go's os.TempDir falls back to /data/local/tmp, which apps cannot write.
-        std::env::set_var("TMPDIR", &cache);
-    }
+}
+
+/// Called by `SyncService.onCreate`: starts the sync engine without a GUI, unless it already runs.
+#[unsafe(no_mangle)]
+extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeStartEngine(_: JNIEnv, _: JClass) {
+    // Setting up opens the database and resumes sessions over the network; keep that off the service's main thread.
+    std::thread::spawn(crate::start_engine);
 }
 
 /// Runs `f` with a JNI environment and the Application context, attaching the current thread to the Java VM first. Logs Java exceptions instead of leaving them pending.
 pub fn with_context<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>) -> Option<T> {
-    let context = ndk_context::android_context();
-    // SAFETY: android-activity initialises ndk-context with the process's VM and a global reference to the Application, both valid for the life of the process.
-    let vm = unsafe { JavaVM::from_raw(context.vm().cast()) }.ok()?;
-    let application = unsafe { JObject::from_raw(context.context().cast()) };
+    let (vm, application) = CONTEXT.get()?;
     let mut env = vm.attach_current_thread_permanently().ok()?;
 
-    match f(&mut env, &application) {
+    match f(&mut env, application.as_obj()) {
         Ok(value) => Some(value),
         Err(error) => {
             if env.exception_check().unwrap_or(false) {
@@ -70,6 +73,16 @@ pub fn notify(title: &str, text: &str) {
         let title = env.new_string(title)?;
         let text = env.new_string(text)?;
         env.call_static_method(class, "notify", "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V", &[JValue::Object(context), JValue::Object(&title), JValue::Object(&text)])?;
+        Ok(())
+    });
+}
+
+/// Opens `url` in the default browser.
+pub fn open_url(url: &str) {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        let url = env.new_string(url)?;
+        env.call_static_method(class, "openUrl", "(Landroid/content/Context;Ljava/lang/String;)V", &[JValue::Object(context), JValue::Object(&url)])?;
         Ok(())
     });
 }

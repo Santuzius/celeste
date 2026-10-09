@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use iced::{
-    font::{Family, Weight},
+    font::Weight,
     widget::{button, column, container, rich_text, row, span, text_input, Space},
     Alignment, Element, Font, Length,
 };
@@ -92,7 +92,7 @@ fn sentence<'a>(spans: Vec<Span<'a, ()>>) -> Element<'a, Msg> {
 }
 
 fn bold() -> Font {
-    Font { family: Family::Name("Noto Sans"), weight: Weight::Bold, ..Font::DEFAULT }
+    Font { weight: Weight::Bold, ..crate::theme::UI_FONT }
 }
 
 pub fn view(dialog: &Dialog) -> Element<'_, Msg> {

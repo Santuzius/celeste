@@ -773,7 +773,6 @@ dependencies = [
  "ksni",
  "libc",
  "log",
- "ndk-context",
  "notify-rust",
  "resvg 0.47.0",
  "sea-orm",

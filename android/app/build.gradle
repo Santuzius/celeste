@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.github.santuzius.celeste'
+    compileSdk 36
+    // Matches shell.nix; the SDK in the Nix store is read-only, so Gradle cannot fetch another version.
+    buildToolsVersion '36.0.0'
+
+    defaultConfig {
+        applicationId 'io.github.santuzius.celeste'
+        minSdk 26
+        targetSdk 36
+        versionName cargoVersion()
+        // 0.20.1 → 20001: grows with every release, as Android requires for updates.
+        versionCode cargoVersion().tokenize('.').inject(0) { code, part -> code * 1000 + part.toInteger() }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Signed with the debug key so the release build installs without setting up a keystore.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    // IcedActivity, the Java half of the iced_android crate, compiled from wherever Cargo checked the crate out.
+    sourceSets.main.java.srcDirs += icedAndroidJava()
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+/** `cargo metadata` of Celeste's Cargo.toml in the repository root. */
+def cargoMetadata() {
+    def metadata = providers.exec {
+        commandLine 'cargo', 'metadata', '--format-version', '1', '--manifest-path', "${rootDir}/../Cargo.toml"
+    }.standardOutput.asText.get()
+    return new groovy.json.JsonSlurper().parseText(metadata)
+}
+
+/** The java/ folder of the iced_android crate Celeste depends on. */
+def icedAndroidJava() {
+    def crate = cargoMetadata().packages.find { it.name == 'iced_android' }
+
+    if (crate == null) {
+        throw new GradleException('iced_android not found in the dependencies of Cargo.toml')
+    }
+
+    return new File(crate.manifest_path).parentFile.toPath().resolve('java').toString()
+}
+
+/** Celeste's version from Cargo.toml. */
+def cargoVersion() {
+    return cargoMetadata().packages.find { it.name == 'celeste' }.version
+}

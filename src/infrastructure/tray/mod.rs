@@ -25,7 +25,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iced::{stream, theme, Subscription};
+#[cfg(not(target_os = "android"))]
+use iced::stream;
+use iced::{theme, Subscription};
 #[cfg(not(target_os = "android"))]
 use ksni::{
     menu::{StandardItem, TextDirection},

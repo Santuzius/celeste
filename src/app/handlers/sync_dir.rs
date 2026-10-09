@@ -165,6 +165,7 @@ impl CelesteApp {
             Ok(()) => {
                 self.sync_dir_drafts.remove(&id);
                 self.add_sync_dir_error = None;
+                self.add_folder_open = false;
                 // Start syncing the new folder right away.
                 self.engine.send(Command::Reload);
                 self.engine.send(Command::SyncSoon(id));

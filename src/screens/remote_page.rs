@@ -17,7 +17,7 @@ use crate::{
         sync::{Conflict, SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
     },
     screens::{main_page::{status_label, NO_FOLDERS}, settings},
-    theme::{self, CAPTION, HEADING, PAGE_PADDING, ROW_SPACING, SECTION_SPACING, TEXT, TITLE},
+    theme::{self, CAPTION, COMPACT_PADDING, HEADING, PAGE_PADDING, ROW_SPACING, SECTION_SPACING, TEXT, TITLE},
     util::fmt_home,
     widgets::{
         bullet,
@@ -65,6 +65,11 @@ pub enum Msg {
     LogEditorAction(SyncDirId, text_editor::Action),
     /// Open the conflict dialog on the folder's first conflict.
     OpenConflicts(SyncDirId),
+    /// Compact layout: open the drawer with the remotes.
+    OpenDrawer,
+    /// Compact layout: open / close the add-folder form, a dialog there.
+    OpenAddFolder,
+    CloseAddFolder,
 }
 
 /// What the user is about to delete, pending confirmation. Stored at the app level and rendered by [`confirm_delete_overlay`].
@@ -90,6 +95,8 @@ pub struct Page<'a> {
     pub add_error: Option<&'a str>,
     /// Google Drive remote still on rclone's retiring shared OAuth client.
     pub shared_oauth_client: bool,
+    /// Phone layout: a top bar with icon buttons, and the add-folder form behind a floating button.
+    pub compact: bool,
 }
 
 /// One sync folder row.
@@ -116,7 +123,8 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
     let remote = page.remote;
     let auth_needed = page.state == RunState::AuthNeeded;
 
-    let header = row![
+    let compact = page.compact;
+    let header = if compact { compact_header(&page) } else { row![
         column![
             text(&remote.name).size(TITLE),
             row![status_icon(page.state, 14.0), text(status_line(&page)).size(CAPTION).style(theme::muted)]
@@ -137,7 +145,8 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
             .on_press(Msg::OpenSettings),
     ]
     .spacing(ROW_SPACING)
-    .align_y(Alignment::Center);
+    .align_y(Alignment::Center)
+    .into() };
 
     let mut body = column![].spacing(SECTION_SPACING);
 
@@ -191,8 +200,9 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
     // ── Folders ─────────────────────────────────────────────────────────
     let mut folders = column![section_heading("Folders")].spacing(6);
     if page.dirs.is_empty() {
+        let hint = if compact { "No folders yet. Tap + to add one." } else { "No folders yet. Add one below to start syncing." };
         folders = folders.push(
-            container(text("No folders yet. Add one below to start syncing.").size(TEXT).style(theme::muted))
+            container(text(hint).size(TEXT).style(theme::muted))
                 .padding(16)
                 .width(Length::Fill)
                 .style(theme::card),
@@ -202,20 +212,67 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
         folders = folders.push(folder_card(remote, folder));
     }
     body = body.push(folders);
-    body = body.push(add_folder_card(remote, page.draft_local, page.draft_remote, page.add_error));
+    if compact {
+        // Room for the floating button below the last folder.
+        body = body.push(Space::new().height(Length::Fixed(64.0)));
+        let fab = button(on_fill_icon(icondata::TbPlusOutline, 24.0)).padding(16).style(theme::fab).on_press(Msg::OpenAddFolder);
+        return stack![
+            frame(header, body, true),
+            container(fab).width(Length::Fill).height(Length::Fill).padding(16).align_right(Length::Fill).align_bottom(Length::Fill),
+        ]
+        .into();
+    }
+    body = body.push(add_folder_card(remote, page.draft_local, page.draft_remote, page.add_error, false));
 
-    frame(header, body)
+    frame(header, body, false)
+}
+
+/// Top bar of the compact layout: the drawer button, the remote with its status, and the actions as icons.
+fn compact_header<'a>(page: &Page<'a>) -> Element<'a, Msg> {
+    let remote = page.remote;
+    let auth_needed = page.state == RunState::AuthNeeded;
+    let running = remote.policy.enabled;
+    let icon_button = |glyph, msg: Option<Msg>| button(icon(glyph, 20.0)).padding(8).style(theme::button_flat).on_press_maybe(msg);
+    let (pause_glyph, pause_tip) = if running { (icondata::TbPlayerPauseOutline, "Pause") } else { (icondata::TbPlayerPlayOutline, "Start") };
+    row![
+        icon_button(icondata::TbMenu2Outline, Some(Msg::OpenDrawer)),
+        column![
+            text(&remote.name).size(HEADING).wrapping(Wrapping::WordOrGlyph),
+            row![status_icon(page.state, 12.0), text(status_line(page)).size(CAPTION).style(theme::muted).wrapping(Wrapping::WordOrGlyph)]
+                .spacing(4)
+                .align_y(Alignment::Center),
+        ]
+        .spacing(1)
+        .width(Length::Fill),
+        with_tip(icon_button(pause_glyph, Some(Msg::Settings(settings::Msg::EnabledToggled(!running)))), pause_tip),
+        with_tip(icon_button(icondata::TbRefreshOutline, (!auth_needed && !page.syncing).then_some(Msg::RefreshNow(remote.id))), "Sync now"),
+        with_tip(icon_button(icondata::TbSettingsOutline, Some(Msg::OpenSettings)), "Settings"),
+    ]
+    .spacing(2)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The add-folder form as a dialog, for the compact layout.
+pub fn add_folder_dialog<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &'a str, error: Option<&'a str>) -> Element<'a, Msg> {
+    container(add_folder_card(remote, draft_local, draft_remote, error, true)).padding(COMPACT_PADDING).max_width(520).into()
 }
 
 /// Header bar on top, a hairline, then the scrolling body — the KDE page layout. Both share the same capped content width.
-fn frame<'a>(header: impl Into<Element<'a, Msg>>, body: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
+fn frame<'a>(header: impl Into<Element<'a, Msg>>, body: impl Into<Element<'a, Msg>>, compact: bool) -> Element<'a, Msg> {
+    let pad = if compact { COMPACT_PADDING } else { PAGE_PADDING };
+    let header_padding = if compact {
+        iced::Padding { top: 6.0, left: 4.0, right: 4.0, bottom: 6.0 }
+    } else {
+        iced::Padding { top: PAGE_PADDING - 6.0, left: PAGE_PADDING, right: PAGE_PADDING, bottom: 14.0 }
+    };
     let header_bar = container(container(header).max_width(MAX_CONTENT_WIDTH))
-        .padding(iced::Padding { top: PAGE_PADDING - 6.0, left: PAGE_PADDING, right: PAGE_PADDING, bottom: 14.0 })
+        .padding(header_padding)
         .width(Length::Fill)
         .style(theme::header_bar);
     let scroll = scrollable(
         container(container(body).max_width(MAX_CONTENT_WIDTH))
-            .padding(iced::Padding { top: SECTION_SPACING - 4.0, left: PAGE_PADDING, right: PAGE_PADDING - 10.0, bottom: PAGE_PADDING }),
+            .padding(iced::Padding { top: if compact { COMPACT_PADDING } else { SECTION_SPACING - 4.0 }, left: pad, right: if compact { pad } else { pad - 10.0 }, bottom: pad }),
     )
     .height(Length::Fill)
     .direction(theme::slim_scrollbar())
@@ -510,38 +567,48 @@ fn exclusion_panel<'a>(
     .into()
 }
 
-fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &'a str, error: Option<&'a str>) -> Element<'a, Msg> {
-    let label = |s: String| text(s).size(TEXT).width(Length::Fixed(FORM_LABEL_WIDTH));
+fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &'a str, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
     let can_add = !draft_local.trim().is_empty();
+    // Labels beside the fields on the desktop, above them on a phone.
+    let field = |label: String, input: Element<'a, Msg>| -> Element<'a, Msg> {
+        if compact {
+            column![text(label).size(CAPTION).style(theme::muted), input].spacing(4).into()
+        } else {
+            row![text(label).size(TEXT).width(Length::Fixed(FORM_LABEL_WIDTH)), input].spacing(ROW_SPACING).align_y(Alignment::Center).into()
+        }
+    };
+    let (here, local_example) = if cfg!(target_os = "android") { ("On this device", "e.g. /storage/emulated/0/Documents") } else { ("On this computer", "e.g. /home/you/Documents/Scans") };
 
     let mut col = column![
         text("Add a folder").size(TEXT),
-        row![
-            label("On this computer".to_owned()),
-            text_input("e.g. /home/you/Documents/Scans", draft_local)
-                .on_input(Msg::DraftLocalPathChanged)
-                .on_submit_maybe(can_add.then_some(Msg::AddSyncDir))
-                .padding(7)
-                .size(TEXT)
-                .style(theme::input),
-            button(row![icon(icondata::TbFolderOpenOutline, 16.0), text("Browse…").size(TEXT)].spacing(6).align_y(Alignment::Center))
-                .padding([6, 12])
-                .style(theme::button_secondary)
-                .on_press(Msg::BrowseLocalPath),
-        ]
-        .spacing(ROW_SPACING)
-        .align_y(Alignment::Center),
-        row![
-            label(format!("On {}", remote.name)),
+        field(
+            here.to_owned(),
+            row![
+                text_input(local_example, draft_local)
+                    .on_input(Msg::DraftLocalPathChanged)
+                    .on_submit_maybe(can_add.then_some(Msg::AddSyncDir))
+                    .padding(7)
+                    .size(TEXT)
+                    .style(theme::input),
+                button(row![icon(icondata::TbFolderOpenOutline, 16.0), text("Browse…").size(TEXT)].spacing(6).align_y(Alignment::Center))
+                    .padding([6, 12])
+                    .style(theme::button_secondary)
+                    .on_press(Msg::BrowseLocalPath),
+            ]
+            .spacing(ROW_SPACING)
+            .align_y(Alignment::Center)
+            .into(),
+        ),
+        field(
+            format!("On {}", remote.name),
             text_input("e.g. Documents/Scans (empty = whole drive)", draft_remote)
                 .on_input(Msg::DraftRemotePathChanged)
                 .on_submit_maybe(can_add.then_some(Msg::AddSyncDir))
                 .padding(7)
                 .size(TEXT)
-                .style(theme::input),
-        ]
-        .spacing(ROW_SPACING)
-        .align_y(Alignment::Center),
+                .style(theme::input)
+                .into(),
+        ),
     ]
     .spacing(10);
 
@@ -549,14 +616,16 @@ fn add_folder_card<'a>(remote: &'a Remote, draft_local: &'a str, draft_remote: &
         col = col.push(text(err).size(CAPTION).style(theme::danger_text));
     }
 
-    col = col.push(row![
-        text("Missing folders are created on both sides.").size(CAPTION).style(theme::muted).width(Length::Fill),
+    let mut buttons = row![text("Missing folders are created on both sides.").size(CAPTION).style(theme::muted).width(Length::Fill)].spacing(ROW_SPACING).align_y(Alignment::Center);
+    if compact {
+        buttons = buttons.push(button(text("Cancel").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::CloseAddFolder));
+    }
+    col = col.push(buttons.push(
         button(text("Add folder").size(TEXT))
             .padding([6, 14])
             .style(theme::button_primary)
             .on_press_maybe(can_add.then_some(Msg::AddSyncDir)),
-    ]
-    .align_y(Alignment::Center));
+    ));
 
     container(col).padding([12, 14]).width(Length::Fill).style(theme::card).into()
 }
@@ -646,7 +715,8 @@ pub fn modal<'a, M: Clone + 'a>(content: Element<'a, M>, on_dismiss: Option<M>) 
     if let Some(msg) = on_dismiss {
         backdrop = backdrop.on_press(msg);
     }
-    stack![opaque(backdrop), center(opaque(content))].into()
+    // The padding keeps dialogs off the edges of a phone screen.
+    stack![opaque(backdrop), center(opaque(content)).padding(12)].into()
 }
 
 fn format_duration(d: Duration) -> String {

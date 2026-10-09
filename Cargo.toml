@@ -75,5 +75,3 @@ iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", def
 android_logger = "0.15"
 jni = "0.21"
 log = "0.4"
-# The process's Java VM and Application context, set up by android-activity.
-ndk-context = "0.1"

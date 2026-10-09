@@ -5,9 +5,9 @@
 use std::sync::LazyLock;
 
 use iced::{
-    border, theme,
+    border, font, theme,
     widget::{button, container, overlay, pick_list as pick, rule, scrollable, text, text_input},
-    Background, Border, Color, Shadow, Theme, Vector,
+    Background, Border, Color, Font, Shadow, Theme, Vector,
 };
 
 use crate::domain::run_state::RunState;
@@ -22,6 +22,17 @@ pub const ROW_SPACING: f32 = 8.0;
 pub const RADIUS: f32 = 6.0;
 /// Width of the left navigation pane.
 pub const NAV_WIDTH: f32 = 248.0;
+/// Below this window width the navigation pane becomes a drawer and the page a phone layout.
+pub const COMPACT_WIDTH: f32 = 600.0;
+/// Outer padding of the content area in the compact layout.
+pub const COMPACT_PADDING: f32 = 12.0;
+
+/// The UI font: Noto Sans, found through fontconfig, on the desktop; Roboto, Android's own, on Android.
+pub const UI_FONT: Font = if cfg!(target_os = "android") {
+    Font::with_name("Roboto")
+} else {
+    Font { family: font::Family::Name("Noto Sans"), ..Font::DEFAULT }
+};
 
 /// Body text size.
 pub const TEXT: f32 = 14.0;
@@ -242,6 +253,12 @@ pub fn nav_indicator(theme: &Theme) -> container::Style {
 // ---------------------------------------------------------------------------
 // Buttons
 // ---------------------------------------------------------------------------
+
+/// Round floating action button for the main action of the compact layout.
+pub fn fab(theme: &Theme, status: button::Status) -> button::Style {
+    let style = button_primary(theme, status);
+    button::Style { border: Border { radius: 28.0.into(), ..style.border }, shadow: Shadow { color: Color::from_rgba(0.0, 0.0, 0.0, 0.35), offset: Vector::new(0.0, 2.0), blur_radius: 6.0 }, ..style }
+}
 
 fn button_base(bg: Color, fg: Color, border_color: Color) -> button::Style {
     button::Style {

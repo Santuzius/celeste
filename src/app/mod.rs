@@ -92,6 +92,14 @@ pub enum Message {
     WindowClosed(window::Id),
     /// Escape pressed outside a text field — closes the topmost dialog / panel.
     Escape,
+    /// Android: the app came on screen (`true`) or left it. Desktop never sends it.
+    Foreground(bool),
+    /// Android's back gesture.
+    Back,
+    /// Android: room taken by the system bars, cutout and keyboard.
+    Insets(iced_android::Insets),
+    /// Compact layout: the scrim around the drawer was tapped.
+    CloseDrawer,
 }
 
 pub struct CelesteApp {
@@ -159,6 +167,12 @@ pub struct CelesteApp {
     /// the [`Message::TrayReady`] handshake can seed the tray with
     /// the current value before the next change fires.
     system_theme: iced_theme::Mode,
+    /// Compact layout: the drawer with the remotes is open.
+    drawer_open: bool,
+    /// Compact layout: the add-folder dialog is open.
+    add_folder_open: bool,
+    /// Room the system bars and the keyboard take (Android); zero on the desktop.
+    insets: iced_android::Insets,
     /// What the user is about to delete, set while the confirmation
     /// dialog is open. `None` when no dialog is showing.
     pending_delete: Option<remote_page::PendingDelete>,
@@ -207,6 +221,9 @@ impl CelesteApp {
             last_tray_status: None,
             system_theme: iced_theme::Mode::None,
             pending_delete: None,
+            drawer_open: false,
+            add_folder_open: false,
+            insets: iced_android::Insets::default(),
             window_id: None,
         };
         let load = Task::perform(
@@ -277,12 +294,22 @@ impl CelesteApp {
                 key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                 ..
             } => Some(Message::Escape),
+            iced::keyboard::Event::KeyPressed {
+                key: iced::keyboard::Key::Named(iced::keyboard::key::Named::BrowserBack),
+                ..
+            } => Some(Message::Back),
             _ => None,
         });
-        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape])
+        let foreground = iced_android::foreground().map(Message::Foreground);
+        let insets = iced_android::insets().map(Message::Insets);
+        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape, foreground, insets])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        // Whatever the drawer offers, choosing it closes the drawer.
+        if let Message::Main(_) = message {
+            self.drawer_open = false;
+        }
         let cmd = match message {
             // Remote / dialog flow ----------------------------------
             Message::RemotesLoaded(remotes) => self.handle_remotes_loaded(remotes),
@@ -299,6 +326,10 @@ impl CelesteApp {
             }
             Message::Remote(remote_page::Msg::CloseSettings) => {
                 self.settings_open = false;
+                Task::none()
+            }
+            Message::Main(main_page::Msg::OpenDrawer) => {
+                self.drawer_open = true;
                 Task::none()
             }
             Message::Main(main_page::Msg::OpenAbout) => {
@@ -405,13 +436,56 @@ impl CelesteApp {
             Message::SystemThemeChanged(mode) => self.handle_system_theme_changed(mode),
             Message::Quit => self.handle_quit(),
             Message::WindowClosed(id) => self.handle_window_closed(id),
-            Message::Escape => self.handle_escape(),
+            Message::Escape => {
+                self.close_topmost();
+                Task::none()
+            }
+            // Back closes what is open; at the top it leaves Celeste like any Android app, which keeps syncing.
+            Message::Back => {
+                if !self.close_topmost() {
+                    iced_android::move_to_background();
+                }
+                Task::none()
+            }
+            Message::Insets(insets) => {
+                self.insets = insets;
+                Task::none()
+            }
+            Message::CloseDrawer => {
+                self.drawer_open = false;
+                Task::none()
+            }
+            Message::Remote(remote_page::Msg::OpenDrawer) => {
+                self.drawer_open = true;
+                Task::none()
+            }
+            Message::Remote(remote_page::Msg::OpenAddFolder) => {
+                self.add_folder_open = true;
+                Task::none()
+            }
+            Message::Remote(remote_page::Msg::CloseAddFolder) => {
+                self.add_folder_open = false;
+                Task::none()
+            }
+            Message::Foreground(true) if self.window_id.is_none() => self.handle_tray_click(TrayAction::Open),
+            Message::Foreground(true) => Task::none(),
+            // Off screen the GUI only costs memory; the engine keeps syncing.
+            Message::Foreground(false) => self.handle_tray_click(TrayAction::Hide),
         };
         self.push_tray_status();
         cmd
     }
 
     fn view(&self, _id: window::Id) -> Element<'_, Message> {
+        let page = iced::widget::responsive(move |size| self.layout(size.width < theme::COMPACT_WIDTH, size.width));
+        container(page).padding(self.insets).style(theme::header_bar).into()
+    }
+}
+
+impl CelesteApp {
+    /// The window's content: the navigation pane beside the page, or in the compact layout the page alone with the navigation as a drawer.
+    fn layout(&self, compact: bool, width: f32) -> Element<'_, Message> {
+        let nav_width = if compact { Length::Fixed((width * 0.85).min(theme::NAV_WIDTH + 40.0)) } else { Length::Fixed(theme::NAV_WIDTH) };
         let nav = main_page::nav(
             self.remotes
                 .iter()
@@ -422,6 +496,7 @@ impl CelesteApp {
                 })
                 .collect(),
             self.selected,
+            nav_width,
         )
         .map(Message::Main);
 
@@ -429,15 +504,25 @@ impl CelesteApp {
             .selected
             .and_then(|id| self.remotes.iter().find(|r| r.id == id))
         {
-            Some(remote) => remote_page::view(self.remote_page(remote)).map(Message::Remote),
-            None => container(main_page::empty_state().map(Message::Main))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(theme::page)
-                .into(),
+            Some(remote) => remote_page::view(self.remote_page(remote, compact)).map(Message::Remote),
+            None => {
+                let empty = container(main_page::empty_state().map(Message::Main)).width(Length::Fill).height(Length::Fill).style(theme::page);
+                if compact {
+                    iced::widget::column![main_page::compact_bar().map(Message::Main), rule::horizontal(1).style(theme::separator), empty].into()
+                } else {
+                    empty.into()
+                }
+            }
         };
 
-        let base: Element<'_, Message> = row![nav, rule::vertical(1).style(theme::separator), content].into();
+        let base: Element<'_, Message> = if !compact {
+            row![nav, rule::vertical(1).style(theme::separator), content].into()
+        } else if self.drawer_open {
+            let scrim = iced::widget::mouse_area(container(iced::widget::Space::new()).width(Length::Fill).height(Length::Fill).style(theme::backdrop)).on_press(Message::CloseDrawer);
+            stack![content, iced::widget::opaque(scrim), iced::widget::opaque(nav)].into()
+        } else {
+            content
+        };
         if let Some(draft) = self.add_remote_draft.as_ref() {
             let dismiss = draft.can_cancel().then_some(Message::AddRemote(add_remote::Msg::Cancel));
             stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
@@ -453,35 +538,33 @@ impl CelesteApp {
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
+        } else if let Some(remote) = (compact && self.add_folder_open).then(|| self.selected_remote()).flatten() {
+            let (draft_local, draft_remote) = self.sync_dir_drafts.get(&remote.id).map_or(("", ""), |(l, r)| (l.as_str(), r.as_str()));
+            let dialog = remote_page::add_folder_dialog(remote, draft_local, draft_remote, self.add_sync_dir_error.as_deref()).map(Message::Remote);
+            stack![base, remote_page::modal(dialog, Some(Message::Remote(remote_page::Msg::CloseAddFolder)))].into()
         } else {
             base
         }
     }
-}
 
-impl CelesteApp {
-    /// Close the topmost dialog or open panel.
-    fn handle_escape(&mut self) -> Task<Message> {
-        if self.pending_delete.take().is_some() {
-            return Task::none();
-        }
-        if self.conflict_dialog.take().is_some() {
-            return Task::none();
+    /// Close the topmost dialog, drawer or open panel; `false` when nothing was open.
+    fn close_topmost(&mut self) -> bool {
+        if self.pending_delete.take().is_some() || self.conflict_dialog.take().is_some() {
+            return true;
         }
         if std::mem::take(&mut self.preferences_open) || std::mem::take(&mut self.about_open) {
-            return Task::none();
+            return true;
         }
         if let Some(draft) = &self.add_remote_draft {
             if draft.can_cancel() {
-                return self.handle_add_remote_msg(add_remote::Msg::Cancel);
+                let _ = self.handle_add_remote_msg(add_remote::Msg::Cancel);
             }
-            return Task::none();
+            return true;
         }
-        if std::mem::take(&mut self.settings_open) {
-            return Task::none();
+        if std::mem::take(&mut self.settings_open) || std::mem::take(&mut self.add_folder_open) || std::mem::take(&mut self.drawer_open) {
+            return true;
         }
-        self.exclusion_panel = None;
-        Task::none()
+        self.exclusion_panel.take().is_some()
     }
 
     fn selected_remote(&self) -> Option<&Remote> {
@@ -499,7 +582,7 @@ impl CelesteApp {
     }
 
     /// Collect everything the remote page renders.
-    fn remote_page<'a>(&'a self, remote: &'a Remote) -> remote_page::Page<'a> {
+    fn remote_page<'a>(&'a self, remote: &'a Remote, compact: bool) -> remote_page::Page<'a> {
         let dirs: &[SyncDir] = self.sync_dirs.get(&remote.id).map_or(&[], |v| v.as_slice());
         let (draft_local, draft_remote) = self
             .sync_dir_drafts
@@ -533,6 +616,7 @@ impl CelesteApp {
             draft_remote,
             add_error: self.add_sync_dir_error.as_deref(),
             shared_oauth_client: self.shared_oauth_client.contains(&remote.id),
+            compact,
         }
     }
 
@@ -653,10 +737,7 @@ pub fn run(
     // cosmic-text's fallback layer resolves against the fonts we just
     // loaded instead of a bare built-in. Without this the ⚠ and
     // anything beyond basic Latin still falls through to tofu.
-    let default_font = iced::Font {
-        family: iced::font::Family::Name("Noto Sans"),
-        ..iced::Font::DEFAULT
-    };
+    let default_font = theme::UI_FONT;
 
     let mut builder = iced::daemon(
         move || CelesteApp::new(repo.clone(), rclone.clone(), engine.clone(), show_window),
@@ -708,6 +789,13 @@ pub(crate) fn main_window_settings() -> window::Settings {
 /// gracefully — the app still runs, just without the extra coverage.
 /// We log each load/miss to stderr so the first "I see boxes" report
 /// is traceable.
+#[cfg(target_os = "android")]
+fn fallback_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
+    // Android has no fontconfig; iced_android maps Roboto, the symbol and emoji fonts from /system/fonts.
+    iced_android::fonts()
+}
+
+#[cfg(not(target_os = "android"))]
 fn fallback_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
     let mut paths: Vec<String> = Vec::new();
     for query in [
@@ -733,6 +821,7 @@ fn fallback_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
         .collect()
 }
 
+#[cfg(not(target_os = "android"))]
 fn fc_match_path(pattern: &str) -> Option<String> {
     let out = std::process::Command::new("fc-match")
         .args(["-f", "%{file}"])

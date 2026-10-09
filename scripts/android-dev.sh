@@ -3,6 +3,7 @@
 #   scripts/android-dev.sh            build, install, start
 #   ABI=x86_64 scripts/android-dev.sh for the emulator
 #   LIB_ONLY=1 scripts/android-dev.sh only builds the native libraries
+# The APK is the debug variant (with optimised native libraries), so `adb shell run-as io.github.santuzius.celeste` can reach the app's files.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$(ls -d /nix/store/*-android-sdk-ndk-28.2.13676358/libexec/android-sdk/ndk/28.2.13676358 | head -1)}"
@@ -23,7 +24,7 @@ fi
 go_so="$(find "$REPO/target/$triple/release/build" -name libceleste_go.so -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2)"
 cp "$go_so" "app/src/main/jniLibs/$abi/"
 [ -n "${LIB_ONLY:-}" ] && exit 0
-nix-shell shell.nix --run 'gradle --quiet assembleRelease' 2>&1 | grep -v 'making symlink' || true
-adb ${SERIAL:+-s $SERIAL} install -r app/build/outputs/apk/release/app-release.apk >/dev/null
+nix-shell shell.nix --run 'gradle --quiet assembleDebug' 2>&1 | grep -v 'making symlink' || true
+adb ${SERIAL:+-s $SERIAL} install -r app/build/outputs/apk/debug/app-debug.apk >/dev/null
 adb ${SERIAL:+-s $SERIAL} logcat -c
 adb ${SERIAL:+-s $SERIAL} shell am start -n io.github.santuzius.celeste/.CelesteActivity >/dev/null

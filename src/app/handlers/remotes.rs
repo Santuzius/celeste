@@ -530,8 +530,15 @@ impl CelesteApp {
 }
 
 /// Hand a URL to the desktop's default browser.
+#[cfg(not(target_os = "android"))]
 pub(in crate::app) fn open_in_browser(url: &str) {
     if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
         eprintln!("celeste: couldn't open {url} ({err}).");
     }
+}
+
+/// Hand a URL to Android's default browser.
+#[cfg(target_os = "android")]
+pub(in crate::app) fn open_in_browser(url: &str) {
+    crate::infrastructure::android::open_url(url);
 }
