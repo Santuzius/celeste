@@ -3,42 +3,20 @@
 use iced::Task;
 
 use crate::{
-    domain::{
-        remote::RemoteId,
-        run_state::RunState,
-        sync::{Conflict, ConflictChoice, Resolution, SyncDirId},
-    },
+    domain::sync::{ConflictChoice, Resolution, SyncDirId},
+    engine::Command,
     screens::conflict,
-    util::fmt_home,
 };
 
 use super::super::{CelesteApp, Message};
 
-/// Starts of the log lines for new conflicts (first sync / changed since the last one).
-pub(in crate::app) const CONFLICT_LINE_PREFIXES: [&str; 2] = ["⚠ Different on both sides", "⚠ Changed on both sides"];
-
 impl CelesteApp {
-    /// A pass reported the complete conflict list of a sync dir. New entries are logged once (not on every pass); files the user already decided on stay hidden until a pass that was given that choice reports back; an open dialog follows its file or moves on to the one now at its position.
-    pub(in crate::app) fn handle_conflicts_reported(&mut self, remote_id: RemoteId, sync_dir_id: SyncDirId, mut conflicts: Vec<Conflict>, handled: Vec<Resolution>) {
-        let pending = self.resolutions.get_mut(&remote_id).and_then(|dirs| dirs.get_mut(&sync_dir_id));
-        if let Some(pending) = pending {
-            pending.retain(|r| !handled.contains(r));
-            conflicts.retain(|c| !pending.iter().any(|r| r.remote_path == c.remote_path));
-        }
-        let known = self.conflicts.remove(&sync_dir_id).unwrap_or_default();
-        for c in &conflicts {
-            if !known.iter().any(|k| k.remote_path == c.remote_path) {
-                let prefix = CONFLICT_LINE_PREFIXES[usize::from(!c.first_sync)];
-                self.push_log_line(sync_dir_id, format!("{prefix}: {}", fmt_home(&c.local_path)));
-            }
-        }
-        if !conflicts.is_empty() {
-            self.sync_state.transition_dir(remote_id, sync_dir_id, RunState::Warning);
-            self.conflicts.insert(sync_dir_id, conflicts);
-        }
-        let Some(dialog) = self.conflict_dialog.as_mut().filter(|d| d.sync_dir_id == sync_dir_id) else {
+    /// The conflict lists changed: an open dialog follows its file or moves on to the one now at its position.
+    pub(in crate::app) fn follow_conflict_dialog(&mut self) {
+        let Some(dialog) = self.conflict_dialog.as_mut() else {
             return;
         };
+        let sync_dir_id = dialog.sync_dir_id;
         let list = self.conflicts.get(&sync_dir_id).map_or(&[][..], |v| v.as_slice());
         match list.iter().position(|c| c.remote_path == dialog.conflict.remote_path) {
             Some(i) => {
@@ -109,19 +87,14 @@ impl CelesteApp {
             local_stamp: dialog.conflict.local_stamp,
             remote_stamp: dialog.conflict.remote_stamp,
         };
-        let pending = self.resolutions.entry(dialog.remote_id).or_default().entry(dialog.sync_dir_id).or_default();
-        pending.retain(|r| r.remote_path != resolution.remote_path);
-        pending.push(resolution);
-        // Hide it right away; the pass applies the choice, or reports the file again if it changed in the meantime.
+        // The engine hands the choice to a pass it starts right away; that pass applies it, or reports the file again if it changed in the meantime.
+        self.engine.send(Command::Resolve { remote_id: dialog.remote_id, sync_dir_id: dialog.sync_dir_id, resolution });
+        // Hide it right away rather than waiting for the engine's next state.
         if let Some(list) = self.conflicts.get_mut(&dialog.sync_dir_id) {
             list.retain(|c| c.remote_path != dialog.conflict.remote_path);
-            // Nothing left to decide: drop the Warning the conflicts caused (it would outlast the next Synced) until the pass that applies the choices reports.
-            if list.is_empty() {
-                self.sync_state.transition_dir(dialog.remote_id, dialog.sync_dir_id, RunState::Waiting);
-            }
         }
         // The next conflict moves up to the same position (2/9 → 2/8).
         self.show_conflict(dialog.sync_dir_id, dialog.position);
-        self.handle_refresh_now(dialog.remote_id)
+        Task::none()
     }
 }

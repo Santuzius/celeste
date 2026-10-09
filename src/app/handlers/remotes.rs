@@ -8,20 +8,19 @@ use crate::{
         ports::BackendClient,
         remote::{ProviderKind, Remote, RemoteId},
     },
+    engine::Command,
     screens::{add_remote, remote_page},
 };
 
 use super::super::{map_domain_provider_to_add_remote, CelesteApp, Message};
 
 impl CelesteApp {
-    /// Handle [`Message::RemotesLoaded`] — refresh the in-memory list
-    /// and sync per-remote enabled flags into the state machine so
-    /// roll-ups reflect the latest policy.
+    /// Handle [`Message::RemotesLoaded`] — refresh the in-memory list.
     pub(in crate::app) fn handle_remotes_loaded(
         &mut self,
         mut remotes: Vec<Remote>,
     ) -> Task<Message> {
-        // Ask rclone for each remote's backend type so the scheduler
+        // Ask rclone for each remote's backend type so the settings
         // can enforce provider-specific interval floors (see
         // `ProviderKind::min_interval`). A failure here is non-fatal —
         // the remote just loses its provider-specific floor for this
@@ -32,15 +31,6 @@ impl CelesteApp {
             }
         }
         self.remotes = remotes;
-        for r in &self.remotes {
-            self.sync_state.ensure_remote(r.id, r.policy.enabled);
-            // A session that already failed to resume at startup
-            // needs reauth even if the remote is (auto-)paused and so
-            // never gets a sync pass that would discover it.
-            if self.rclone.needs_reauth(&r.name) {
-                self.sync_state.auth_failure(r.id);
-            }
-        }
         self.shared_oauth_client = self
             .remotes
             .iter()
@@ -101,15 +91,8 @@ impl CelesteApp {
     /// Handle [`main_page::Msg::RefreshAll`] — start a sync pass for
     /// every enabled, idle remote.
     pub(in crate::app) fn handle_refresh_all(&mut self) -> Task<Message> {
-        let ids: Vec<RemoteId> = self
-            .remotes
-            .iter()
-            .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
-            .map(|r| r.id)
-            .collect();
-        let cmds: Vec<Task<Message>> =
-            ids.into_iter().map(|id| self.start_sync(id)).collect();
-        Task::batch(cmds)
+        self.engine.send(Command::SyncAll);
+        Task::none()
     }
 
     /// Handle [`main_page::Msg::AddRemote`] — open the Add Remote
@@ -371,20 +354,16 @@ impl CelesteApp {
     }
 
     /// Handle [`Message::AddRemoteResult(Ok)`] — close the dialog,
-    /// clear the auth flag, make sure the remote is enabled, and reload
-    /// the remotes list.
+    /// make sure the remote is enabled, have the engine clear the auth
+    /// flag and sync it, and reload the remotes list.
     ///
     /// Re-enabling covers remotes that older versions auto-paused on an
     /// auth failure: signing in again is the user saying "sync this".
-    /// The policy is persisted *before* the reload so the reload can't
-    /// read the stale `enabled = false` back and re-pause the remote.
+    /// The policy is persisted *before* the engine and the list reload
+    /// so neither can read the stale `enabled = false` back.
     pub(in crate::app) fn handle_add_remote_result_ok(&mut self, id: RemoteId) -> Task<Message> {
         self.add_remote_draft = None;
         self.selected = Some(id);
-        self.sync_state.reauth_complete(id);
-        self.sync_state.set_remote_enabled(id, true);
-        // Sync right away instead of waiting out the interval.
-        self.last_sync_at.remove(&id);
         let mut reenable_policy: Option<crate::domain::remote::SyncPolicy> = None;
         if let Some(remote) = self.remotes.iter_mut().find(|r| r.id == id)
             && !remote.policy.enabled
@@ -393,11 +372,13 @@ impl CelesteApp {
             reenable_policy = Some(remote.policy.clone());
         }
         let repo = self.repo.clone();
+        let engine = self.engine.clone();
         Task::perform(
             async move {
                 if let Some(policy) = reenable_policy {
                     let _ = repo.set_policy(id, policy).await;
                 }
+                engine.send(Command::SignedIn(id));
                 repo.list_remotes().await.unwrap_or_default()
             },
             Message::RemotesLoaded,
@@ -430,31 +411,10 @@ impl CelesteApp {
     }
 
     /// Handle [`remote_page::Msg::RefreshNow`] — kick a fresh pass
-    /// (queue if one is already in flight).
+    /// (the engine queues it if one is already in flight).
     pub(in crate::app) fn handle_refresh_now(&mut self, id: RemoteId) -> Task<Message> {
-        if self.syncing.contains(&id) {
-            // The current pass is still running — queue a follow-up
-            // so it fires as soon as the current one completes. Leave
-            // a pending-event note on each sync_dir so the user gets
-            // immediate feedback instead of thinking the click was
-            // lost.
-            self.refresh_requested_after.insert(id);
-            let queued_ids: Vec<crate::domain::sync::SyncDirId> = self
-                .sync_dirs
-                .get(&id)
-                .map(|dirs| dirs.iter().map(|sd| sd.id).collect())
-                .unwrap_or_default();
-            for sd_id in queued_ids {
-                self.push_log_line(
-                    sd_id,
-                    "⟳ Refresh queued — starts after the current pass finishes."
-                        .to_owned(),
-                );
-            }
-            Task::none()
-        } else {
-            self.start_sync(id)
-        }
+        self.engine.send(Command::SyncNow(id));
+        Task::none()
     }
 
     /// Handle [`remote_page::Msg::RequestDeleteRemote`] — open the
@@ -510,18 +470,16 @@ impl CelesteApp {
 
     /// Handle [`remote_page::Msg::DeleteRemote`] — drop in-memory
     /// state, unregister from the router, kick off the DB cascade and
-    /// rclone-side delete, then reload the list.
+    /// rclone-side delete, then let the engine forget the remote (which
+    /// stops a running pass) and reload the list.
     pub(in crate::app) fn handle_delete_remote(
         &mut self,
         id: RemoteId,
         name: String,
     ) -> Task<Message> {
         self.selected = None;
-        self.syncing.remove(&id);
         self.sync_dirs.remove(&id);
-        self.last_sync_at.remove(&id);
         self.sync_dir_drafts.remove(&id);
-        self.sync_state.remove_remote(id);
         self.remotes.retain(|r| r.id != id);
         // Drop any native-proton override so the router stops routing
         // its (now-gone) name to a stale session.
@@ -529,6 +487,7 @@ impl CelesteApp {
         let repo_blocking = self.repo.clone();
         let repo_after = self.repo.clone();
         let rclone = self.rclone.clone();
+        let engine = self.engine.clone();
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
@@ -540,6 +499,7 @@ impl CelesteApp {
                 })
                 .await
                 .ok();
+                engine.send(Command::Reload);
                 repo_after.list_remotes().await.unwrap_or_default()
             },
             Message::RemotesLoaded,

@@ -7,11 +7,7 @@
 //! per-sync_dir log buffer). Handler files own private fields of `CelesteApp`
 //! because they are descendants of this module.
 
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::{atomic::AtomicBool, Arc},
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use iced::{
     stream,
@@ -23,16 +19,15 @@ use tokio::sync::mpsc;
 
 use crate::{
     domain::{
-        events::SyncEvent,
         ports::Repository,
         remote::{ProviderKind, Remote, RemoteId},
-        run_state::{AppState, RunState},
-        sync::{Conflict, Resolution, SyncDir, SyncDirExclusion, SyncDirId},
+        run_state::RunState,
+        sync::{Conflict, SyncDir, SyncDirExclusion, SyncDirId},
     },
+    engine::{self, Snapshot},
     infrastructure::{
         client_router::ClientRouter,
         single_instance,
-        stderr_capture::{self, CaptureHandle},
         tray::{self, TrayAction, TrayUpdate},
     },
     screens::{about, add_remote, conflict, main_page, preferences, remote_page, settings},
@@ -45,8 +40,6 @@ use crate::{
 
 mod handlers;
 mod log;
-
-use handlers::conflicts::CONFLICT_LINE_PREFIXES;
 
 /// Messages the root application dispatches. Screen-level messages are
 /// wrapped by variants; service results fire their own.
@@ -72,10 +65,9 @@ pub enum Message {
     /// An add-sync-dir attempt finished; `Err` carries the message shown under the form.
     SyncDirAdded(RemoteId, Result<(), String>),
     PolicySaved,
-    SyncStarted(RemoteId),
-    SyncFinished(RemoteId, PassVerdict),
-    WorkerReady(mpsc::Sender<SyncEvent>),
-    SyncEventReceived(SyncEvent),
+    /// The sync engine's state changed.
+    Engine(Arc<Snapshot>),
+    /// Redraw the countdowns and the tray's "last sync" age.
     Tick,
     /// Delivered once when the ksni service is live — carries the
     /// sender the app uses to push status / theme updates back into
@@ -102,20 +94,6 @@ pub enum Message {
     Escape,
 }
 
-/// Aggregate outcome across every sync_dir of one remote's pass. The
-/// scheduler uses this to drive linear backoff on provider rate-limits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PassVerdict {
-    /// Every sync_dir finished cleanly.
-    Clean,
-    /// At least one sync_dir detected rate-limiting (stderr tap fired).
-    /// Scheduler bumps `consecutive_degraded` and skips more cycles.
-    Degraded,
-    /// Pass aborted for a non-rate-limit reason (cancel, list error).
-    /// Backoff counter is left alone.
-    Aborted,
-}
-
 pub struct CelesteApp {
     repo: Arc<dyn Repository>,
     /// Client router — dispatches BackendClient calls per-remote.
@@ -124,30 +102,21 @@ pub struct CelesteApp {
     /// sessions on it; sync code downcasts on the fly (ClientRouter
     /// implements BackendClient).
     rclone: Arc<ClientRouter>,
+    /// The sync engine, which runs the passes and keeps their state and logs.
+    engine: engine::Handle,
+    /// The engine's latest state.
+    snapshot: Arc<Snapshot>,
     remotes: Vec<Remote>,
     sync_dirs: HashMap<RemoteId, Vec<SyncDir>>,
     selected: Option<RemoteId>,
-    /// Remotes whose sync pass is currently running.
-    syncing: std::collections::HashSet<RemoteId>,
-    /// Accumulated log lines per sync_dir, capped at
-    /// [`remote_page::MAX_LOG_LINES`] so a long-running session doesn't
-    /// grow unbounded.
-    sync_dir_log_lines: HashMap<SyncDirId, VecDeque<log::LogLine>>,
-    /// Read-only [`text_editor::Content`] mirror of the log lines — only
-    /// for logs the user has expanded, since each one holds a fully
-    /// shaped text buffer. Dropped again on collapse / window close.
+    /// Read-only [`text_editor::Content`] mirror of the engine's log
+    /// lines — only for logs the user has expanded, since each one holds
+    /// a fully shaped text buffer. Dropped again on collapse / window close.
     sync_dir_log_content: HashMap<SyncDirId, iced::widget::text_editor::Content>,
-    /// Newest log line of the pass currently running per sync_dir, shown under the folder while it syncs. Cleared when a pass starts, so the previous pass's "Done" line doesn't linger.
-    sync_dir_pass_line: HashMap<SyncDirId, String>,
     /// Google Drive remotes still on rclone's retiring shared OAuth client.
     shared_oauth_client: std::collections::HashSet<RemoteId>,
     /// Error from the last add-sync-dir attempt, shown under the form.
     add_sync_dir_error: Option<String>,
-    /// Hierarchical run-state machine: per-dir states, auth-failure
-    /// bookkeeping, and backoff counters. Replaces the former flat
-    /// `sync_dir_status`, `auth_failed_remotes`, `consecutive_degraded`,
-    /// and `syncs_to_skip` fields.
-    sync_state: AppState,
     /// All sync_dirs across every remote, refreshed on navigation changes.
     /// Used to compute auto-exclusions in the UI.
     all_known_sync_dirs: Vec<SyncDir>,
@@ -159,12 +128,6 @@ pub struct CelesteApp {
     exclusion_leftovers: HashMap<SyncDirId, HashMap<String, usize>>,
     /// Draft remote sub-path for the "add exclusion" form per sync_dir.
     draft_exclusion: HashMap<SyncDirId, String>,
-    /// Wall-clock timestamp of the last sync completion per remote. Drives
-    /// the interval scheduler.
-    last_sync_at: HashMap<RemoteId, Instant>,
-    /// Remote ids with a refresh request queued while the current pass is
-    /// still running — as soon as SyncFinished lands we kick another pass.
-    refresh_requested_after: std::collections::HashSet<RemoteId>,
     /// In-progress (local_path, remote_path) inputs for the Add sync_dir form
     /// on each remote page.
     sync_dir_drafts: HashMap<RemoteId, (String, String)>,
@@ -180,25 +143,12 @@ pub struct CelesteApp {
     appearance: Appearance,
     /// Why saving a preference failed, shown in the Preferences dialog.
     preferences_error: Option<String>,
-    /// Files per sync dir that changed on both sides, as reported by the last pass.
+    /// Files per sync dir that changed on both sides: the engine's list, minus choices made since it was published.
     conflicts: HashMap<SyncDirId, Vec<Conflict>>,
-    /// The user's choices, handed to the remote's next pass.
-    resolutions: HashMap<RemoteId, HashMap<SyncDirId, Vec<Resolution>>>,
     /// Open conflict dialog.
     conflict_dialog: Option<conflict::Dialog>,
     /// In-progress Add Remote form. Some(...) while the screen is shown.
     add_remote_draft: Option<add_remote::Draft>,
-    /// Sender handed to us by the subscription worker; sync code clones this
-    /// to emit events back into the event loop.
-    events_tx: Option<mpsc::Sender<SyncEvent>>,
-    /// Per-remote cancel flags. Flipping `true` tells the in-flight
-    /// sync pass to bail out between actions — the app sets it when
-    /// the user disables a remote (or the app shuts down).
-    cancel_flags: HashMap<RemoteId, Arc<AtomicBool>>,
-    /// Stderr ring-buffer handle — shared by every sync pass so each
-    /// can ask "did any provider rate-limit warning fire since my
-    /// pass_start?". Installed once at process startup.
-    stderr_capture: CaptureHandle,
     /// Sender into the ksni subscription task. `Some` once the tray
     /// handshake has landed; remains `None` if the session has no
     /// StatusNotifier host.
@@ -224,28 +174,25 @@ impl CelesteApp {
     fn new(
         repo: Arc<dyn Repository>,
         rclone: Arc<ClientRouter>,
+        engine: engine::Handle,
         show_window: bool,
     ) -> (Self, Task<Message>) {
         let mut state = Self {
             repo: repo.clone(),
             rclone,
+            snapshot: engine.snapshot(),
+            engine,
             remotes: Vec::new(),
             sync_dirs: HashMap::new(),
             selected: None,
-            syncing: std::collections::HashSet::new(),
-            sync_dir_log_lines: HashMap::new(),
             sync_dir_log_content: HashMap::new(),
-            sync_dir_pass_line: HashMap::new(),
             add_sync_dir_error: None,
             shared_oauth_client: std::collections::HashSet::new(),
-            sync_state: AppState::new(),
             all_known_sync_dirs: Vec::new(),
             exclusion_panel: None,
             sync_dir_exclusions: HashMap::new(),
             exclusion_leftovers: HashMap::new(),
             draft_exclusion: HashMap::new(),
-            last_sync_at: HashMap::new(),
-            refresh_requested_after: std::collections::HashSet::new(),
             sync_dir_drafts: HashMap::new(),
             settings_open: false,
             about_open: false,
@@ -254,12 +201,8 @@ impl CelesteApp {
             appearance: Appearance::load(&crate::util::get_data_dir()),
             preferences_error: None,
             conflicts: HashMap::new(),
-            resolutions: HashMap::new(),
             conflict_dialog: None,
             add_remote_draft: None,
-            events_tx: None,
-            cancel_flags: HashMap::new(),
-            stderr_capture: stderr_capture::handle(),
             tray_tx: None,
             last_tray_status: None,
             system_theme: iced_theme::Mode::None,
@@ -292,24 +235,25 @@ impl CelesteApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        // Worker channel: the sync engine pushes `SyncEvent`s through
-        // a tokio mpsc; we forward them to the iced runtime as
-        // Messages. The first event the subscription emits is
-        // `WorkerReady(tx)` so the app captures the sender.
-        let events = Subscription::run(|| {
-            stream::channel(128, async move |mut output| {
+        // Every new engine state; the watch channel hands over only the latest when several piled up.
+        let engine = Subscription::run(|| {
+            stream::channel(1, async move |mut output| {
                 use iced::futures::SinkExt;
-                let (tx, mut rx) = mpsc::channel::<SyncEvent>(128);
-                let _ = output.send(Message::WorkerReady(tx)).await;
-                while let Some(event) = rx.recv().await {
-                    let _ = output.send(Message::SyncEventReceived(event)).await;
+                let Some(mut rx) = engine::get().map(engine::Handle::watch) else {
+                    return std::future::pending().await;
+                };
+                loop {
+                    let snapshot = rx.borrow_and_update().clone();
+                    if output.send(Message::Engine(snapshot)).await.is_err() || rx.changed().await.is_err() {
+                        break;
+                    }
                 }
                 std::future::pending::<()>().await;
             })
         });
-        // Single ticker at 1 Hz — interval checks are cheap, and the
-        // shortest allowed sync cadence is 5 s.
-        let ticker = iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
+        // The window counts down to the next sync each second; the tray only shows the minutes since the last one.
+        let tick = if self.window_id.is_some() { Duration::from_secs(1) } else { Duration::from_secs(30) };
+        let ticker = iced::time::every(tick).map(|_| Message::Tick);
         let tray = tray::subscription().map(|signal| match signal {
             tray::TraySignal::Ready(tx) => Message::TrayReady(tx),
             tray::TraySignal::Action(action) => Message::TrayClick(action),
@@ -335,7 +279,7 @@ impl CelesteApp {
             } => Some(Message::Escape),
             _ => None,
         });
-        Subscription::batch([events, ticker, tray, window_close, system_theme, show_requests, escape])
+        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -451,14 +395,9 @@ impl CelesteApp {
             Message::Remote(remote_page::Msg::OpenConflicts(sd_id)) => self.handle_open_conflicts(sd_id),
             Message::Conflict(sub) => self.handle_conflict_msg(sub),
 
-            // Sync lifecycle ----------------------------------------
-            Message::SyncStarted(id) => self.handle_sync_started(id),
-            Message::SyncFinished(id, verdict) => self.handle_sync_finished(id, verdict),
-            Message::Tick => self.handle_tick(),
-
-            // Worker + sync events ----------------------------------
-            Message::WorkerReady(tx) => self.handle_worker_ready(tx),
-            Message::SyncEventReceived(event) => self.handle_sync_event(event),
+            // Sync engine -------------------------------------------
+            Message::Engine(snapshot) => self.handle_engine(snapshot),
+            Message::Tick => Task::none(),
 
             // Tray --------------------------------------------------
             Message::TrayReady(tx) => self.handle_tray_ready(tx),
@@ -552,7 +491,7 @@ impl CelesteApp {
     /// Roll-up shown for a remote; falls back to the policy before the
     /// state machine knows the remote.
     fn display_state(&self, remote: &Remote) -> RunState {
-        self.sync_state.roll_up(remote.id).unwrap_or(if remote.policy.enabled {
+        self.snapshot.state.roll_up(remote.id).unwrap_or(if remote.policy.enabled {
             RunState::Waiting
         } else {
             RunState::Paused
@@ -569,15 +508,11 @@ impl CelesteApp {
         let folders = dirs
             .iter()
             .map(|dir| {
-                let lines = self.sync_dir_log_lines.get(&dir.id);
                 remote_page::Folder {
                     dir,
-                    state: self.sync_state.dir_state(remote.id, dir.id),
-                    latest_line: self.sync_dir_pass_line.get(&dir.id).map(String::as_str),
-                    latest_problem: lines
-                        // Conflicts have their own row; their log lines would outlive the decision here.
-                        .and_then(|l| l.iter().rev().find(|line| line.text.starts_with('⚠') && !CONFLICT_LINE_PREFIXES.iter().any(|p| line.text.starts_with(p))))
-                        .map(|l| l.text.as_str()),
+                    state: self.snapshot.state.dir_state(remote.id, dir.id),
+                    latest_line: self.snapshot.pass_lines.get(&dir.id).map(String::as_str),
+                    latest_problem: self.snapshot.problems.get(&dir.id).map(String::as_str),
                     log: self.sync_dir_log_content.get(&dir.id),
                     exclusions_open: self.exclusion_panel == Some(dir.id),
                     auto_excluded: remote_page_auto_excluded(dir, &self.all_known_sync_dirs),
@@ -591,7 +526,7 @@ impl CelesteApp {
         remote_page::Page {
             remote,
             state: self.display_state(remote),
-            syncing: self.syncing.contains(&remote.id),
+            syncing: self.snapshot.syncing.contains(&remote.id),
             next_sync: self.next_sync_eta(remote.id),
             dirs: folders,
             draft_local,
@@ -607,13 +542,8 @@ impl CelesteApp {
     /// — the tray catches up on the next change (within one tick).
     fn push_tray_status(&mut self) {
         if let Some(tx) = self.tray_tx.as_ref() {
-            let status = tray::compute_status(
-                &self.sync_state,
-                &self.remotes,
-                &self.syncing,
-                &self.last_sync_at,
-            );
-            // `update` runs at least once a second (ticker); only wake
+            let status = tray::compute_status(&self.snapshot.state, &self.remotes, &self.snapshot.syncing, &self.snapshot.last_sync_at);
+            // `update` runs on every tick and engine change; only wake
             // the tray task when something visible actually changed.
             if self.last_tray_status.as_ref() != Some(&status)
                 && tx.try_send(TrayUpdate::Status(status.clone())).is_ok()
@@ -656,18 +586,6 @@ impl CelesteApp {
             let _ = tx.try_send(TrayUpdate::Theme(mode));
         }
     }
-}
-
-/// True when an error message indicates an auth failure across any backend.
-/// Delegates to the per-backend translators so the classification logic
-/// lives exactly once, in the translator, not scattered across the call site
-/// and here.
-pub(crate) fn is_auth_failure(msg: &str) -> bool {
-    use crate::domain::backend_events::EventTranslator;
-    use crate::infrastructure::translators::{
-        proton::ProtonTranslator, rclone::RcloneTranslator,
-    };
-    RcloneTranslator.is_auth_failure(msg) || ProtonTranslator.is_auth_failure(msg)
 }
 
 /// Sync_dirs from `all` that are auto-excluded under `sd` — another
@@ -728,6 +646,7 @@ pub(crate) fn map_domain_provider_to_add_remote(
 pub fn run(
     repo: Arc<dyn Repository>,
     rclone: Arc<ClientRouter>,
+    engine: engine::Handle,
     show_window: bool,
 ) -> iced::Result {
     // Bias iced's default glyph lookup to the sans-serif family so
@@ -740,7 +659,7 @@ pub fn run(
     };
 
     let mut builder = iced::daemon(
-        move || CelesteApp::new(repo.clone(), rclone.clone(), show_window),
+        move || CelesteApp::new(repo.clone(), rclone.clone(), engine.clone(), show_window),
         CelesteApp::update,
         CelesteApp::view,
     )

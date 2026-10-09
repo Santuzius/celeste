@@ -1,8 +1,6 @@
 //! Tray-related message handlers: lifecycle handshake, theme
 //! propagation, and click actions.
 
-use std::sync::atomic::Ordering;
-
 use iced::{theme as iced_theme, window, Task};
 use tokio::sync::mpsc;
 
@@ -122,13 +120,9 @@ impl CelesteApp {
 
     /// Hard-exit the process. We can't wait for in-flight FFI calls
     /// (librclone's RPC surface has no cancel handle, so a mid-listing
-    /// Google Drive pass would block for minutes); set every cancel
-    /// flag as a courtesy for any non-FFI work, then bail. The OS will
-    /// reap the threads and the GUI window when the process exits.
+    /// Google Drive pass would block for minutes). The OS reaps the
+    /// engine's threads and the GUI window when the process exits.
     pub(in crate::app) fn handle_quit(&mut self) -> Task<Message> {
-        for flag in self.cancel_flags.values() {
-            flag.store(true, Ordering::Release);
-        }
         std::process::exit(0);
     }
 }

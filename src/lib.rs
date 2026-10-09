@@ -1,6 +1,7 @@
 pub mod app;
 pub mod branding;
 pub mod domain;
+pub mod engine;
 pub mod icons;
 pub mod infrastructure;
 pub mod screens;
@@ -60,7 +61,7 @@ pub fn start(show: bool) {
     // backends emit when they silently retry a 429. Falls back to a no-op
     // if the platform can't hand us a pipe; sync keeps working, we just
     // lose rate-limit detection for the run.
-    let _stderr = stderr_capture::install();
+    let stderr = stderr_capture::install();
 
     // SQLite DB lives under ${XDG_DATA_HOME:-~/.local/share}/celeste.
     // The rclone config file (which holds OAuth tokens librclone writes
@@ -136,7 +137,8 @@ pub fn start(show: bool) {
     let default_client: Arc<dyn BackendClient> = Arc::new(LibrcloneClient::new(rclone_config));
     let router = Arc::new(ClientRouter::new(default_client));
     resume_native_sessions(&*repo, &router);
-    iced_run(repo, router, show).expect("iced app exited with error");
+    let engine = engine::start(repo.clone(), router.clone(), stderr).clone();
+    iced_run(repo, router, engine, show).expect("iced app exited with error");
 }
 
 /// Sweep an `<data_dir>/rclone.conf` left behind by a prior version
@@ -259,7 +261,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
             // must NOT latch into a reauth prompt: resuming needs an
             // HTTPS round-trip, so a cold-boot race would otherwise cost
             // the user a full 2FA login for a session that was fine.
-            Err(err) if crate::app::is_auth_failure(&err) => {
+            Err(err) if crate::engine::is_auth_failure(&err) => {
                 let reason = format!(
                     "Proton Drive session for '{}' has expired ({err}). {}",
                     remote.name,

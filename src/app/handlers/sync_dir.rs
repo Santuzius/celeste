@@ -2,7 +2,7 @@
 //! per-remote settings (interval + enabled toggle), and the read-only
 //! log editor's scroll/select pass-through.
 
-use std::{collections::HashMap, sync::{atomic::Ordering, Arc}};
+use std::{collections::HashMap, sync::Arc};
 
 use iced::{widget::text_editor, Task};
 
@@ -12,6 +12,7 @@ use crate::{
         remote::RemoteId,
         sync::{SyncDir, SyncDirExclusion, SyncDirExclusionId, SyncDirId},
     },
+    engine::Command,
     screens::{main_page, remote_page, settings},
     services::leftovers,
 };
@@ -19,26 +20,22 @@ use crate::{
 use super::super::{local_paths_overlap, remote_page_auto_excluded, CelesteApp, Message};
 
 impl CelesteApp {
-    /// Handle [`Message::SyncDirsLoaded`] — store the list and align the
-    /// state machine (and per-dir UI state) with it.
+    /// Handle [`Message::SyncDirsLoaded`] — store the list and drop the
+    /// UI state of deleted folders.
     pub(in crate::app) fn handle_sync_dirs_loaded(
         &mut self,
         id: RemoteId,
         sd: Vec<SyncDir>,
     ) -> Task<Message> {
-        // Forget everything about sync_dirs that were deleted, so a
-        // stale Error can't keep colouring the remote's roll-up.
         let ids: Vec<SyncDirId> = sd.iter().map(|d| d.id).collect();
         if let Some(old) = self.sync_dirs.get(&id) {
             for gone in old.iter().map(|d| d.id).filter(|d| !ids.contains(d)) {
-                self.sync_dir_log_lines.remove(&gone);
                 self.sync_dir_log_content.remove(&gone);
                 self.sync_dir_exclusions.remove(&gone);
                 self.exclusion_leftovers.remove(&gone);
                 self.draft_exclusion.remove(&gone);
             }
         }
-        self.sync_state.set_dirs(id, &ids);
         self.sync_dirs.insert(id, sd);
         self.refresh_exclusions()
     }
@@ -49,13 +46,6 @@ impl CelesteApp {
         &mut self,
         all: Vec<SyncDir>,
     ) -> Task<Message> {
-        // Align every remote's dir set with the DB, not just the visited
-        // one: the roll-ups (sidebar, tray) need it before the first pass,
-        // and a remote without folders must be recognisable as such.
-        for remote in &self.remotes {
-            let ids: Vec<SyncDirId> = all.iter().filter(|d| d.remote_id == remote.id).map(|d| d.id).collect();
-            self.sync_state.set_dirs(remote.id, &ids);
-        }
         self.all_known_sync_dirs = all;
         // A new folder inside another one turns the old copy into leftovers.
         self.refresh_exclusions()
@@ -176,7 +166,8 @@ impl CelesteApp {
                 self.sync_dir_drafts.remove(&id);
                 self.add_sync_dir_error = None;
                 // Start syncing the new folder right away.
-                self.last_sync_at.remove(&id);
+                self.engine.send(Command::Reload);
+                self.engine.send(Command::SyncSoon(id));
                 self.handle_remote_selected(id)
             }
             Err(err) => {
@@ -240,9 +231,11 @@ impl CelesteApp {
             return Task::none();
         };
         let repo = self.repo.clone();
+        let engine = self.engine.clone();
         Task::perform(
             async move {
                 let _ = repo.cascade_delete_sync_dir(&local, &remote).await;
+                engine.send(Command::Reload);
                 id
             },
             |id| Message::Main(main_page::Msg::Selected(id)),
@@ -250,9 +243,9 @@ impl CelesteApp {
     }
 
     /// Handle [`remote_page::Msg::Settings`] / [`Message::Settings`] —
-    /// update the in-memory policy, sync the enabled flag to the state
-    /// machine, cancel an in-flight pass when the user disables, and
-    /// persist asynchronously.
+    /// update the in-memory policy, persist it asynchronously and then
+    /// tell the engine, which stops a running pass when the user disables
+    /// the remote.
     pub(in crate::app) fn handle_settings(&mut self, sub: settings::Msg) -> Task<Message> {
         let Some(id) = self.selected else {
             return Task::none();
@@ -260,28 +253,18 @@ impl CelesteApp {
         let Some(remote) = self.remotes.iter_mut().find(|r| r.id == id) else {
             return Task::none();
         };
-        let was_enabled = remote.policy.enabled;
         let Some(new_policy) = settings::policy_from(&sub, &remote.policy) else {
             // Account / removal actions are routed through the remote
             // page's own messages; nothing to persist here.
             return Task::none();
         };
         remote.policy = new_policy.clone();
-        self.sync_state.set_remote_enabled(id, new_policy.enabled);
-        // If the user just disabled a remote that's currently syncing,
-        // trip its cancel flag so the running pass bails out between
-        // actions. Re-enabling uses the next scheduler tick — no
-        // action here.
-        if was_enabled && !new_policy.enabled
-            && let Some(flag) = self.cancel_flags.get(&id)
-        {
-            flag.store(true, Ordering::Release);
-            self.refresh_requested_after.remove(&id);
-        }
         let repo = self.repo.clone();
+        let engine = self.engine.clone();
         Task::perform(
             async move {
                 let _ = repo.set_policy(id, new_policy).await;
+                engine.send(Command::Reload);
             },
             |_| Message::PolicySaved,
         )
@@ -365,7 +348,7 @@ impl CelesteApp {
             Ok(leftovers::Cleaned { deleted, kept }) => tr::tr!("Deleted {} leftover files of '{}'; kept {} added or changed since.", deleted, relative, kept),
             Err(err) => format!("⚠ {}", tr::tr!("Couldn't delete the leftovers of '{}': {}", relative, err)),
         };
-        self.push_log_line(sd_id, line);
+        self.engine.send(Command::Log(sd_id, line));
         self.reload_exclusions(sd_id, |_| async {})
     }
 

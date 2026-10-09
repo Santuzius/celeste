@@ -1,6 +1,5 @@
-//! In-memory [`Repository`] for tests. Keeps a single sync_items table and
-//! exposes a few helper accessors for assertions. Ignores every call that
-//! isn't relevant to sync_dir_ops / sync_path (remotes, sync_dirs).
+//! In-memory [`Repository`] for tests. Keeps the sync_items table plus plain lists of remotes and sync_dirs (for the engine) and
+//! exposes a few helper accessors for assertions. Ignores the remaining writes.
 
 #![cfg(test)]
 #![allow(dead_code)]
@@ -18,6 +17,8 @@ pub struct FakeRepo {
     pub items: Mutex<Vec<SyncItem>>,
     pub next_id: Mutex<i32>,
     pub sync_dir_exists: Mutex<bool>,
+    pub remotes: Mutex<Vec<Remote>>,
+    pub sync_dirs: Mutex<Vec<SyncDir>>,
 }
 
 impl FakeRepo {
@@ -26,6 +27,8 @@ impl FakeRepo {
             items: Mutex::new(vec![]),
             next_id: Mutex::new(0),
             sync_dir_exists: Mutex::new(true),
+            remotes: Mutex::new(vec![]),
+            sync_dirs: Mutex::new(vec![]),
         }
     }
 
@@ -66,13 +69,15 @@ impl FakeRepo {
 
 impl Repository for FakeRepo {
     fn list_remotes(&self) -> BoxFuture<'_, Result<Vec<Remote>, RepositoryError>> {
-        Box::pin(async { Ok(vec![]) })
+        let remotes = self.remotes.lock().unwrap().clone();
+        Box::pin(async move { Ok(remotes) })
     }
     fn find_remote(
         &self,
-        _id: RemoteId,
+        id: RemoteId,
     ) -> BoxFuture<'_, Result<Option<Remote>, RepositoryError>> {
-        Box::pin(async { Ok(None) })
+        let remote = self.remotes.lock().unwrap().iter().find(|r| r.id == id).cloned();
+        Box::pin(async move { Ok(remote) })
     }
     fn find_remote_by_name(
         &self,
@@ -108,19 +113,24 @@ impl Repository for FakeRepo {
     }
     fn set_policy(
         &self,
-        _id: RemoteId,
-        _p: SyncPolicy,
+        id: RemoteId,
+        p: SyncPolicy,
     ) -> BoxFuture<'_, Result<(), RepositoryError>> {
+        if let Some(remote) = self.remotes.lock().unwrap().iter_mut().find(|r| r.id == id) {
+            remote.policy = p;
+        }
         Box::pin(async { Ok(()) })
     }
     fn list_sync_dirs(
         &self,
-        _r: RemoteId,
+        r: RemoteId,
     ) -> BoxFuture<'_, Result<Vec<SyncDir>, RepositoryError>> {
-        Box::pin(async { Ok(vec![]) })
+        let dirs = self.sync_dirs.lock().unwrap().iter().filter(|d| d.remote_id == r).cloned().collect();
+        Box::pin(async move { Ok(dirs) })
     }
     fn list_all_sync_dirs(&self) -> BoxFuture<'_, Result<Vec<SyncDir>, RepositoryError>> {
-        Box::pin(async { Ok(vec![]) })
+        let dirs = self.sync_dirs.lock().unwrap().clone();
+        Box::pin(async move { Ok(dirs) })
     }
     fn sync_dir_exists(
         &self,

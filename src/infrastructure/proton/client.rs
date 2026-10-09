@@ -398,7 +398,7 @@ impl PendingProtonClient {
                 };
                 Err(reason)
             }
-            Err(err) if crate::app::is_auth_failure(&err) => {
+            Err(err) if crate::engine::is_auth_failure(&err) => {
                 let reason = format!(
                     "Proton Drive session for '{}' has expired ({err}). {REAUTH_HINT}",
                     self.remote_name,

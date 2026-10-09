@@ -28,8 +28,6 @@ use crate::{
 
 /// Height of an expanded activity log.
 const LOG_HEIGHT: f32 = 170.0;
-/// Maximum log lines retained per sync_dir before the oldest are dropped to keep memory bounded across long-running sessions.
-pub const MAX_LOG_LINES: usize = 200;
 /// Content column stops growing beyond this so rows stay readable on wide windows.
 const MAX_CONTENT_WIDTH: f32 = 980.0;
 /// Width of the field labels in the add-folder form.
