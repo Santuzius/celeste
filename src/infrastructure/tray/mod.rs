@@ -17,6 +17,7 @@
 //! so the app's `TrayReady`-gated push path is a no-op instead of a
 //! back-pressure source.
 
+#[cfg(not(target_os = "android"))]
 mod icons;
 
 use std::{
@@ -25,6 +26,7 @@ use std::{
 };
 
 use iced::{stream, theme, Subscription};
+#[cfg(not(target_os = "android"))]
 use ksni::{
     menu::{StandardItem, TextDirection},
     Icon, MenuItem, ToolTip, TrayMethods,
@@ -36,6 +38,7 @@ use crate::domain::{
     run_state::{AppState, RunState},
 };
 
+#[cfg(not(target_os = "android"))]
 use self::icons::IconSet;
 
 /// One user-visible action surfaced from the tray. The app maps each
@@ -98,6 +101,7 @@ pub enum TraySignal {
 
 /// Build the Iced subscription that owns the ksni service. Batch this
 /// alongside the app's existing subscriptions.
+#[cfg(not(target_os = "android"))]
 pub fn subscription() -> Subscription<TraySignal> {
     Subscription::run(|| {
         stream::channel(32, async move |mut output| {
@@ -162,6 +166,7 @@ pub fn subscription() -> Subscription<TraySignal> {
 /// methods `&self`. `theme` is whatever the iced runtime last
 /// reported via `system::theme_changes`; the app pushes the initial
 /// value on the [`TraySignal::Ready`] handshake.
+#[cfg(not(target_os = "android"))]
 struct CelesteTray {
     status: TrayStatus,
     click_tx: mpsc::Sender<TrayAction>,
@@ -169,6 +174,7 @@ struct CelesteTray {
     theme: theme::Mode,
 }
 
+#[cfg(not(target_os = "android"))]
 impl CelesteTray {
     /// Pick the icon that matches the current status. `Loading`
     /// reuses the syncing glyph (mid-transition feel); `Disconnected`
@@ -185,6 +191,7 @@ impl CelesteTray {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl ksni::Tray for CelesteTray {
     fn id(&self) -> String {
         "com.hunterwittenborn.Celeste".to_owned()
@@ -258,7 +265,13 @@ impl ksni::Tray for CelesteTray {
     }
 }
 
-fn description_for(status: &TrayStatus) -> String {
+/// Android has no tray; the sync service's notification takes its place.
+#[cfg(target_os = "android")]
+pub fn subscription() -> Subscription<TraySignal> {
+    Subscription::none()
+}
+
+pub fn description_for(status: &TrayStatus) -> String {
     match status {
         TrayStatus::Loading => "Starting up…".to_owned(),
         TrayStatus::Disconnected => "No remotes configured".to_owned(),

@@ -6,6 +6,7 @@
 
 pub mod appearance;
 pub mod auth;
+#[cfg_attr(target_os = "android", path = "autostart_android.rs")]
 pub mod autostart;
 pub mod editor_temp;
 pub mod leftovers;

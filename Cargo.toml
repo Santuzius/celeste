@@ -23,18 +23,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive", "env"] }
-# XDG desktop portal (folder chooser). Already pulled in by the keyring
-# backend, so this adds nothing to the build.
-dbus = "0.9"
 futures = "0.3.32"
 # iced from the fork that runs it on Android (branch `android-0.14`, see github.com/Santuzius/iced_android). `x11` only satisfies iced's check that Unix targets pick a display server; nothing of it is built for Android. The desktop-only features are added below.
 iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "tokio", "lazy", "svg", "x11"] }
 # Soft keyboard, insets, back gesture and fonts on Android; does nothing on desktop.
 iced_android = { git = "https://github.com/Santuzius/iced_android", features = ["emoji"] }
-# OS keyring (libsecret / Secret-Service) for the Proton session blobs
-# and the rclone config file. Sync API + pure-Rust crypto so we don't
-# pull zbus/tokio or OpenSSL into the dependency graph.
-keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 # Status-icon SVGs for the per-sync-dir cards and the system-tray
 # pixmaps. Only the icon packs we actually pull from are enabled so
 # we don't compile the rest of the icondata corpus.
@@ -45,7 +38,6 @@ icondata = { version = "0.7", default-features = false, features = ["tabler-icon
 # struct. Already a transitive dep of `icondata`, so this adds nothing
 # new to the build.
 icondata_core = "0.1"
-ksni = "0.3.4"
 libc = "0.2"
 # Rasterise tray SVGs to ARGB32 at startup so KDE's symbolic-icon
 # recolour pipeline never touches them — it collapses the
@@ -55,16 +47,33 @@ resvg = { version = "0.47", default-features = false }
 # plus the native ProtonDrive entry points. See `src/go/` for the Go
 # side.
 celeste-go = { path = "src/go" }
-notify-rust = "4"
 sea-orm = { version = "0.10.7", features = ["sqlx-sqlite", "runtime-async-std-rustls", "macros"] }
-sea-orm-migration = "0.10.7"
+# Without the default `cli` feature: Celeste runs its migrations itself and never needs the command-line tool.
+sea-orm-migration = { version = "0.10.7", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 # SHA-1 of local files, compared with the digest Proton and Google Drive keep per file to spot identical copies; already a transitive dependency.
 sha1 = "0.10.6"
 time = { version = "0.3.47", features = ["serde-well-known"] }
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "sync"] }
-tr = "0.1.11"
+# Without a translator tr! returns the English text; the gettext backend would link a C library that does not build for Android.
+tr = { version = "0.1.11", default-features = false }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
+# XDG desktop portal (folder chooser). Already pulled in by the keyring
+# backend, so this adds nothing to the build.
+dbus = "0.9"
+# OS keyring (libsecret / Secret-Service) for the Proton session blobs
+# and the rclone config file. Sync API + pure-Rust crypto so we don't
+# pull zbus/tokio or OpenSSL into the dependency graph.
+keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+ksni = "0.3.4"
+notify-rust = "4"
 iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", default-features = false, features = ["wayland", "linux-theme-detection", "thread-pool"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.15"
+jni = "0.21"
+log = "0.4"
+# The process's Java VM and Application context, set up by android-activity.
+ndk-context = "0.1"

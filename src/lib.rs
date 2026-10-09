@@ -36,6 +36,23 @@ use crate::{
     services::secrets,
 };
 
+/// Entry point on Android, called by NativeActivity for the first activity of the process. With `iced_android` it keeps running after the activity is destroyed, so syncing goes on while the sync service keeps the process alive; later activities attach to it.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(app: iced_android::AndroidApp) {
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("celeste"));
+    std::panic::set_hook(Box::new(|info| log::error!("{info}")));
+
+    let Some(files) = app.internal_data_path() else {
+        log::error!("Android gave no internal data path");
+        return;
+    };
+    infrastructure::android::set_dirs(&files);
+    iced_android::init(app);
+
+    start(true);
+}
+
 /// Sets up storage, the Go archive and the database, then runs the app until it quits. `show` opens the main window right away instead of starting hidden in the tray.
 pub fn start(show: bool) {
     // Tap stderr before the Go runtime can grab it — that's the
@@ -283,6 +300,12 @@ fn notify_reauth_needed(remote_name: &str) {
     std::thread::spawn(move || show_reauth_notification(&remote_name));
 }
 
+#[cfg(target_os = "android")]
+fn show_reauth_notification(remote_name: &str) {
+    infrastructure::android::notify("Sign-in needed", &format!("Syncing '{remote_name}' is on hold. Open Celeste and tap Sign in again."));
+}
+
+#[cfg(not(target_os = "android"))]
 fn show_reauth_notification(remote_name: &str) {
     let mut notification = notify_rust::Notification::new();
     notification

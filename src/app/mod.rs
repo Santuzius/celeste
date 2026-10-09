@@ -766,6 +766,7 @@ pub(crate) fn main_window_settings() -> window::Settings {
     window::Settings {
         icon: crate::branding::window_icon(),
         // Wayland has no per-window icon here; KWin / GNOME look the icon up via the app id in the matching `celeste.desktop` (X11: WM_CLASS).
+        #[cfg(not(target_os = "android"))]
         platform_specific: window::settings::PlatformSpecific { application_id: "celeste".to_owned(), ..Default::default() },
         size: Size::new(1000.0, 700.0),
         min_size: Some(Size::new(720.0, 460.0)),
