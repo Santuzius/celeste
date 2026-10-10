@@ -11,7 +11,7 @@ Two-way file sync between folders on your Linux computer or Android phone and Go
    - **Linux, any distribution:** the [AppImage](#appimage) from the [latest release](https://github.com/Santuzius/celeste/releases/latest), or with the [Nix package manager](#nix): `nix profile add github:Santuzius/celeste`
    - **NixOS:** the [module](#nixos)
    - **Android 8 or newer:** the APK from the latest release, best through [Obtainium](#android), which keeps it up to date
-2. **Start Celeste.** On Linux it lives in the system tray, and closing the window keeps it syncing in the background. On Android it syncs in the background with a silent notification.
+2. **Start Celeste.** On Linux it lives in the system tray (on GNOME with the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)), and closing the window keeps it syncing in the background. On Android it syncs in the background with a silent notification.
 3. **Add a remote:** click *Add remote* and choose the provider.
    - **Proton Drive:** sign in with your Proton username and password.
    - **Google Drive:** needs your own OAuth client ID, which takes a few minutes in the Google Cloud console ([rclone's guide](https://rclone.org/drive/#making-your-own-client-id)). In the consent screen's **Branding** settings, enter [`https://github.com/Santuzius/celeste/blob/main/PRIVACY.md`](./PRIVACY.md) as **Application privacy policy link** and your own website or social media profile as **Application home page**, e.g. `https://t.me/YourTelegramName`. Then paste client ID and secret into Celeste, click *Connect* and grant access in your browser.
@@ -37,12 +37,12 @@ For x86_64 distributions with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedo
 2. Move it to a fixed place under a fixed name, e.g. `~/Applications/Celeste.AppImage`, and make it executable (`chmod +x`).
 3. Start it once. Celeste then starts itself at login from exactly this file (switch this off in Preferences).
 
-To update, replace the file, or let [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or AppImageUpdate do it. If you keep several versions side by side instead, start the new one once so that login starts it too. On GNOME, the tray icon needs the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/).
+To update, replace the file, or let [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or AppImageUpdate do it.
 
 ### Nix
 `github:Santuzius/celeste` always gives the latest release; `nix profile upgrade` moves you to a newer one.
 
-Builds for x86_64 are cached at `celeste.cachix.org`, so Nix can download Celeste instead of compiling it, which takes a while. Nix asks whether to use the cache; answer yes, or add `--accept-flake-config`. This only takes effect if your user is in the Nix daemon's `trusted-users`; otherwise add the cache to `/etc/nix/nix.conf`:
+Compiling takes a while; to download Celeste instead, add its binary cache to `/etc/nix/nix.conf`:
 
 ```
 extra-substituters = https://celeste.cachix.org
@@ -50,7 +50,7 @@ extra-trusted-public-keys = celeste.cachix.org-1:iGmU8GUPr4AlGAiwmfAIDRhRKZwpIpW
 ```
 
 ### NixOS
-Add the flake as an input — this one line is all you need in `inputs`:
+Add the flake to `inputs`:
 
 ```nix
 celeste.url = "github:Santuzius/celeste";
@@ -64,7 +64,7 @@ inputs.celeste.nixosModules.default
 { programs.celeste.enable = true; }   # programs.celeste.autostart = false; to skip autostart
 ```
 
-The module also adds `celeste.cachix.org` to the system's binary caches (`programs.celeste.binaryCache = false;` to skip), so rebuilds download Celeste instead of compiling it. This works from the rebuild after the one that enabled the module, and only without `celeste.inputs.nixpkgs.follows`: the cached build belongs to the nixpkgs pinned in Celeste's own `flake.lock`.
+The module also adds Celeste's binary cache (`programs.celeste.binaryCache = false;` to skip), so later rebuilds download Celeste instead of compiling it. This needs the input without `inputs.nixpkgs.follows`.
 
 Alternatively add `inputs.celeste.packages.${system}.default` to `environment.systemPackages` or use `overlays.default`.
 
@@ -74,7 +74,7 @@ For phones with Android 8 or newer and a 64-bit ARM processor (`arm64-v8a`, near
 - **With [Obtainium](https://obtainium.imranr.dev)** (recommended): *Add app*, enter `https://github.com/Santuzius/celeste` and install. Obtainium then reports new releases and installs them.
 - **By hand:** download `Celeste-<version>-arm64-v8a.apk` from the [latest release](https://github.com/Santuzius/celeste/releases/latest) and open it on the phone; Android asks to allow installing from that app.
 
-On its first start Celeste asks for **All files access**, needed to sync folders anywhere in the phone's storage, and for permission to run in the background. Every release is signed with the same key, so updates install over the previous version and keep your accounts.
+On its first start Celeste asks for **All files access**, needed to sync folders anywhere in the phone's storage, and for permission to run in the background.
 
 ### Snap
 A Snap package is prepared (`snap/snapcraft.yaml`, see [doc/snap.md](doc/snap.md)) but not yet published in the Snap Store.
