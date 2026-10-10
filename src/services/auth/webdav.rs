@@ -40,6 +40,27 @@ pub fn add_webdav_remote(
     repo: &dyn Repository,
     client: &dyn BackendClient,
 ) -> Result<RemoteId, String> {
+    client.create_config(config_payload(name, url, user, pass, vendor))?;
+    util::await_future(repo.insert_remote(name.to_owned()))
+        .map_err(|e| e.to_string())
+}
+
+/// Sign in to an existing WebDAV-family remote again, e.g. one imported without its password: replace its rclone config under the same name and keep the DB row with its folders.
+pub fn reauth_webdav_remote(name: &str, url: &str, user: &str, pass: &str, vendor: WebDavVendor, client: &dyn BackendClient) -> Result<(), String> {
+    // rclone's `config/create` rejects a name that already exists.
+    let _ = client.delete_config(name);
+    client.create_config(config_payload(name, url, user, pass, vendor))
+}
+
+/// The URL the form takes back from a stored config: Nextcloud and Owncloud get their WebDAV path appended again on saving.
+pub fn form_url(stored_url: &str, user: &str, vendor: WebDavVendor) -> String {
+    match vendor {
+        WebDavVendor::Nextcloud | WebDavVendor::Owncloud => stored_url.strip_suffix(&format!("/remote.php/dav/files/{user}")).unwrap_or(stored_url).to_owned(),
+        WebDavVendor::WebDav => stored_url.to_owned(),
+    }
+}
+
+fn config_payload(name: &str, url: &str, user: &str, pass: &str, vendor: WebDavVendor) -> String {
     // For Nextcloud/Owncloud the GTK flow reformats the URL to include
     // `/remote.php/dav/files/<user>`; mirror that here so configs the
     // Iced UI creates line up with configs the GTK UI creates.
@@ -51,7 +72,7 @@ pub fn add_webdav_remote(
         WebDavVendor::WebDav => url.to_owned(),
     };
 
-    let payload = json!({
+    json!({
         "name": name,
         "parameters": {
             "url": effective_url,
@@ -62,11 +83,7 @@ pub fn add_webdav_remote(
         "type": "webdav",
         "opt": { "obscure": true },
     })
-    .to_string();
-
-    client.create_config(payload)?;
-    util::await_future(repo.insert_remote(name.to_owned()))
-        .map_err(|e| e.to_string())
+    .to_string()
 }
 
 #[cfg(test)]

@@ -231,14 +231,30 @@ impl BackendClient for LibrcloneClient {
     }
 
     fn uses_shared_oauth_client(&self, remote: &str) -> bool {
+        let Some(config) = self.config(remote) else {
+            return false;
+        };
+        config.get("type").and_then(|v| v.as_str()) == Some("drive")
+            && config.get("client_id").and_then(|v| v.as_str()).is_none_or(str::is_empty)
+    }
+
+    /// A remote without its token or password, e.g. one imported from a settings file, waits for the user to sign in.
+    fn needs_reauth(&self, remote: &str) -> bool {
+        let Some(config) = self.config(remote) else {
+            return false;
+        };
+        let missing = |key: &str| config.get(key).and_then(|v| v.as_str()).is_none_or(str::is_empty);
+        match config.get("type").and_then(|v| v.as_str()) {
+            Some("drive" | "dropbox" | "pcloud") => missing("token"),
+            Some("webdav") => missing("pass"),
+            _ => false,
+        }
+    }
+
+    fn config(&self, remote: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
         let payload = serde_json::json!({ "name": remote }).to_string();
-        let Ok(body) = celeste_go::rpc("config/get", payload) else {
-            return false;
-        };
-        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) else {
-            return false;
-        };
-        parsed.get("type").and_then(|v| v.as_str()) == Some("drive")
-            && parsed.get("client_id").and_then(|v| v.as_str()).is_none_or(str::is_empty)
+        let body = celeste_go::rpc("config/get", payload).ok()?;
+        // `config/get` returns {} for unknown remotes.
+        serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&body).ok().filter(|m| !m.is_empty())
     }
 }

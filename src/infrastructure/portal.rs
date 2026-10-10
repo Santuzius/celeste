@@ -1,4 +1,4 @@
-//! Folder chooser through the XDG desktop portal (`org.freedesktop.portal.FileChooser`), so the dialog is the desktop's own (KDE, GNOME, …) without linking a GUI toolkit. Blocking — call from `spawn_blocking`.
+//! Folder and file choosers through the XDG desktop portal (`org.freedesktop.portal.FileChooser`), so the dialog is the desktop's own (KDE, GNOME, …) without linking a GUI toolkit. Blocking — call from `spawn_blocking`.
 
 use std::{
     sync::{Arc, Mutex},
@@ -17,7 +17,9 @@ const PICK_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 /// Ask the user for a directory. `None` when cancelled or when no portal is available.
 pub fn pick_folder(title: &str) -> Option<String> {
-    match try_pick_folder(title) {
+    let mut options = PropMap::new();
+    options.insert("directory".into(), Variant(Box::new(true)));
+    match choose("OpenFile", title, options) {
         Ok(path) => path,
         Err(err) => {
             eprintln!("celeste: folder chooser unavailable ({err}).");
@@ -26,7 +28,27 @@ pub fn pick_folder(title: &str) -> Option<String> {
     }
 }
 
-fn try_pick_folder(title: &str) -> Result<Option<String>, dbus::Error> {
+/// Ask where to save a file, suggesting `name`, and write `contents` there. `Ok(false)` when cancelled.
+pub fn save_file(title: &str, name: &str, contents: &[u8]) -> Result<bool, String> {
+    let mut options = PropMap::new();
+    options.insert("current_name".into(), Variant(Box::new(name.to_owned())));
+    let Some(path) = choose("SaveFile", title, options).map_err(|err| format!("No file chooser: {err}"))? else {
+        return Ok(false);
+    };
+    std::fs::write(&path, contents).map_err(|err| format!("Could not write {path}: {err}"))?;
+    Ok(true)
+}
+
+/// Ask for a file and read it. `Ok(None)` when cancelled.
+pub fn open_file(title: &str) -> Result<Option<Vec<u8>>, String> {
+    let Some(path) = choose("OpenFile", title, PropMap::new()).map_err(|err| format!("No file chooser: {err}"))? else {
+        return Ok(None);
+    };
+    std::fs::read(&path).map(Some).map_err(|err| format!("Could not read {path}: {err}"))
+}
+
+/// Runs the portal's `method` (`OpenFile` or `SaveFile`) and waits for the chosen path.
+fn choose(method: &str, title: &str, mut options: PropMap) -> Result<Option<String>, dbus::Error> {
     let conn = Connection::new_session()?;
     // The portal answers on a request object whose path is derived from our bus name and a token we choose; subscribe before calling so the response can't race us.
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
@@ -44,12 +66,10 @@ fn try_pick_folder(title: &str) -> Result<Option<String>, dbus::Error> {
         false
     })?;
 
-    let mut options = PropMap::new();
     options.insert("handle_token".into(), Variant(Box::new(token)));
-    options.insert("directory".into(), Variant(Box::new(true)));
     options.insert("modal".into(), Variant(Box::new(true)));
     let proxy = conn.with_proxy("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", Duration::from_secs(10));
-    let _: (Path,) = proxy.method_call("org.freedesktop.portal.FileChooser", "OpenFile", ("", title, options))?;
+    let _: (Path,) = proxy.method_call("org.freedesktop.portal.FileChooser", method, ("", title, options))?;
 
     let deadline = Instant::now() + PICK_TIMEOUT;
     while Instant::now() < deadline {

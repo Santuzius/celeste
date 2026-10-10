@@ -35,6 +35,7 @@ use crate::{
         appearance::{Appearance, ThemeChoice, TrayIconChoice},
         autostart, leftovers,
         power::{self, PowerSettings},
+        settings_file,
     },
     theme,
 };
@@ -101,6 +102,10 @@ pub enum Message {
     Insets(iced_android::Insets),
     /// Android's font size setting and display size (see `iced_android::system_scale`).
     SystemScale(f32),
+    /// The settings file was written (`true`) or the dialog cancelled.
+    SettingsExported(Result<bool, String>),
+    /// The settings file was imported, or the dialog cancelled (`None`).
+    SettingsImported(Result<Option<settings_file::Imported>, String>),
     /// The window got the input focus back, e.g. from a system dialog.
     WindowFocused,
     /// Compact layout: the scrim around the drawer was tapped.
@@ -164,6 +169,8 @@ pub struct CelesteApp {
     background_dialog_open: bool,
     /// Android's font size as a factor; 1 elsewhere.
     system_scale: f32,
+    /// How the last export or import of the settings file went, shown in the Preferences dialog.
+    preferences_note: Option<String>,
     /// Why saving a preference failed, shown in the Preferences dialog.
     preferences_error: Option<String>,
     /// Files per sync dir that changed on both sides: the engine's list, minus choices made since it was published.
@@ -233,6 +240,7 @@ impl CelesteApp {
             background_allowed: true,
             background_dialog_open: false,
             system_scale: 1.0,
+            preferences_note: None,
             preferences_error: None,
             conflicts: HashMap::new(),
             conflict_dialog: None,
@@ -369,6 +377,7 @@ impl CelesteApp {
             }
             Message::Main(main_page::Msg::OpenPreferences) => {
                 self.preferences_open = true;
+                self.preferences_note = None;
                 self.autostart = autostart::enabled();
                 self.background = power::background_enabled();
                 self.preferences_error = None;
@@ -428,6 +437,50 @@ impl CelesteApp {
                 self.set_power(PowerSettings { asked_battery: true, ..self.power });
                 Task::none()
             }
+            Message::Preferences(preferences::Msg::Export) => {
+                self.preferences_note = None;
+                self.preferences_error = None;
+                let (repo, router) = (self.repo.clone(), self.rclone.clone());
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let text = settings_file::export(&*repo, &*router)?;
+                            crate::infrastructure::portal::save_file("Export Celeste's settings", "celeste-settings.json", text.as_bytes())
+                        })
+                        .await
+                        .unwrap_or_else(|e| Err(e.to_string()))
+                    },
+                    Message::SettingsExported,
+                )
+            }
+            Message::Preferences(preferences::Msg::Import) => {
+                self.preferences_note = None;
+                self.preferences_error = None;
+                let (repo, router) = (self.repo.clone(), self.rclone.clone());
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let Some(bytes) = crate::infrastructure::portal::open_file("Import Celeste's settings")? else {
+                                return Ok(None);
+                            };
+                            let text = String::from_utf8(bytes).map_err(|_| "Not a Celeste settings file.".to_owned())?;
+                            settings_file::import(&text, &*repo, &*router).map(Some)
+                        })
+                        .await
+                        .unwrap_or_else(|e| Err(e.to_string()))
+                    },
+                    Message::SettingsImported,
+                )
+            }
+            Message::SettingsExported(result) => {
+                match result {
+                    Ok(true) => self.preferences_note = Some("Settings exported.".to_owned()),
+                    Ok(false) => {}
+                    Err(err) => self.preferences_error = Some(err),
+                }
+                Task::none()
+            }
+            Message::SettingsImported(result) => self.handle_settings_imported(result),
             Message::Preferences(preferences::Msg::AutostartToggled(on)) => {
                 match autostart::set(on) {
                     Ok(()) => {
@@ -625,7 +678,7 @@ impl CelesteApp {
             stack![base, remote_page::modal(preferences::background_dialog().map(Message::Preferences), Some(Message::Preferences(preferences::Msg::KeepOptimized)))].into()
         } else if self.preferences_open {
             let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, background: self.background, background_allowed: self.background_allowed });
-            let dialog = preferences::view(self.appearance, power, self.autostart, self.preferences_error.as_deref(), compact).map(Message::Preferences);
+            let dialog = preferences::view(self.appearance, power, self.autostart, self.preferences_note.as_deref(), self.preferences_error.as_deref(), compact).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
@@ -742,6 +795,42 @@ impl CelesteApp {
             ThemeChoice::Light => iced_theme::Mode::Light,
             ThemeChoice::Dark => iced_theme::Mode::Dark,
         }
+    }
+
+    /// Show what an import did and take over what it changed: preferences from their files, remotes from the database.
+    fn handle_settings_imported(&mut self, result: Result<Option<settings_file::Imported>, String>) -> Task<Message> {
+        let imported = match result {
+            Ok(Some(imported)) => imported,
+            Ok(None) => return Task::none(),
+            Err(err) => {
+                self.preferences_error = Some(err);
+                return Task::none();
+            }
+        };
+        let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+        let mut note = format!("Imported {} with {}.", plural(imported.remotes, "remote", "remotes"), plural(imported.folders, "folder", "folders"));
+        if imported.remotes > 0 {
+            note.push_str(" Sign in to each to start syncing.");
+        }
+        if !imported.skipped.is_empty() {
+            note.push_str(&format!(" Left out, as the name is taken: {}.", imported.skipped.join(", ")));
+        }
+        self.preferences_note = Some(note);
+
+        let data_dir = crate::util::get_data_dir();
+        self.set_appearance(Appearance::load(&data_dir));
+        self.power = PowerSettings::load(&data_dir);
+        self.autostart = autostart::enabled();
+        self.background = power::background_enabled();
+        let repo = self.repo.clone();
+        let engine = self.engine.clone();
+        Task::perform(
+            async move {
+                engine.send(crate::engine::Command::Reload);
+                repo.list_remotes().await.unwrap_or_default()
+            },
+            Message::RemotesLoaded,
+        )
     }
 
     /// Store changed power settings; the caller applies a new mode.

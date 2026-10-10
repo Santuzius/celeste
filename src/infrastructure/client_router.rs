@@ -120,4 +120,7 @@ impl BackendClient for ClientRouter {
     fn uses_shared_oauth_client(&self, remote: &str) -> bool {
         self.pick(remote).uses_shared_oauth_client(remote)
     }
+    fn config(&self, remote: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+        self.pick(remote).config(remote)
+    }
 }

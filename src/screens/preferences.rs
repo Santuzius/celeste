@@ -26,6 +26,10 @@ pub enum Msg {
     /// "Not now" in [`background_dialog`].
     KeepOptimized,
     AutostartToggled(bool),
+    /// Save the remotes, folders and preferences to a file.
+    Export,
+    /// Add remotes and folders from such a file and take over its preferences.
+    Import,
     Close,
 }
 
@@ -40,7 +44,8 @@ pub struct Power {
 }
 
 /// `compact`: the phone layout, where the button groups go below their labels.
-pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
+/// `note`: how the last export or import went.
+pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, note: Option<&'a str>, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
     let android = cfg!(target_os = "android");
     let size_hint = if android { "Text and everything else in this window, relative to the system's font and display size." } else { "Text and everything else in this window." };
     let mut rows = column![
@@ -86,6 +91,16 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, e
                 toggler(autostart).on_toggle(Msg::AutostartToggled).size(20).into(),
             ));
         }
+    }
+
+    let transfer = row![
+        button(text("Export…").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Export),
+        button(text("Import…").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Import),
+    ]
+    .spacing(8);
+    rows = rows.push(separator()).push(choice_row(compact, "Settings file", "Remotes, folders and these preferences, without sign-ins. Imported remotes ask you to sign in again.", transfer.into()));
+    if let Some(note) = note {
+        rows = rows.push(container(text(note).size(CAPTION).style(theme::muted)).padding(iced::Padding { top: 0.0, right: 14.0, bottom: 12.0, left: 14.0 }));
     }
 
     let mut content = column![

@@ -13,4 +13,5 @@ pub mod leftovers;
 pub mod power;
 pub mod remote_lifecycle;
 pub mod secrets;
+pub mod settings_file;
 pub mod sync;

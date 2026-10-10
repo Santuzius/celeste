@@ -8,7 +8,7 @@ import android.os.Bundle;
 
 import io.github.santuzius.icedandroid.IcedActivity;
 
-/** Celeste's window. The GUI itself is iced, drawn by the native library; this adds what only an activity can do: ask for permissions and show the folder picker. */
+/** Celeste's window. The GUI itself is iced, drawn by the native library; this adds what only an activity can do: ask for permissions and show the folder picker and the file dialogs. */
 public class CelesteActivity extends IcedActivity {
     private static final int ASK_NOTIFICATIONS = 3;
 
@@ -33,6 +33,10 @@ public class CelesteActivity extends IcedActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == Bridge.PICK_FOLDER) {
             Bridge.nativeFolderPicked(resultCode == RESULT_OK && data != null ? Bridge.treeToPath(data.getData()) : null);
+            return;
+        }
+        if (requestCode == Bridge.SAVE_DOCUMENT || requestCode == Bridge.OPEN_DOCUMENT) {
+            Bridge.documentChosen(getApplicationContext(), requestCode, resultCode == RESULT_OK && data != null ? data.getData() : null);
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);

@@ -20,6 +20,9 @@ import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Log;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.security.KeyStore;
 import java.util.Arrays;
@@ -38,6 +41,8 @@ public final class Bridge {
     static final String TAG = "celeste";
     static final int PICK_FOLDER = 1;
     private static final int ASK_STORAGE = 2;
+    static final int SAVE_DOCUMENT = 4;
+    static final int OPEN_DOCUMENT = 5;
     static final String CHANNEL_SYNC = "sync";
     private static final String CHANNEL_PROBLEMS = "problems";
     private static final String KEY_ALIAS = "celeste-secrets";
@@ -47,9 +52,14 @@ public final class Bridge {
     private static final long WAKE_LOCK_TIMEOUT_MS = 60 * 60 * 1000;
 
     private static WeakReference<Activity> activity = new WeakReference<>(null);
+    /** What {@link #saveDocument} writes once the user chose where. */
+    private static byte[] pendingSave;
     private static PowerManager.WakeLock wakeLock;
 
     private Bridge() {}
+
+    /** Answers {@link #saveDocument} and {@link #openDocument}: `error` when something went wrong, else `data` null when cancelled, the file's bytes after opening, empty after saving. */
+    static native void nativeDocumentDone(byte[] data, String error);
 
     /** The picked folder's path, or null when cancelled or when it has none. Answers {@link #pickFolder}. */
     static native void nativeFolderPicked(String path);
@@ -168,6 +178,74 @@ public final class Bridge {
         } catch (ActivityNotFoundException | SecurityException e) {
             Log.w(TAG, "no app shows " + folder, e);
         }
+    }
+
+    // Saving and opening a file ---------------------------------------------
+
+    /** Asks where to save `data`, suggesting `name`; the answer goes to {@link #nativeDocumentDone}. False when no activity is there to show the dialog. */
+    public static boolean saveDocument(String name, byte[] data) {
+        Activity current = activity.get();
+        if (current == null) {
+            return false;
+        }
+        pendingSave = data;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, name);
+        startForDocument(current, intent, SAVE_DOCUMENT);
+        return true;
+    }
+
+    /** Asks for a file to read; the answer goes to {@link #nativeDocumentDone}. False when no activity is there to show the dialog. */
+    public static boolean openDocument() {
+        Activity current = activity.get();
+        if (current == null) {
+            return false;
+        }
+        // Any type: file managers and cloud apps often don't label JSON as such.
+        startForDocument(current, new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), OPEN_DOCUMENT);
+        return true;
+    }
+
+    private static void startForDocument(Activity current, Intent intent, int requestCode) {
+        current.runOnUiThread(() -> {
+            try {
+                current.startActivityForResult(intent, requestCode);
+            } catch (ActivityNotFoundException e) {
+                nativeDocumentDone(null, "No app on this device saves or opens files.");
+            }
+        });
+    }
+
+    /** The result of {@link #saveDocument} or {@link #openDocument}, from the activity. */
+    static void documentChosen(Context context, int requestCode, Uri uri) {
+        byte[] data = pendingSave;
+        pendingSave = null;
+        if (uri == null) {
+            nativeDocumentDone(null, null);
+            return;
+        }
+        // Off the UI thread: the file may live with a cloud app that takes its time.
+        new Thread(() -> {
+            try {
+                if (requestCode == SAVE_DOCUMENT) {
+                    try (OutputStream out = context.getContentResolver().openOutputStream(uri, "wt")) {
+                        out.write(data);
+                    }
+                    nativeDocumentDone(new byte[0], null);
+                } else {
+                    try (InputStream in = context.getContentResolver().openInputStream(uri)) {
+                        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                        byte[] buffer = new byte[8192];
+                        for (int n; (n = in.read(buffer)) > 0; ) {
+                            bytes.write(buffer, 0, n);
+                        }
+                        nativeDocumentDone(bytes.toByteArray(), null);
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "could not use " + uri, e);
+                nativeDocumentDone(null, String.valueOf(e.getMessage()));
+            }
+        }).start();
     }
 
     // Folder picker ---------------------------------------------------------

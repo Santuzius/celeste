@@ -136,10 +136,12 @@ pub struct Appearance {
 
 impl Appearance {
     pub fn load(data_dir: &Path) -> Self {
+        std::fs::read_to_string(data_dir.join(FILE_NAME)).map_or_else(|_| Self::default(), |content| Self::parse(&content))
+    }
+
+    /// From `key=value` lines; unknown keys and values fall back to the defaults.
+    pub fn parse(content: &str) -> Self {
         let mut appearance = Self::default();
-        let Ok(content) = std::fs::read_to_string(data_dir.join(FILE_NAME)) else {
-            return appearance;
-        };
         for line in content.lines() {
             let Some((key, value)) = line.split_once('=') else { continue };
             match key.trim() {
@@ -155,8 +157,13 @@ impl Appearance {
     pub fn save(&self, data_dir: &Path) -> io::Result<()> {
         std::fs::create_dir_all(data_dir)?;
         let tmp = data_dir.join(format!("{FILE_NAME}.tmp"));
-        std::fs::write(&tmp, format!("window={}\ntray_icon={}\nsize={}\n", self.window.key(), self.tray_icon.key(), self.size.key()))?;
+        std::fs::write(&tmp, self.to_conf())?;
         std::fs::rename(&tmp, data_dir.join(FILE_NAME))
+    }
+
+    /// As `key=value` lines, the form [`parse`](Self::parse) reads.
+    pub fn to_conf(&self) -> String {
+        format!("window={}\ntray_icon={}\nsize={}\n", self.window.key(), self.tray_icon.key(), self.size.key())
     }
 }
 

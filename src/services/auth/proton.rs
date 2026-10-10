@@ -18,7 +18,7 @@ use crate::{
 /// keyring-backed remotes. The column is preserved as a "session
 /// configured" flag — its actual contents are no longer a path, since
 /// the credential blob lives in the OS keyring under the remote's name.
-const KEYRING_SESSION_MARKER: &str = "keyring";
+pub const KEYRING_SESSION_MARKER: &str = "keyring";
 
 /// Login parameters, carrying a solved human-verification challenge when
 /// the previous attempt was answered with one (see [`HumanVerification`]).

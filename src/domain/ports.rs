@@ -251,5 +251,10 @@ pub trait BackendClient: Send + Sync {
     fn uses_shared_oauth_client(&self, _remote: &str) -> bool {
         false
     }
+
+    /// The remote's rclone config section (`type` plus its parameters, secrets obscured); `None` for unknown or non-rclone remotes.
+    fn config(&self, _remote: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+        None
+    }
 }
 

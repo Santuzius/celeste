@@ -2,6 +2,7 @@
 //!
 //! `CelesteApplication` hands over the Java VM and the Application when the process starts, before any activity or service, so calls also work while no activity exists, e.g. when the sync service started the engine after a reboot. They go through the Application's class loader.
 
+pub mod documents;
 pub mod folders;
 pub mod secrets;
 

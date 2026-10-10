@@ -188,6 +188,21 @@ impl CelesteApp {
                     let user = draft.user.clone();
                     let pass = draft.pass.clone();
                     draft.busy = true;
+                    if draft.reauth {
+                        // Keep the DB row and its folders; only the config is replaced.
+                        let existing_id = self.remotes.iter().find(|r| r.name == name).map(|r| r.id);
+                        return Task::perform(
+                            async move {
+                                tokio::task::spawn_blocking(move || {
+                                    crate::services::auth::reauth_webdav_remote(&name, &url, &user, &pass, vendor, &*rclone)?;
+                                    existing_id.ok_or_else(|| "Remote not found after reauth.".to_owned())
+                                })
+                                .await
+                                .unwrap_or_else(|e| Err(e.to_string()))
+                            },
+                            Message::AddRemoteResult,
+                        );
+                    }
                     return Task::perform(
                         async move {
                             tokio::task::spawn_blocking(move || {
@@ -520,8 +535,22 @@ impl CelesteApp {
             .and_then(|r| r.provider_kind)
             .and_then(map_domain_provider_to_add_remote);
         let mut draft = add_remote::Draft::default();
-        draft.name = name;
         draft.provider = provider;
+        // WebDAV: where and as whom stay as they were; only the password is asked for again.
+        if let Some(config) = self.rclone.config(&name).filter(|c| c.get("type").and_then(|v| v.as_str()) == Some("webdav")) {
+            let field = |key: &str| config.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+            let kind = match field("vendor").as_str() {
+                "nextcloud" => add_remote::ProviderKind::Nextcloud,
+                "owncloud" => add_remote::ProviderKind::Owncloud,
+                _ => add_remote::ProviderKind::WebDav,
+            };
+            draft.user = field("user");
+            if let Some(vendor) = kind.webdav_vendor() {
+                draft.url = crate::services::auth::webdav::form_url(&field("url"), &draft.user, vendor);
+            }
+            draft.provider = Some(kind);
+        }
+        draft.name = name;
         draft.reauth = true;
         self.add_remote_draft = Some(draft);
         Task::none()
