@@ -26,6 +26,11 @@ pub enum Msg {
     /// "Not now" in [`background_dialog`].
     KeepOptimized,
     AutostartToggled(bool),
+    DetailedLogToggled(bool),
+    /// Put the captured log on the clipboard.
+    CopyLog,
+    /// Forget the captured log.
+    ClearLog,
     /// Save the remotes, folders and preferences to a file.
     Export,
     /// Add remotes and folders from such a file and take over its preferences.
@@ -45,7 +50,7 @@ pub struct Power {
 
 /// `compact`: the phone layout, where the button groups go below their labels.
 /// `note`: how the last export or import went.
-pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, note: Option<&'a str>, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
+pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, detailed_log: bool, note: Option<&'a str>, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
     let android = cfg!(target_os = "android");
     let size_hint = if android { "Text and everything else in this window, relative to the system's font and display size." } else { "Text and everything else in this window." };
     let mut rows = column![
@@ -93,6 +98,21 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, n
         }
     }
 
+    rows = rows
+        .push(separator())
+        .push(setting_row("Detailed log", if cfg!(target_os = "android") { "Write every sync pass to Android's log, not only problems." } else { "Write every sync pass to the system journal, not only problems." }, toggler(detailed_log).on_toggle(Msg::DetailedLogToggled).size(20).into()))
+        .push(separator())
+        .push(choice_row(
+            compact,
+            "Log",
+            "The last few thousand lines, also without the detailed log, e.g. for a bug report. Clear it before reproducing a problem.",
+            row![
+                button(text("Copy").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::CopyLog),
+                button(text("Clear").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::ClearLog),
+            ]
+            .spacing(8)
+            .into(),
+        ));
     let transfer = row![
         button(text("Export…").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Export),
         button(text("Import…").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Import),

@@ -246,14 +246,3 @@ pub(crate) fn is_auth_failure(msg: &str) -> bool {
     RcloneTranslator.is_auth_failure(msg) || ProtonTranslator.is_auth_failure(msg)
 }
 
-/// Local wall-clock time as `HH:MM:SS` for log prefixes. Uses libc's `localtime_r` because the `time` crate refuses local offsets in multi-threaded processes.
-fn local_clock() -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as libc::time_t;
-    // SAFETY: `localtime_r` only writes into the zeroed `tm` we own.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&now, &mut tm);
-        tm
-    };
-    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
-}

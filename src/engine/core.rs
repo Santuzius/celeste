@@ -26,7 +26,7 @@ use crate::{
     util::fmt_home,
 };
 
-use super::{is_auth_failure, Cadence, local_clock, pass::Pass, Command, Input, LogLine, Logs, PassVerdict, Snapshot, CONFLICT_LINE_PREFIXES, MAX_LOG_LINES};
+use super::{is_auth_failure, Cadence, pass::Pass, Command, Input, LogLine, Logs, PassVerdict, Snapshot, CONFLICT_LINE_PREFIXES, MAX_LOG_LINES};
 
 pub(crate) struct Core {
     repo: Arc<dyn Repository>,
@@ -379,7 +379,7 @@ impl Core {
         }
         let mut logs = self.logs.lock().unwrap();
         let lines = logs.entry(sync_dir_id).or_default();
-        lines.push_back(LogLine { at: local_clock(), text: line });
+        lines.push_back(LogLine { at: crate::util::local_clock(), text: line });
         while lines.len() > MAX_LOG_LINES {
             lines.pop_front();
         }

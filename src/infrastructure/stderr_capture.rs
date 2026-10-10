@@ -1,8 +1,10 @@
 //! Process-wide stderr tap. Installs once at startup, before the Go
 //! runtime is initialised, so that every warning rclone (and its backends) print
 //! to fd 2 lands in a timestamped ring buffer we can query from the
-//! sync code. Everything is still forwarded to the real stderr so the
-//! user's terminal output stays unchanged.
+//! sync code, and which Preferences can copy for a bug report. Only problems
+//! are forwarded to the real stderr (the journal when autostarted, logcat on
+//! Android) unless the detailed log is on: a line per folder and pass would
+//! otherwise add megabytes a day.
 //!
 //! The motivation is provider-level rate-limiting: rclone's ProtonDrive
 //! backend retries 429s internally and eventually returns `Ok(partial)`
@@ -20,7 +22,10 @@ use std::{
     collections::VecDeque,
     io::{BufRead, BufReader},
     os::fd::{FromRawFd, IntoRawFd, OwnedFd},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock,
+    },
     thread,
     time::Instant,
 };
@@ -33,7 +38,37 @@ const RING_CAPACITY: usize = 4_096;
 #[derive(Clone, Debug)]
 pub struct CapturedLine {
     pub received_at: Instant,
+    /// Wall-clock `HH:MM:SS`, for [`dump`].
+    pub at: String,
     pub text: String,
+}
+
+/// Forward every line, not only problems (see [`is_problem`]).
+static DETAILED: AtomicBool = AtomicBool::new(false);
+
+/// Switch the detailed log on or off.
+pub fn set_detailed(on: bool) {
+    DETAILED.store(on, Ordering::Relaxed);
+}
+
+/// Whether a line is worth the system log without the detailed log: errors, warnings, conflicts, sign-in and rate-limit trouble.
+fn is_problem(line: &str) -> bool {
+    const MARKERS: [&str; 11] = ["error", "warn", "fail", "could not", "couldn't", "panic", "denied", "expired", "too many requests", "rate limit", "reauth"];
+    // Every pass summary counts `conflict=0`; only the conflict lines themselves are shouted.
+    let lower = line.to_lowercase();
+    line.contains("CONFLICT") || MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// Forget everything captured so far, e.g. before reproducing a problem.
+pub fn clear() {
+    handle().inner.lock().unwrap().clear();
+}
+
+/// Everything captured, oldest first, one `HH:MM:SS text` line each.
+pub fn dump() -> String {
+    let handle = handle();
+    let guard = handle.inner.lock().unwrap();
+    guard.iter().map(|l| format!("{} {}\n", l.at, l.text.trim_end())).collect()
 }
 
 #[derive(Clone)]
@@ -152,23 +187,27 @@ fn reader_loop(
         match reader.read_line(&mut line) {
             Ok(0) => break, // writer end closed
             Ok(_) => {
-                // Forward verbatim first so the real stderr stays live
+                // Forward first so the real stderr stays live
                 // even if the ring lock is briefly held. Android's stderr is /dev/null (or a pipe the GUI set up only later), so lines go to logcat there.
-                #[cfg(target_os = "android")]
-                log::info!(target: "stderr", "{}", line.trim_end());
-                #[cfg(not(target_os = "android"))]
-                {
-                    let _ = sink.write_all(line.as_bytes());
-                    let _ = sink.flush();
+                if DETAILED.load(Ordering::Relaxed) || is_problem(&line) {
+                    #[cfg(target_os = "android")]
+                    log::info!(target: "stderr", "{}", line.trim_end());
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let _ = sink.write_all(line.as_bytes());
+                        let _ = sink.flush();
+                    }
                 }
 
                 let received_at = Instant::now();
+                let at = crate::util::local_clock();
                 let mut guard = ring.lock().unwrap();
                 if guard.len() == RING_CAPACITY {
                     guard.pop_front();
                 }
                 guard.push_back(CapturedLine {
                     received_at,
+                    at,
                     text: line.clone(),
                 });
             }
@@ -204,6 +243,7 @@ mod tests {
         let before = Instant::now();
         ring.lock().unwrap().push_back(CapturedLine {
             received_at: before,
+            at: String::new(),
             text: "status=429 too many requests".to_owned(),
         });
         std::thread::sleep(Duration::from_millis(5));
@@ -211,6 +251,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(5));
         ring.lock().unwrap().push_back(CapturedLine {
             received_at: Instant::now(),
+            at: String::new(),
             text: "fresh 429 warning".to_owned(),
         });
 
@@ -218,5 +259,15 @@ mod tests {
         assert!(!h.any_line_since(cutoff, |s| s.contains("no-such-token")));
         // Pushing the cutoff back to `before` makes the older line visible.
         assert!(h.any_line_since(before, |s| s.contains("too many requests")));
+    }
+
+    #[test]
+    fn only_problems_reach_the_system_log_by_default() {
+        assert!(!is_problem("sync: plan for remote='GoogleDrive' dir='' — snapshot(db=1, listing=1, walk=1, walk_unreliable=0); actions(upload=0, download=0, delete_local=0, delete_remote=0, conflict=0, clear_db_row=0, record_db_row=0)."));
+        assert!(!is_problem("sync: RECORD 'a' — present on both sides but untracked; tracking it from now on."));
+        assert!(is_problem("2026/10/10 ERROR : x: Failed to copy"));
+        assert!(is_problem("sync: could not record 'a': not found"));
+        assert!(is_problem("WARN[0003] Too many requests"));
+        assert!(is_problem("sync: CONFLICT 'a' — changed on both sides."));
     }
 }

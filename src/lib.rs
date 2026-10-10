@@ -76,6 +76,7 @@ fn set_up() -> Option<Services> {
     // if the platform can't hand us a pipe; sync keeps working, we just
     // lose rate-limit detection for the run.
     let stderr = stderr_capture::install();
+    services::diagnostics::apply();
 
     // SQLite DB lives under ${XDG_DATA_HOME:-~/.local/share}/celeste.
     // The rclone config file (which holds OAuth tokens librclone writes

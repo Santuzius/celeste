@@ -432,10 +432,20 @@ fn record_upsert(
     cancel: &Cancel,
 ) {
     let Some(local_ts) = local_timestamp(Path::new(local_path)) else {
+        eprintln!("sync: could not record '{remote_path}': no modification time for {local_path}.");
         return;
     };
-    let Some(rstat) = client.stat(remote_name, remote_path, cancel).ok().flatten() else {
-        return;
+    // Without the row the next pass plans the same again, so say why.
+    let rstat = match client.stat(remote_name, remote_path, cancel) {
+        Ok(Some(rstat)) => rstat,
+        Ok(None) => {
+            eprintln!("sync: could not record '{remote_path}': the remote reports no such item although its listing has it.");
+            return;
+        }
+        Err(err) => {
+            eprintln!("sync: could not record '{remote_path}': {err}");
+            return;
+        }
     };
     let remote_ts = rstat.mod_time.unix_timestamp();
     if let Some(existing) = util::await_future(

@@ -42,6 +42,18 @@ pub fn open_folder(path: &str) {
     crate::infrastructure::android::open_folder(path);
 }
 
+/// Local wall-clock time as `HH:MM:SS` for log prefixes. Uses libc's `localtime_r` because the `time` crate refuses local offsets in multi-threaded processes.
+pub fn local_clock() -> String {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as libc::time_t;
+    // SAFETY: `localtime_r` only writes into the zeroed `tm` we own.
+    let tm = unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&now, &mut tm);
+        tm
+    };
+    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+}
+
 /// The user's real home directory, as the user knows it. Inside a snap `$HOME` points to the snap's private data directory, the real one is in `$SNAP_REAL_HOME`; data files stay under `$HOME` either way.
 pub fn user_home() -> Option<String> {
     std::env::var("SNAP_REAL_HOME").or_else(|_| std::env::var("HOME")).ok().filter(|h| !h.is_empty())
