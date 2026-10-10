@@ -361,7 +361,7 @@ fn plan_one(
         //      DB-tracked rows that didn't make the walk either.
         (None, Some(r), Some(db)) => {
             // Deleted here, edited there: the edit wins, so nothing the user changed is lost. Fetch it back instead of deleting it.
-            if !r.is_dir && r.mod_time.unix_timestamp() > db.last_remote_timestamp {
+            if !r.is_dir && r.mod_time.unix_timestamp() != db.last_remote_timestamp {
                 eprintln!(
                     "sync: SWAP DeleteRemote → Download for '{}' — remote changed since the last sync; restoring it locally.",
                     r.path,
@@ -400,11 +400,13 @@ fn plan_one(
             })
         }
         // Full triple — compare timestamps against the recorded values.
+        // A folder's time changes with every file added or removed in it; there is nothing to transfer for the folder itself.
+        (Some(l), Some(r), Some(_)) if l.is_dir && r.is_dir => None,
         (Some(l), Some(r), Some(db)) => {
-            // Any other time counts, not only a newer one: a file put back from a backup keeps its old time.
+            // Any other time counts, not only a newer one: a file put back from a backup keeps its old time, and Google Drive takes over the time of the file uploaded.
             let local_changed = l.mtime_secs != db.last_local_timestamp;
             let remote_changed =
-                r.mod_time.unix_timestamp() > db.last_remote_timestamp;
+                r.mod_time.unix_timestamp() != db.last_remote_timestamp;
             match (local_changed, remote_changed) {
                 (false, false) => None,
                 (true, false) => Some(Action::Upload {

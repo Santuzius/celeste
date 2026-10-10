@@ -218,6 +218,43 @@ fn a_file_restored_with_an_older_time_is_uploaded() {
     assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
 }
 
+/// Another device uploaded a file put back from a backup; Google Drive takes over its old time. It still counts as changed and comes down.
+#[test]
+fn a_remote_file_replaced_by_an_older_version_is_downloaded() {
+    let tmp = TempDir::new("sync_remote_restored");
+    let local = tmp.write_file("letter.pdf", b"");
+    touch_mtime(&local, 1_700_000_000);
+    let repo = FakeRepo::new();
+    repo.insert_item(SyncDirId(1), local.to_str().unwrap(), "letter.pdf", 1_700_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("letter.pdf", false, 1_560_000_000)]));
+    client.set_stat("letter.pdf", Ok(Some(remote_item("letter.pdf", false, 1_560_000_000))));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert_eq!(client.copy_to_local_calls.lock().unwrap().len(), 1);
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+}
+
+/// Adding a file to a folder changes the folder's time; the folder itself is not uploaded again for that.
+#[test]
+fn a_folder_whose_time_changed_is_left_alone() {
+    let tmp = TempDir::new("sync_dir_time");
+    let dir = tmp.path.join("docs");
+    fs::create_dir_all(&dir).unwrap();
+    let repo = FakeRepo::new();
+    repo.insert_item(SyncDirId(1), dir.to_str().unwrap(), "docs", 1_600_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("docs", true, 1_700_000_000)]));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    assert!(client.mkdir_calls.lock().unwrap().is_empty());
+}
+
 /// The part file of a download cut off by Celeste's end is removed and never uploaded; other programs' part files stay untouched.
 #[test]
 fn an_unfinished_download_is_cleaned_up_and_not_uploaded() {
