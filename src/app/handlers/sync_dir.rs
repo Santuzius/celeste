@@ -195,20 +195,12 @@ impl CelesteApp {
         )
     }
 
-    /// Handle [`Message::LocalPathPicked`] — fill the local field and,
-    /// when the remote field is still empty, suggest the same folder
-    /// name on the remote.
+    /// Handle [`Message::LocalPathPicked`] — fill the local field. The remote field stays as it is: empty means the whole drive, which is what a folder named after the drive is usually meant for.
     pub(in crate::app) fn handle_local_path_picked(&mut self, path: Option<String>) -> Task<Message> {
         let (Some(path), Some(id)) = (path, self.selected) else {
             return Task::none();
         };
-        let draft = self.sync_dir_drafts.entry(id).or_default();
-        if draft.1.trim().is_empty()
-            && let Some(name) = std::path::Path::new(&path).file_name().and_then(|n| n.to_str())
-        {
-            draft.1 = name.to_owned();
-        }
-        draft.0 = path;
+        self.sync_dir_drafts.entry(id).or_default().0 = path;
         self.add_sync_dir_error = None;
         Task::none()
     }
