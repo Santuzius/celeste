@@ -38,10 +38,15 @@ func SetPollInterval(d time.Duration) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	shorter := d < pollInterval
 	pollInterval = d
 	for _, w := range watchers {
 		if w == nil {
 			continue
+		}
+		// The backend polls on its new rhythm only after the old wait; until then a change could go unnoticed by the pass that waking up starts.
+		if shorter {
+			w.dirty.Store(true)
 		}
 		// The backend reads the channel all the time; replace a value it has not picked up yet.
 		select {

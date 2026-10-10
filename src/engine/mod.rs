@@ -52,12 +52,41 @@ pub enum Command {
     Resolve { remote_id: RemoteId, sync_dir_id: SyncDirId, resolution: Resolution },
     /// Add a line to a folder's log.
     Log(SyncDirId, String),
-    /// Nobody is looking (the phone's screen is off): stretch every interval to at least [`QUIET_INTERVAL`] to save battery. Leaving it syncs everything right away.
-    Quiet(bool),
+    /// How often to sync to save battery, e.g. less often with the phone's screen off (see [`crate::services::power`]). A less restrictive cadence syncs everything right away.
+    Cadence(Cadence),
 }
 
-/// The shortest interval while [`Command::Quiet`].
-pub const QUIET_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+/// How the remotes' own intervals apply right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Cadence {
+    /// Each remote's own interval.
+    #[default]
+    Full,
+    /// Each remote's own interval, but no shorter than this.
+    AtMost(std::time::Duration),
+    /// No scheduled passes; "Sync now" still works.
+    Held,
+}
+
+impl Cadence {
+    /// The shortest interval it allows; `None` when held.
+    pub fn floor(self) -> Option<std::time::Duration> {
+        match self {
+            Cadence::Full => Some(std::time::Duration::ZERO),
+            Cadence::AtMost(floor) => Some(floor),
+            Cadence::Held => None,
+        }
+    }
+
+    /// Whether it allows syncing more often than `other`.
+    pub fn looser_than(self, other: Cadence) -> bool {
+        match (self.floor(), other.floor()) {
+            (Some(a), Some(b)) => a < b,
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
+    }
+}
 
 /// Everything the engine feeds into its loop.
 #[derive(Debug)]

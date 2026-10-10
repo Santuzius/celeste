@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -24,16 +25,30 @@ public class SyncService extends Service {
     /** Starts the sync engine without a GUI, unless it already runs. */
     static native void nativeStartEngine();
 
-    /** With the screen off, Celeste syncs less often. */
-    static native void nativeScreenOff(boolean off);
+    /** The power mode syncs less often depending on these. */
+    static native void nativeConditions(boolean screenOff, boolean charging, boolean batterySaver);
 
     /** Screen on/off can only be received by a receiver registered at runtime. */
-    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver conditionsReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            nativeScreenOff(Intent.ACTION_SCREEN_OFF.equals(intent.getAction()));
+            reportConditions(intent.getAction());
         }
     };
+
+    /** `action`: the broadcast that changed something, null for none. */
+    private void reportConditions(String action) {
+        PowerManager power = getSystemService(PowerManager.class);
+        boolean charging;
+        if (Intent.ACTION_POWER_CONNECTED.equals(action) || Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
+            // The sticky battery broadcast may still tell the old state.
+            charging = Intent.ACTION_POWER_CONNECTED.equals(action);
+        } else {
+            Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            charging = battery != null && battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
+        }
+        nativeConditions(!power.isInteractive(), charging, power.isPowerSaveMode());
+    }
 
     /** Shows `text` as the sync status, with `sinceMillis` (0 for none) as its age, starting the service if needed. */
     static void show(Context context, String text, long sinceMillis) {
@@ -60,10 +75,13 @@ public class SyncService extends Service {
     public void onCreate() {
         super.onCreate();
         running = this;
-        nativeScreenOff(!getSystemService(PowerManager.class).isInteractive());
+        reportConditions(null);
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         filter.addAction(Intent.ACTION_SCREEN_ON);
-        registerReceiver(screenReceiver, filter);
+        filter.addAction(Intent.ACTION_POWER_CONNECTED);
+        filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED);
+        registerReceiver(conditionsReceiver, filter);
         nativeStartEngine();
     }
 
@@ -81,7 +99,7 @@ public class SyncService extends Service {
 
     @Override
     public void onDestroy() {
-        unregisterReceiver(screenReceiver);
+        unregisterReceiver(conditionsReceiver);
         running = null;
         super.onDestroy();
     }

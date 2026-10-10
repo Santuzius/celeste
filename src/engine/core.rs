@@ -26,7 +26,7 @@ use crate::{
     util::fmt_home,
 };
 
-use super::{is_auth_failure, local_clock, pass::Pass, Command, Input, LogLine, Logs, PassVerdict, Snapshot, CONFLICT_LINE_PREFIXES, MAX_LOG_LINES};
+use super::{is_auth_failure, Cadence, local_clock, pass::Pass, Command, Input, LogLine, Logs, PassVerdict, Snapshot, CONFLICT_LINE_PREFIXES, MAX_LOG_LINES};
 
 pub(crate) struct Core {
     repo: Arc<dyn Repository>,
@@ -55,8 +55,8 @@ pub(crate) struct Core {
     conflicts_version: u64,
     passes_finished: u64,
     last_status: Option<TrayStatus>,
-    /// See [`Command::Quiet`].
-    quiet: bool,
+    /// See [`Command::Cadence`].
+    cadence: Cadence,
 }
 
 impl Core {
@@ -82,7 +82,7 @@ impl Core {
             conflicts_version: 0,
             passes_finished: 0,
             last_status: None,
-            quiet: false,
+            cadence: Cadence::Full,
         }
     }
 
@@ -116,9 +116,9 @@ impl Core {
             }
             Command::Resolve { remote_id, sync_dir_id, resolution } => self.resolve(remote_id, sync_dir_id, resolution),
             Command::Log(sync_dir_id, line) => self.push_log_line(sync_dir_id, line),
-            Command::Quiet(quiet) => {
-                let woke = self.quiet && !quiet;
-                self.quiet = quiet;
+            Command::Cadence(cadence) => {
+                let woke = cadence.looser_than(self.cadence);
+                self.cadence = cadence;
                 // Up to date by the time someone looks.
                 if woke {
                     for id in self.remotes.iter().map(|r| r.id).collect::<Vec<_>>() {
@@ -129,10 +129,9 @@ impl Core {
         }
     }
 
-    /// A remote's interval, stretched while quiet.
-    fn interval(&self, remote: &Remote) -> std::time::Duration {
-        let interval = remote.policy.interval.duration();
-        if self.quiet { interval.max(super::QUIET_INTERVAL) } else { interval }
+    /// A remote's interval under the current cadence; `None` while held.
+    fn interval(&self, remote: &Remote) -> Option<std::time::Duration> {
+        self.cadence.floor().map(|floor| remote.policy.interval.duration().max(floor))
     }
 
     /// Read remotes and folders from the database and align the state with them.
@@ -221,7 +220,7 @@ impl Core {
             .remotes
             .iter()
             .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
-            .map(|r| (r.id, self.interval(r)))
+            .filter_map(|r| Some((r.id, self.interval(r)?)))
             .collect();
         for (id, interval) in candidates {
             if self.last_sync_at.get(&id).is_some_and(|t| now.duration_since(*t) < interval) {
@@ -240,7 +239,10 @@ impl Core {
         self.remotes
             .iter()
             .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
-            .map(|r| self.last_sync_at.get(&r.id).map_or_else(Instant::now, |t| *t + self.interval(r)))
+            .filter_map(|r| {
+                let interval = self.interval(r)?;
+                Some(self.last_sync_at.get(&r.id).map_or_else(Instant::now, |t| *t + interval))
+            })
             .min()
     }
 

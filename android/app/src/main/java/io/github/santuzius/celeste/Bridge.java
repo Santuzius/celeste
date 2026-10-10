@@ -120,6 +120,24 @@ public final class Bridge {
         }
     }
 
+    /** Whether Android leaves Celeste out of battery optimization, so it is neither frozen nor cut off from the network in the background. */
+    public static boolean ignoresBatteryOptimizations(Context context) {
+        return context.getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(context.getPackageName());
+    }
+
+    /** Asks whether Celeste may always run in the background; where that dialog is missing, opens the list of optimized apps. */
+    public static void askToIgnoreBatteryOptimizations(Context context) {
+        try {
+            context.startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException e) {
+            try {
+                context.startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (ActivityNotFoundException e2) {
+                Log.w(TAG, "no battery optimization settings", e2);
+            }
+        }
+    }
+
     // Folder picker ---------------------------------------------------------
 
     /** Opens the system's folder picker; the answer goes to {@link #nativeFolderPicked}. Without access to shared storage it opens that setting instead and answers null. False when no activity is there to show it. */

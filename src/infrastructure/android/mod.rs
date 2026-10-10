@@ -5,15 +5,20 @@
 pub mod folders;
 pub mod secrets;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    OnceLock,
+use std::{
+    sync::{Mutex, OnceLock},
+    time::Duration,
 };
 
 use jni::{
     objects::{GlobalRef, JClass, JObject, JValue},
     sys::{jboolean, JNI_TRUE},
     JNIEnv, JavaVM,
+};
+
+use crate::{
+    engine::Cadence,
+    services::power::{Conditions, PowerSettings},
 };
 
 /// The Java class with Celeste's static helpers.
@@ -44,23 +49,49 @@ extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeStartEngin
     std::thread::spawn(crate::start_engine);
 }
 
-/// Whether the screen is off, as `SyncService` last reported it.
-static SCREEN_OFF: AtomicBool = AtomicBool::new(false);
+/// The screen, the charger and the battery saver, as `SyncService` last reported them.
+static CONDITIONS: Mutex<Conditions> = Mutex::new(Conditions { screen_off: false, charging: false, battery_saver: false });
 
-/// Called by `SyncService` when the screen goes off or on: with nobody looking, sync and watch Google Drive's change log less often (see [`Command::Quiet`](crate::engine::Command::Quiet)).
+/// Called by `SyncService` when the screen goes off or on, the charger is plugged in or out, or Android's battery saver toggles: the power mode decides how often to sync (see [`crate::services::power`]).
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeScreenOff(_: JNIEnv, _: JClass, off: jboolean) {
-    SCREEN_OFF.store(off == JNI_TRUE, Ordering::Relaxed);
-    apply_screen_state();
+extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeConditions(_: JNIEnv, _: JClass, screen_off: jboolean, charging: jboolean, battery_saver: jboolean) {
+    if let Ok(mut conditions) = CONDITIONS.lock() {
+        *conditions = Conditions { screen_off: screen_off == JNI_TRUE, charging: charging == JNI_TRUE, battery_saver: battery_saver == JNI_TRUE };
+    }
+    apply_power_state();
 }
 
-/// Hands the screen state to the engine, if it runs yet; it starts asynchronously and calls this once it does.
-pub fn apply_screen_state() {
-    let quiet = SCREEN_OFF.load(Ordering::Relaxed);
-    celeste_go::set_change_poll_interval(quiet.then_some(crate::engine::QUIET_INTERVAL));
+/// Hands the cadence for the saved power mode and the current conditions to the engine, if it runs yet; it starts asynchronously and calls this once it does, and Preferences after a change.
+pub fn apply_power_state() {
+    let conditions = CONDITIONS.lock().map(|c| *c).unwrap_or_default();
+    let cadence = PowerSettings::load(&crate::util::get_data_dir()).mode.cadence(conditions);
+    // Google Drive's and Dropbox's change logs in the same rhythm; hourly while held.
+    celeste_go::set_change_poll_interval(match cadence {
+        Cadence::Full => None,
+        Cadence::AtMost(floor) => Some(floor),
+        Cadence::Held => Some(Duration::from_secs(60 * 60)),
+    });
     if let Some(engine) = crate::engine::get() {
-        engine.send(crate::engine::Command::Quiet(quiet));
+        engine.send(crate::engine::Command::Cadence(cadence));
     }
+}
+
+/// Whether Android leaves Celeste out of battery optimization, so it may keep running in the background.
+pub fn ignores_battery_optimizations() -> bool {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        env.call_static_method(class, "ignoresBatteryOptimizations", "(Landroid/content/Context;)Z", &[JValue::Object(context)])?.z()
+    })
+    .unwrap_or(true)
+}
+
+/// Opens Android's question whether Celeste may always run in the background, or the battery optimization list where that is missing.
+pub fn ask_to_ignore_battery_optimizations() {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        env.call_static_method(class, "askToIgnoreBatteryOptimizations", "(Landroid/content/Context;)V", &[JValue::Object(context)])?;
+        Ok(())
+    });
 }
 
 /// Runs `f` with a JNI environment and the Application context, attaching the current thread to the Java VM first. Logs Java exceptions instead of leaving them pending.

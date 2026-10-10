@@ -34,6 +34,7 @@ use crate::{
     services::{
         appearance::{Appearance, ThemeChoice, TrayIconChoice},
         autostart, leftovers,
+        power::{self, PowerSettings},
     },
     theme,
 };
@@ -100,6 +101,8 @@ pub enum Message {
     Insets(iced_android::Insets),
     /// Android's font size setting and display size (see `iced_android::system_scale`).
     SystemScale(f32),
+    /// The window got the input focus back, e.g. from a system dialog.
+    WindowFocused,
     /// Compact layout: the scrim around the drawer was tapped.
     CloseDrawer,
 }
@@ -151,6 +154,12 @@ pub struct CelesteApp {
     autostart: bool,
     /// Colour choices for the window and the tray icon.
     appearance: Appearance,
+    /// The power mode, and whether Celeste asked to run in the background.
+    power: PowerSettings,
+    /// Android leaves Celeste out of battery optimization; always on the desktop. Read again whenever the window comes back.
+    background_allowed: bool,
+    /// The question to leave Celeste out of battery optimization is shown.
+    background_dialog_open: bool,
     /// Android's font size as a factor; 1 elsewhere.
     system_scale: f32,
     /// Why saving a preference failed, shown in the Preferences dialog.
@@ -217,6 +226,9 @@ impl CelesteApp {
             preferences_open: false,
             autostart: autostart::enabled(),
             appearance: Appearance::load(&crate::util::get_data_dir()),
+            power: PowerSettings::default(),
+            background_allowed: true,
+            background_dialog_open: false,
             system_scale: 1.0,
             preferences_error: None,
             conflicts: HashMap::new(),
@@ -231,6 +243,9 @@ impl CelesteApp {
             insets: iced_android::Insets::default(),
             window_id: None,
         };
+        state.power = PowerSettings::load(&crate::util::get_data_dir());
+        state.background_allowed = power::background_allowed();
+        state.background_dialog_open = !state.background_allowed && !state.power.asked_battery;
         let load = Task::perform(
             async move { repo.list_remotes().await.unwrap_or_default() },
             Message::RemotesLoaded,
@@ -313,7 +328,9 @@ impl CelesteApp {
         let foreground = iced_android::foreground().map(Message::Foreground);
         let insets = iced_android::insets().map(Message::Insets);
         let font_scale = iced_android::system_scale().map(Message::SystemScale);
-        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape, foreground, insets, font_scale])
+        // Android's question about battery optimization only pauses the activity; the window gets its focus back when it closes.
+        let focused = iced::event::listen_with(|event, _, _| matches!(event, iced::Event::Window(window::Event::Focused)).then_some(Message::WindowFocused));
+        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape, foreground, insets, font_scale, focused])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -365,12 +382,32 @@ impl CelesteApp {
                 self.set_appearance(Appearance { size: choice, ..self.appearance });
                 Task::none()
             }
+            Message::WindowFocused => {
+                self.background_allowed = power::background_allowed();
+                Task::none()
+            }
             Message::SystemScale(scale) => {
                 self.system_scale = scale;
                 Task::none()
             }
             Message::Preferences(preferences::Msg::TrayIconChanged(choice)) => {
                 self.set_appearance(Appearance { tray_icon: choice, ..self.appearance });
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::PowerModeChanged(mode)) => {
+                self.set_power(PowerSettings { mode, ..self.power });
+                power::apply();
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::AllowBackground) => {
+                self.background_dialog_open = false;
+                self.set_power(PowerSettings { asked_battery: true, ..self.power });
+                power::allow_background();
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::KeepOptimized) => {
+                self.background_dialog_open = false;
+                self.set_power(PowerSettings { asked_battery: true, ..self.power });
                 Task::none()
             }
             Message::Preferences(preferences::Msg::AutostartToggled(on)) => {
@@ -491,6 +528,8 @@ impl CelesteApp {
             Message::Foreground(true) => {
                 // A new activity starts with the system's bar colours.
                 self.update_system_bars();
+                // The user may have just answered Android's question, or changed it in the settings.
+                self.background_allowed = power::background_allowed();
                 if self.window_id.is_none() { self.handle_tray_click(TrayAction::Open) } else { Task::none() }
             }
             // Off screen the GUI only costs memory; the engine keeps syncing.
@@ -560,8 +599,11 @@ impl CelesteApp {
         } else if let Some(remote) = self.settings_open.then(|| self.selected_remote()).flatten() {
             let auth_needed = self.display_state(remote) == RunState::AuthNeeded;
             stack![base, remote_page::settings_dialog(remote, auth_needed).map(Message::Remote)].into()
+        } else if self.background_dialog_open {
+            stack![base, remote_page::modal(preferences::background_dialog().map(Message::Preferences), Some(Message::Preferences(preferences::Msg::KeepOptimized)))].into()
         } else if self.preferences_open {
-            let dialog = preferences::view(self.appearance, self.autostart, self.preferences_error.as_deref(), compact).map(Message::Preferences);
+            let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, background_allowed: self.background_allowed });
+            let dialog = preferences::view(self.appearance, power, self.autostart, self.preferences_error.as_deref(), compact).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
@@ -577,6 +619,10 @@ impl CelesteApp {
     /// Close the topmost dialog, drawer or open panel; `false` when nothing was open.
     fn close_topmost(&mut self) -> bool {
         if self.pending_delete.take().is_some() || self.conflict_dialog.take().is_some() {
+            return true;
+        }
+        if std::mem::take(&mut self.background_dialog_open) {
+            self.set_power(PowerSettings { asked_battery: true, ..self.power });
             return true;
         }
         if std::mem::take(&mut self.preferences_open) || std::mem::take(&mut self.about_open) {
@@ -674,6 +720,12 @@ impl CelesteApp {
             ThemeChoice::Light => iced_theme::Mode::Light,
             ThemeChoice::Dark => iced_theme::Mode::Dark,
         }
+    }
+
+    /// Store changed power settings; the caller applies a new mode.
+    fn set_power(&mut self, power: PowerSettings) {
+        self.power = power;
+        self.preferences_error = power.save(&crate::util::get_data_dir()).err().map(|err| format!("Could not save the choice: {err}"));
     }
 
     /// Store a changed appearance and apply it; the window re-reads it through `theme()`.

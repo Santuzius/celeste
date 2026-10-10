@@ -8,7 +8,7 @@ use std::{
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use super::{core::Core, Command, Input, Logs, PassVerdict, Snapshot};
+use super::{core::Core, Cadence, Command, Input, Logs, PassVerdict, Snapshot};
 use crate::{
     domain::{
         events::SyncEvent,
@@ -110,19 +110,25 @@ async fn due_remotes_sync_once_and_wait_for_their_interval() {
 }
 
 #[tokio::test]
-async fn quiet_stretches_the_interval_and_waking_syncs_at_once() {
+async fn a_cadence_stretches_or_holds_the_interval_and_loosening_it_syncs_at_once() {
     let mut rig = rig().await;
     let now = Instant::now();
     rig.core.start_due(now);
     rig.settle().await;
 
-    rig.send(Command::Quiet(true)).await;
+    let floor = Duration::from_secs(300);
+    rig.send(Command::Cadence(Cadence::AtMost(floor))).await;
     let due = rig.core.next_due().expect("scheduled");
-    assert!(due >= now + super::QUIET_INTERVAL - Duration::from_secs(1), "due {:?} after the pass", due - now);
+    assert!(due >= now + floor - Duration::from_secs(1), "due {:?} after the pass", due - now);
     rig.core.start_due(now + Duration::from_secs(120));
-    assert!(rig.snap().syncing.is_empty(), "synced while quiet");
+    assert!(rig.snap().syncing.is_empty(), "synced before the stretched interval");
 
-    rig.send(Command::Quiet(false)).await;
+    rig.send(Command::Cadence(Cadence::Held)).await;
+    assert_eq!(rig.core.next_due(), None);
+    rig.core.start_due(now + Duration::from_secs(3600));
+    assert!(rig.snap().syncing.is_empty(), "synced while held");
+
+    rig.send(Command::Cadence(Cadence::Full)).await;
     rig.core.start_due(Instant::now());
     assert_eq!(rig.snap().syncing.len(), 2);
     rig.settle().await;

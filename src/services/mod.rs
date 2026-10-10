@@ -10,6 +10,7 @@ pub mod auth;
 pub mod autostart;
 pub mod editor_temp;
 pub mod leftovers;
+pub mod power;
 pub mod remote_lifecycle;
 pub mod secrets;
 pub mod sync;
