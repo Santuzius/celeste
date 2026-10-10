@@ -31,7 +31,7 @@ pub fn view<'a>() -> Element<'a, Msg> {
         bullet("Adrien Facélina: app icon, adapted for this fork"),
         bullet("Proton AG: go-proton-api"),
         bullet("Chun-Hung Tseng: Proton-API-Bridge"),
-        bullet("rclone, iced and Tabler Icons"),
+        bullet("rclone, iced, Tabler Icons, Material Design Icons and Ionicons"),
     ]
     .spacing(4);
     // The emoji font iced_android bundles for Android 15+; its licence asks for this credit.
