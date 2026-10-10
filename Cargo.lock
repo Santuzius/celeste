@@ -89,6 +89,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "android-activity"
 version = "0.6.1"
+source = "git+https://github.com/Santuzius/android-activity?branch=process-lifetime-0.6#e521e88a3fcf3ef728d9b55455f4651e8f8a2e5a"
 dependencies = [
  "android-properties",
  "bitflags 2.11.1",
@@ -2011,6 +2012,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -2025,6 +2027,7 @@ dependencies = [
 [[package]]
 name = "iced_android"
 version = "0.1.0"
+source = "git+https://github.com/Santuzius/iced_android#91cdb27e49cb0e4da03e380bbd9ddbe07016aff8"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2041,6 +2044,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "bitflags 2.11.1",
  "bytes",
@@ -2057,6 +2061,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2066,6 +2071,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "futures",
  "iced_core",
@@ -2079,6 +2085,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "bitflags 2.11.1",
  "bytemuck",
@@ -2096,6 +2103,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -2104,6 +2112,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2115,6 +2124,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "bytes",
  "iced_core",
@@ -2126,6 +2136,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2142,6 +2153,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "bitflags 2.11.1",
  "bytemuck",
@@ -2161,6 +2173,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.14.2"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "iced_renderer",
  "log",
@@ -2174,6 +2187,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.14.1"
+source = "git+https://github.com/Santuzius/iced?branch=android-0.14#63460b1da781ab2dd65dd5db65d3755076432ed7"
 dependencies = [
  "iced_debug",
  "iced_program",

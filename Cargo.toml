@@ -75,3 +75,7 @@ iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", def
 android_logger = "0.15"
 jni = "0.21"
 log = "0.4"
+
+# Lets android_main outlive a destroyed activity, so the sync engine keeps running while Android has closed Celeste's window (branch `process-lifetime-0.6` on top of 0.6.1).
+[patch.crates-io]
+android-activity = { git = "https://github.com/Santuzius/android-activity", branch = "process-lifetime-0.6" }

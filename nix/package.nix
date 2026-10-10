@@ -62,7 +62,14 @@ rustPlatform.buildRustPackage {
   inherit version;
   src = fullSrc;
 
-  cargoLock.lockFile = ../Cargo.lock;
+  cargoLock = {
+    lockFile = ../Cargo.lock;
+    # Git dependencies (the iced, iced_android and android-activity forks). After moving one to another commit, set its hash to lib.fakeHash, build, and copy the hash from the error.
+    outputHashes = {
+      "android-activity-0.6.1" = "sha256-3sn3y2ZDOt1GNH4mniv0vi18L089btGHt++/wLyQ3mw=";
+      "iced-0.14.1" = "sha256-yBVh30RzNJd0dDuoKuQtuwok1TeCCGerH71jtku3jK0=";
+      "iced_android-0.1.0" = "sha256-srhzPdXQcoifK5aOzvhn6HXB5WNxPjkxANQoSaC1Puk=";
+    };
 
   # Some dependencies use unstable rustc features gated behind RUSTC_BOOTSTRAP.
   env.RUSTC_BOOTSTRAP = 1;
