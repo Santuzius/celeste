@@ -1,4 +1,4 @@
-//! Colour choices for the window and the tray icon, kept in `appearance.conf` in the data dir as `key=value` lines. A missing or unreadable file means "follow the system" for both.
+//! Colour choices for the window and the tray icon and the size of the window's content, kept in `appearance.conf` in the data dir as `key=value` lines. A missing or unreadable file means "follow the system" for all of them.
 
 use std::{io, path::Path};
 
@@ -80,11 +80,58 @@ impl TrayIconChoice {
     }
 }
 
+/// Size of everything in the window, text and spacing alike, relative to the system's: on Android its font size, elsewhere the desktop's scaling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SizeChoice {
+    Smaller,
+    #[default]
+    System,
+    Larger,
+    Largest,
+}
+
+impl SizeChoice {
+    pub const ALL: [SizeChoice; 4] = [SizeChoice::Smaller, SizeChoice::System, SizeChoice::Larger, SizeChoice::Largest];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SizeChoice::Smaller => "Smaller",
+            SizeChoice::System => "System",
+            SizeChoice::Larger => "Larger",
+            SizeChoice::Largest => "Largest",
+        }
+    }
+
+    /// Factor on top of the system's size.
+    pub fn factor(self) -> f32 {
+        match self {
+            SizeChoice::Smaller => 0.9,
+            SizeChoice::System => 1.0,
+            SizeChoice::Larger => 1.15,
+            SizeChoice::Largest => 1.3,
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            SizeChoice::Smaller => "smaller",
+            SizeChoice::System => "system",
+            SizeChoice::Larger => "larger",
+            SizeChoice::Largest => "largest",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.key() == value.trim())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Appearance {
     /// Colour scheme of the window.
     pub window: ThemeChoice,
     pub tray_icon: TrayIconChoice,
+    pub size: SizeChoice,
 }
 
 impl Appearance {
@@ -98,6 +145,7 @@ impl Appearance {
             match key.trim() {
                 "window" => appearance.window = ThemeChoice::parse(value).unwrap_or_default(),
                 "tray_icon" => appearance.tray_icon = TrayIconChoice::parse(value).unwrap_or_default(),
+                "size" => appearance.size = SizeChoice::parse(value).unwrap_or_default(),
                 _ => {}
             }
         }
@@ -107,7 +155,7 @@ impl Appearance {
     pub fn save(&self, data_dir: &Path) -> io::Result<()> {
         std::fs::create_dir_all(data_dir)?;
         let tmp = data_dir.join(format!("{FILE_NAME}.tmp"));
-        std::fs::write(&tmp, format!("window={}\ntray_icon={}\n", self.window.key(), self.tray_icon.key()))?;
+        std::fs::write(&tmp, format!("window={}\ntray_icon={}\nsize={}\n", self.window.key(), self.tray_icon.key(), self.size.key()))?;
         std::fs::rename(&tmp, data_dir.join(FILE_NAME))
     }
 }
@@ -121,7 +169,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("celeste-appearance-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(Appearance::load(&dir), Appearance::default());
-        let chosen = Appearance { window: ThemeChoice::Dark, tray_icon: TrayIconChoice::Reversed };
+        let chosen = Appearance { window: ThemeChoice::Dark, tray_icon: TrayIconChoice::Reversed, size: SizeChoice::Larger };
         chosen.save(&dir).unwrap();
         assert_eq!(Appearance::load(&dir), chosen);
         let _ = std::fs::remove_dir_all(&dir);

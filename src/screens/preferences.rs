@@ -1,4 +1,4 @@
-//! App-wide preferences dialog (as opposed to the per-remote settings): colours of the window and the tray icon, start at login — one labelled row each, like the remote settings.
+//! App-wide preferences dialog (as opposed to the per-remote settings): colours of the window and the tray icon, the size of the window's content, start at login — one labelled row each, like the remote settings.
 
 use iced::{
     widget::{button, column, container, row, rule, toggler, Row, Space},
@@ -6,7 +6,7 @@ use iced::{
 };
 
 use crate::{
-    services::appearance::{Appearance, ThemeChoice, TrayIconChoice},
+    services::appearance::{Appearance, SizeChoice, ThemeChoice, TrayIconChoice},
     theme::{self, CAPTION, HEADING, TEXT},
     widgets::text,
 };
@@ -15,16 +15,24 @@ use crate::{
 pub enum Msg {
     WindowThemeChanged(ThemeChoice),
     TrayIconChanged(TrayIconChoice),
+    SizeChanged(SizeChoice),
     AutostartToggled(bool),
     Close,
 }
 
-pub fn view<'a>(appearance: Appearance, autostart: bool, error: Option<&'a str>) -> Element<'a, Msg> {
+/// `compact`: the phone layout, where the button groups go below their labels.
+pub fn view<'a>(appearance: Appearance, autostart: bool, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
     let android = cfg!(target_os = "android");
-    let mut rows = column![setting_row("Theme", "Colours of this window.", segmented(&ThemeChoice::ALL, ThemeChoice::label, appearance.window, Msg::WindowThemeChanged))];
+    let size_hint = if android { "Text and everything else in this window, relative to the system's font size." } else { "Text and everything else in this window." };
+    let mut rows = column![
+        choice_row(compact, "Theme", "Colours of this window.", segmented(&ThemeChoice::ALL, ThemeChoice::label, appearance.window, Msg::WindowThemeChanged)),
+        rule::horizontal(1).style(theme::separator),
+        choice_row(compact, "Size", size_hint, segmented(&SizeChoice::ALL, SizeChoice::label, appearance.size, Msg::SizeChanged)),
+    ];
     // Android has no tray.
     if !android {
-        rows = rows.push(rule::horizontal(1).style(theme::separator)).push(setting_row(
+        rows = rows.push(rule::horizontal(1).style(theme::separator)).push(choice_row(
+            compact,
             "Tray icon",
             "Colour of the icon in the panel.",
             segmented(&TrayIconChoice::ALL, TrayIconChoice::label, appearance.tray_icon, Msg::TrayIconChanged),
@@ -62,7 +70,16 @@ fn segmented<'a, T: Copy + PartialEq + 'a>(options: &[T], label: fn(T) -> &'stat
             .on_press(on_pick(choice))
             .into()
     });
-    container(Row::with_children(buttons).spacing(2)).padding(2).style(theme::well).into()
+    // Wraps rather than cutting off the last options when the window is narrow or its content large.
+    container(Row::with_children(buttons).spacing(2).wrap().vertical_spacing(2)).padding(2).style(theme::well).into()
+}
+
+/// A row with a button group, which needs the whole width of a phone.
+fn choice_row<'a>(compact: bool, title: &'a str, detail: &'a str, control: Element<'a, Msg>) -> Element<'a, Msg> {
+    if !compact {
+        return setting_row(title, detail, control);
+    }
+    column![column![text(title).size(TEXT), text(detail).size(CAPTION).style(theme::muted)].spacing(2), control].spacing(10).padding([12, 14]).into()
 }
 
 fn setting_row<'a>(title: &'a str, detail: &'a str, control: Element<'a, Msg>) -> Element<'a, Msg> {

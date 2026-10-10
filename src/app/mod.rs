@@ -98,6 +98,8 @@ pub enum Message {
     Back,
     /// Android: room taken by the system bars, cutout and keyboard.
     Insets(iced_android::Insets),
+    /// Android's font size setting (see `iced_android::font_scale`).
+    FontScale(f32),
     /// Compact layout: the scrim around the drawer was tapped.
     CloseDrawer,
 }
@@ -149,6 +151,8 @@ pub struct CelesteApp {
     autostart: bool,
     /// Colour choices for the window and the tray icon.
     appearance: Appearance,
+    /// Android's font size as a factor; 1 elsewhere.
+    system_font_scale: f32,
     /// Why saving a preference failed, shown in the Preferences dialog.
     preferences_error: Option<String>,
     /// Files per sync dir that changed on both sides: the engine's list, minus choices made since it was published.
@@ -213,6 +217,7 @@ impl CelesteApp {
             preferences_open: false,
             autostart: autostart::enabled(),
             appearance: Appearance::load(&crate::util::get_data_dir()),
+            system_font_scale: 1.0,
             preferences_error: None,
             conflicts: HashMap::new(),
             conflict_dialog: None,
@@ -245,6 +250,11 @@ impl CelesteApp {
 
     fn title(&self, _id: window::Id) -> String {
         "Celeste".to_string()
+    }
+
+    /// The chosen size on top of the system's font size; iced's logical pixels already follow the display scaling.
+    fn scale_factor(&self, _id: window::Id) -> f32 {
+        self.appearance.size.factor() * self.system_font_scale
     }
 
     fn theme(&self, _id: window::Id) -> Theme {
@@ -302,7 +312,8 @@ impl CelesteApp {
         });
         let foreground = iced_android::foreground().map(Message::Foreground);
         let insets = iced_android::insets().map(Message::Insets);
-        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape, foreground, insets])
+        let font_scale = iced_android::font_scale().map(Message::FontScale);
+        Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape, foreground, insets, font_scale])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -348,6 +359,14 @@ impl CelesteApp {
             }
             Message::Preferences(preferences::Msg::WindowThemeChanged(choice)) => {
                 self.set_appearance(Appearance { window: choice, ..self.appearance });
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::SizeChanged(choice)) => {
+                self.set_appearance(Appearance { size: choice, ..self.appearance });
+                Task::none()
+            }
+            Message::FontScale(scale) => {
+                self.system_font_scale = scale;
                 Task::none()
             }
             Message::Preferences(preferences::Msg::TrayIconChanged(choice)) => {
@@ -481,9 +500,12 @@ impl CelesteApp {
         cmd
     }
 
-    fn view(&self, _id: window::Id) -> Element<'_, Message> {
+    fn view(&self, id: window::Id) -> Element<'_, Message> {
         let page = iced::widget::responsive(move |size| self.layout(size.width < theme::COMPACT_WIDTH, size.width));
-        container(page).padding(self.insets).style(theme::header_bar).into()
+        // The insets are in Android's logical pixels; the scale factor would enlarge them along with the content.
+        let scale = self.scale_factor(id);
+        let insets = iced::Padding { top: self.insets.top / scale, right: self.insets.right / scale, bottom: self.insets.bottom / scale, left: self.insets.left / scale };
+        container(page).padding(insets).style(theme::header_bar).into()
     }
 }
 
@@ -539,7 +561,7 @@ impl CelesteApp {
             let auth_needed = self.display_state(remote) == RunState::AuthNeeded;
             stack![base, remote_page::settings_dialog(remote, auth_needed).map(Message::Remote)].into()
         } else if self.preferences_open {
-            let dialog = preferences::view(self.appearance, self.autostart, self.preferences_error.as_deref()).map(Message::Preferences);
+            let dialog = preferences::view(self.appearance, self.autostart, self.preferences_error.as_deref(), compact).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
@@ -657,7 +679,7 @@ impl CelesteApp {
     /// Store a changed appearance and apply it; the window re-reads it through `theme()`.
     fn set_appearance(&mut self, appearance: Appearance) {
         self.appearance = appearance;
-        self.preferences_error = appearance.save(&crate::util::get_data_dir()).err().map(|err| format!("Could not save the colour choice: {err}"));
+        self.preferences_error = appearance.save(&crate::util::get_data_dir()).err().map(|err| format!("Could not save the choice: {err}"));
         self.push_tray_theme();
         self.update_system_bars();
     }
@@ -757,6 +779,7 @@ pub fn run(
     )
     .title(CelesteApp::title)
     .theme(CelesteApp::theme)
+    .scale_factor(CelesteApp::scale_factor)
     .subscription(CelesteApp::subscription)
     .default_font(default_font);
 
