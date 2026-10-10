@@ -246,9 +246,9 @@ fn compact_header<'a>(page: &Page<'a>) -> Element<'a, Msg> {
         ]
         .spacing(1)
         .width(Length::Fill),
-        with_tip(icon_button(pause_glyph, Some(Msg::Settings(settings::Msg::EnabledToggled(!running)))), pause_tip),
-        with_tip(icon_button(icondata::TbRefreshOutline, (!auth_needed && !page.syncing).then_some(Msg::RefreshNow(remote.id))), "Sync now"),
-        with_tip(icon_button(icondata::TbSettingsOutline, Some(Msg::OpenSettings)), "Settings"),
+        tip_below(icon_button(pause_glyph, Some(Msg::Settings(settings::Msg::EnabledToggled(!running)))), pause_tip),
+        tip_below(icon_button(icondata::TbRefreshOutline, (!auth_needed && !page.syncing).then_some(Msg::RefreshNow(remote.id))), "Sync now"),
+        tip_below(icon_button(icondata::TbSettingsOutline, Some(Msg::OpenSettings)), "Settings"),
     ]
     .spacing(2)
     .align_y(Alignment::Center)
@@ -469,6 +469,11 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
 
 fn with_tip<'a>(content: impl Into<Element<'a, Msg>>, tip: &'a str) -> Element<'a, Msg> {
     tooltip(content, container(text(tip).size(CAPTION)).padding([4, 8]).style(theme::card), tooltip::Position::Top).into()
+}
+
+/// [`with_tip`] for the top bar, whose tips would otherwise cover the status bar.
+fn tip_below<'a>(content: impl Into<Element<'a, Msg>>, tip: &'a str) -> Element<'a, Msg> {
+    tooltip(content, container(text(tip).size(CAPTION)).padding([4, 8]).style(theme::card), tooltip::Position::Bottom).into()
 }
 
 /// `desc`'s remote path relative to `sd`, i.e. where it sits inside `sd`.
