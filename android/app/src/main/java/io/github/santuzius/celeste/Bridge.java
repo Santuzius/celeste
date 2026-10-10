@@ -272,11 +272,27 @@ public final class Bridge {
     }
 
     /** Whether Celeste may read and write anywhere in shared storage, which syncing folders there needs. */
-    static boolean hasStorageAccess(Context context) {
+    public static boolean hasStorageAccess(Context context) {
         if (Build.VERSION.SDK_INT >= 30) {
             return Environment.isExternalStorageManager();
         }
         return context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Asks for {@link #hasStorageAccess} from the window, or opens the setting in a task of its own while there is none. */
+    public static void askForStorageAccessFrom(Context context) {
+        Activity current = activity.get();
+        if (current != null) {
+            current.runOnUiThread(() -> askForStorageAccess(current));
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                context.startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + context.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (ActivityNotFoundException e) {
+                Log.w(TAG, "no all files access settings", e);
+            }
+        }
     }
 
     private static void askForStorageAccess(Activity current) {

@@ -167,6 +167,8 @@ pub struct CelesteApp {
     background_allowed: bool,
     /// The question to leave Celeste out of battery optimization is shown.
     background_dialog_open: bool,
+    /// Android's All files access, which syncing needs; always on the desktop. Read again whenever the window comes back.
+    storage_access: bool,
     /// Android's font size as a factor; 1 elsewhere.
     system_scale: f32,
     /// Every captured line goes to the system log, not only problems.
@@ -243,6 +245,7 @@ impl CelesteApp {
             background: power::background_enabled(),
             background_allowed: true,
             background_dialog_open: false,
+            storage_access: crate::services::storage_access::granted(),
             system_scale: 1.0,
             detailed_log: crate::services::diagnostics::detailed_log(),
             preferences_note: None,
@@ -360,6 +363,10 @@ impl CelesteApp {
             Message::RemotesLoaded(remotes) => self.handle_remotes_loaded(remotes),
             Message::Main(main_page::Msg::Selected(id)) => self.handle_remote_selected(id),
             Message::Main(main_page::Msg::RefreshAll) => self.handle_refresh_all(),
+            Message::Main(main_page::Msg::AllowStorage) => {
+                crate::services::storage_access::ask();
+                Task::none()
+            }
             Message::Main(main_page::Msg::AddRemote) => self.handle_open_add_remote(),
             Message::AddRemote(sub) => self.handle_add_remote_msg(sub),
             Message::AddRemoteResult(Ok(id)) => self.handle_add_remote_result_ok(id),
@@ -404,7 +411,7 @@ impl CelesteApp {
             }
             Message::WindowFocused => {
                 self.background_allowed = power::background_allowed();
-                Task::none()
+                self.refresh_storage_access()
             }
             Message::SystemScale(scale) => {
                 self.system_scale = scale;
@@ -636,7 +643,9 @@ impl CelesteApp {
                 self.update_system_bars();
                 // The user may have just answered Android's question, or changed it in the settings.
                 self.background_allowed = power::background_allowed();
-                if self.window_id.is_none() { self.handle_tray_click(TrayAction::Open) } else { Task::none() }
+                let storage = self.refresh_storage_access();
+                let open = if self.window_id.is_none() { self.handle_tray_click(TrayAction::Open) } else { Task::none() };
+                Task::batch([storage, open])
             }
             // Off screen the GUI only costs memory; the engine keeps syncing.
             Message::Foreground(false) => self.handle_tray_click(TrayAction::Hide),
@@ -685,6 +694,13 @@ impl CelesteApp {
                     empty.into()
                 }
             }
+        };
+
+        // Without All files access no folder syncs; say so above every page.
+        let content: Element<'_, Message> = if !self.storage_access && !self.all_known_sync_dirs.is_empty() {
+            iced::widget::column![main_page::storage_warning().map(Message::Main), content].into()
+        } else {
+            content
         };
 
         let base: Element<'_, Message> = if !compact {
@@ -744,6 +760,12 @@ impl CelesteApp {
             return true;
         }
         self.exclusion_panel.take().is_some()
+    }
+
+    /// Read All files access again; once it is back, sync right away instead of at the next interval.
+    fn refresh_storage_access(&mut self) -> Task<Message> {
+        let was = std::mem::replace(&mut self.storage_access, crate::services::storage_access::granted());
+        if self.storage_access && !was { self.handle_refresh_all() } else { Task::none() }
     }
 
     fn selected_remote(&self) -> Option<&Remote> {

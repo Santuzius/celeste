@@ -67,7 +67,7 @@ For phones with Android 8 or newer and a 64-bit ARM processor (`arm64-v8a`, near
 - **With [Obtainium](https://obtainium.imranr.dev)** (recommended): *Add app*, enter `https://github.com/Santuzius/celeste` and install. Obtainium then reports new releases and installs them.
 - **By hand:** download `Celeste-<version>-arm64-v8a.apk` from the [latest release](https://github.com/Santuzius/celeste/releases/latest) and open it on the phone; Android asks to allow installing from that app.
 
-On its first start Celeste asks for **All files access**, needed to sync folders anywhere in the phone's storage, and for permission to run in the background.
+Celeste needs **All files access** to sync folders anywhere in the phone's storage; while it is missing, a bar at the top offers to allow it. It also asks for permission to run in the background.
 
 ### Snap
 A Snap package is prepared (`snap/snapcraft.yaml`, see [doc/snap.md](doc/snap.md)) but not yet published in the Snap Store.

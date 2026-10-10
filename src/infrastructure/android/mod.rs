@@ -95,6 +95,24 @@ pub fn ask_to_ignore_battery_optimizations() {
     });
 }
 
+/// Whether Celeste may read and write anywhere in shared storage ("All files access"), which syncing folders there needs.
+pub fn has_storage_access() -> bool {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        env.call_static_method(class, "hasStorageAccess", "(Landroid/content/Context;)Z", &[JValue::Object(context)])?.z()
+    })
+    .unwrap_or(true)
+}
+
+/// Opens Android's setting for All files access.
+pub fn ask_for_storage_access() {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        env.call_static_method(class, "askForStorageAccessFrom", "(Landroid/content/Context;)V", &[JValue::Object(context)])?;
+        Ok(())
+    });
+}
+
 /// Starts or stops the sync service after "Run in background" was switched.
 pub fn run_in_background(on: bool) {
     with_context(|env, context| {

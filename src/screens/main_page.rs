@@ -26,6 +26,8 @@ pub enum Msg {
     OpenAbout,
     /// Compact layout: open the drawer.
     OpenDrawer,
+    /// Open Android's setting for All files access.
+    AllowStorage,
 }
 
 /// One navigation entry.
@@ -167,5 +169,22 @@ pub fn empty_state<'a>() -> Element<'a, Msg> {
         .max_width(380)
         .align_x(Alignment::Center),
     )
+    .into()
+}
+
+/// Above every page while Android withholds All files access, without which no folder syncs.
+pub fn storage_warning<'a>() -> Element<'a, Msg> {
+    container(
+        row![
+            icon(icondata::TbAlertTriangleOutline, 16.0),
+            text("Celeste may not read your folders. Allow All files access to sync them.").size(CAPTION).width(Length::Fill),
+            button(text("Allow…").size(CAPTION)).padding([4, 10]).style(theme::button_secondary).on_press(Msg::AllowStorage),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    )
+    .padding([6, 10])
+    .width(Length::Fill)
+    .style(theme::warning_bar)
     .into()
 }
