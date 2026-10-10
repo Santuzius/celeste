@@ -19,7 +19,7 @@ Needs rustup with the Android targets (`rustup target add aarch64-linux-android`
 
 The script builds `libceleste.so` with cargo-ndk and the Go part as `libceleste_go.so`: Go cannot link a c-archive into an Android library, so it is a shared library there. It then builds the debug APK with Gradle from `android/shell.nix` and installs it. The debug APK carries the optimised native libraries; being debuggable, its files can be reached with `adb shell run-as io.github.santuzius.celeste`.
 
-iced, iced_android and android-activity come from forks on GitHub (`Cargo.toml`); the android-activity fork lets the app outlive a destroyed activity. To work on a fork, point Cargo at its local checkout with a `[patch]` section in `.cargo/config.toml`, which is not committed, and don't commit the `Cargo.lock` that results.
+iced, iced_android and android-activity come from forks on GitHub (`Cargo.toml`); the android-activity fork lets the app outlive a destroyed activity. To work on a fork, point Cargo at its local checkout with a `[patch]` section in `.cargo/config.toml` (example: [doc/cargo-config.example.toml](../doc/cargo-config.example.toml)), which is not committed, and don't commit the `Cargo.lock` that results.
 
 ## Release
 

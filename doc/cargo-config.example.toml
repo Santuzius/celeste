@@ -1,0 +1,15 @@
+# Local development against checkouts of the forks instead of their pushed branches. Copy to .cargo/config.toml (gitignored) and adjust the paths; relative paths start from the repository root. Cargo then writes path sources into Cargo.lock: don't commit that, and remove .cargo/config.toml before a release build (doc/release.md).
+
+[patch."https://github.com/Santuzius/iced"]
+iced = { path = "../iced" }
+iced_core = { path = "../iced/core" }
+iced_futures = { path = "../iced/futures" }
+iced_runtime = { path = "../iced/runtime" }
+iced_widget = { path = "../iced/widget" }
+iced_winit = { path = "../iced/winit" }
+
+[patch."https://github.com/Santuzius/iced_android"]
+iced_android = { path = "../iced_android" }
+
+[patch.crates-io]
+android-activity = { path = "../android-activity/android-activity" }
