@@ -14,7 +14,7 @@ repository = "https://github.com/Santuzius/celeste"
 members = ["src/go"]
 
 [workspace.package]
-version = "0.20.0"
+version = "0.21.0"
 
 # cdylib for Android (loaded by IcedActivity), rlib for the desktop binary in src/main.rs.
 [lib]
