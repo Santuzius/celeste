@@ -532,7 +532,7 @@ impl CelesteApp {
             let dismiss = draft.can_cancel().then_some(Message::AddRemote(add_remote::Msg::Cancel));
             stack![base, remote_page::modal(add_remote::view(draft).map(Message::AddRemote), dismiss)].into()
         } else if let Some(dialog) = self.conflict_dialog.as_ref() {
-            stack![base, remote_page::modal(conflict::view(dialog).map(Message::Conflict), None)].into()
+            stack![base, remote_page::modal(conflict::view(dialog, compact).map(Message::Conflict), None)].into()
         } else if let Some(pending) = self.pending_delete.as_ref() {
             stack![base, remote_page::confirm_delete_overlay(pending).map(Message::Remote)].into()
         } else if let Some(remote) = self.settings_open.then(|| self.selected_remote()).flatten() {

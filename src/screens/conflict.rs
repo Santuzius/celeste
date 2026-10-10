@@ -95,7 +95,8 @@ fn bold() -> Font {
     Font { weight: Weight::Bold, ..crate::theme::UI_FONT }
 }
 
-pub fn view(dialog: &Dialog) -> Element<'_, Msg> {
+/// `compact`: the phone layout, which stacks the two versions and the actions.
+pub fn view(dialog: &Dialog, compact: bool) -> Element<'_, Msg> {
     let c = &dialog.conflict;
     let remote = dialog.remote_name.as_str();
 
@@ -118,11 +119,9 @@ pub fn view(dialog: &Dialog) -> Element<'_, Msg> {
         .width(Length::Fill)
     };
 
-    let sides = row![
-        side(format!("On {}", crate::util::THIS_DEVICE), fmt_home(&c.local_path), if cfg!(target_os = "android") { icondata::TbDeviceMobileOutline } else { icondata::TbDeviceDesktopOutline }, &c.local),
-        side(format!("On {remote}"), format!("{remote}:/{}", c.remote_path), icondata::TbCloudOutline, &c.remote),
-    ]
-    .spacing(24);
+    let local_side = side(format!("On {}", crate::util::THIS_DEVICE), fmt_home(&c.local_path), if cfg!(target_os = "android") { icondata::TbDeviceMobileOutline } else { icondata::TbDeviceDesktopOutline }, &c.local);
+    let remote_side = side(format!("On {remote}"), format!("{remote}:/{}", c.remote_path), icondata::TbCloudOutline, &c.remote);
+    let sides: Element<'_, Msg> = if compact { column![local_side, remote_side].spacing(16).into() } else { row![local_side, remote_side].spacing(24).into() };
 
     let mut comparison = column![].spacing(2).align_x(Alignment::Center).width(Length::Fill);
     let (local_time, remote_time) = (c.local.mod_time.unix_timestamp(), c.remote.mod_time.unix_timestamp());
@@ -166,15 +165,16 @@ pub fn view(dialog: &Dialog) -> Element<'_, Msg> {
             .style(theme::button_secondary)
             .on_press_maybe(msg)
     };
-    let buttons = row![
-        action(icondata::TbCopyOutline, "Keep both".to_owned(), dialog.new_name_valid().then_some(Msg::KeepBoth)),
-        Space::new().width(Length::Fill),
-        action(icondata::TbCloudUploadOutline, "Keep local version".to_owned(), Some(Msg::KeepLocal)),
-        action(icondata::TbCloudDownloadOutline, format!("Keep {remote} version"), Some(Msg::KeepRemote)),
-        button(text("Cancel").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Cancel),
-    ]
-    .spacing(ROW_SPACING)
-    .align_y(Alignment::Center);
+    let keep_both = action(icondata::TbCopyOutline, "Keep both".to_owned(), dialog.new_name_valid().then_some(Msg::KeepBoth));
+    let keep_local = action(icondata::TbCloudUploadOutline, "Keep local version".to_owned(), Some(Msg::KeepLocal));
+    let keep_remote = action(icondata::TbCloudDownloadOutline, format!("Keep {remote} version"), Some(Msg::KeepRemote));
+    let cancel = button(text("Cancel").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Cancel);
+    let buttons: Element<'_, Msg> = if compact {
+        // One full-width button per line: a phone has no room for four side by side.
+        column![keep_local.width(Length::Fill), keep_remote.width(Length::Fill), keep_both.width(Length::Fill), cancel.width(Length::Fill)].spacing(8).into()
+    } else {
+        row![keep_both, Space::new().width(Length::Fill), keep_local, keep_remote, cancel].spacing(ROW_SPACING).align_y(Alignment::Center).into()
+    };
 
     let title = text(if c.first_sync { "File exists on both sides" } else { "File changed on both sides" }).size(HEADING + 2.0);
     let mut header = row![title, Space::new().width(Length::Fill)].align_y(Alignment::Center);
