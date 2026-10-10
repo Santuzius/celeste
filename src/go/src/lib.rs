@@ -100,6 +100,19 @@ pub fn authorize_cancel() {
     unsafe { ffi::CelesteAuthorizeCancel() };
 }
 
+/// Make rclone encrypt its config file with `password` (rclone's own config encryption) and decrypt it on loading. Call before anything reads the config.
+pub fn set_config_password(password: &str) -> Result<(), String> {
+    let password = CString::new(password).map_err(|_| "invalid password".to_owned())?;
+    let err = unsafe { ffi::CelesteSetConfigPassword(password.as_ptr() as *mut c_char) };
+    if err.is_null() { Ok(()) } else { Err(unsafe { take_string(err) }) }
+}
+
+/// Load rclone's config file and write it back, encrypted after [`set_config_password`]. A file rclone cannot read stays as it is.
+pub fn save_config() -> Result<(), String> {
+    let err = unsafe { ffi::CelesteSaveConfig() };
+    if err.is_null() { Ok(()) } else { Err(unsafe { take_string(err) }) }
+}
+
 /// Copy a string the Go side allocated, and free it.
 unsafe fn take_string(ptr: *mut c_char) -> String {
     let text = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();

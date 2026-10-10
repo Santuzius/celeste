@@ -123,6 +123,7 @@ fn set_up() -> Option<Services> {
         json!({ "path": rclone_config }).to_string(),
     )
     .expect("failed to set rclone config path");
+    encrypt_rclone_config(&rclone_config);
     services::diagnostics::apply_to_rclone();
 
     let mut db_path = data_dir.clone();
@@ -219,6 +220,63 @@ fn hydrate_rclone_config(rclone_config: &std::path::Path) {
         }
         Err(err) => eprintln!("celeste: keyring read of rclone config failed: {err}"),
     }
+}
+
+/// Have rclone encrypt its config file with its own config encryption, under a password kept among Celeste's credentials, so the tokens never lie in the file in plain text (on Android `XDG_RUNTIME_DIR` is ordinary app storage, not a RAM disk). A config still in plain text from an older version is rewritten encrypted once, and the keyring gets the encrypted text. Without a working keyring the file stays in plain text as before: a password that cannot be kept would make the config unreadable after the next start.
+fn encrypt_rclone_config(rclone_config: &std::path::Path) {
+    const ENCRYPTED_MARK: &str = "RCLONE_ENCRYPT_V0:";
+    let body = std::fs::read_to_string(rclone_config).unwrap_or_default();
+    let password = match secrets::load(secrets::RCLONE_PASSWORD_ACCOUNT) {
+        Ok(Some(password)) => password,
+        Ok(None) => {
+            if body.contains(ENCRYPTED_MARK) {
+                eprintln!("celeste: the rclone config is encrypted, but its password is gone; remotes signed in through rclone (Google Drive) need to be signed in again");
+            }
+            let password = match random_password() {
+                Ok(password) => password,
+                Err(err) => {
+                    eprintln!("celeste: could not make a password for the rclone config, leaving it unencrypted: {err}");
+                    return;
+                }
+            };
+            if let Err(err) = secrets::store(secrets::RCLONE_PASSWORD_ACCOUNT, &password) {
+                eprintln!("celeste: could not store the rclone config's password, leaving the config unencrypted: {err}");
+                return;
+            }
+            password
+        }
+        Err(err) => {
+            eprintln!("celeste: could not read the rclone config's password, leaving the config unencrypted: {err}");
+            return;
+        }
+    };
+    if let Err(err) = celeste_go::set_config_password(&password) {
+        eprintln!("celeste: rclone refused the config password: {err}");
+        return;
+    }
+    if body.trim().is_empty() || body.contains(ENCRYPTED_MARK) {
+        return;
+    }
+    if let Err(err) = celeste_go::save_config() {
+        eprintln!("celeste: could not encrypt the rclone config: {err}");
+        return;
+    }
+    match std::fs::read_to_string(rclone_config) {
+        Ok(encrypted) => {
+            if let Err(err) = secrets::store(secrets::RCLONE_ACCOUNT, &encrypted) {
+                eprintln!("celeste: keyring sync of the encrypted rclone config failed: {err}");
+            }
+        }
+        Err(err) => eprintln!("celeste: could not read back the encrypted rclone config: {err}"),
+    }
+}
+
+/// 32 random bytes as hex, from the kernel's random source.
+fn random_password() -> std::io::Result<String> {
+    use std::io::Read;
+    let mut bytes = [0u8; 32];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// Load every remote from the DB, and for those flagged

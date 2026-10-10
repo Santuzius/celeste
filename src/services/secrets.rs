@@ -27,6 +27,9 @@ pub const SERVICE: &str = "Celeste Keys";
 /// Account name for the rclone config blob.
 pub const RCLONE_ACCOUNT: &str = "rclone-config";
 
+/// Account name for the password rclone encrypts its config file with.
+pub const RCLONE_PASSWORD_ACCOUNT: &str = "rclone-config-password";
+
 /// Account name for a native-Proton remote's session blob.
 pub fn proton_account(remote_name: &str) -> String {
     format!("proton-session-{remote_name}")
