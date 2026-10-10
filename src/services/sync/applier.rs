@@ -120,6 +120,11 @@ where
                         break 'action;
                     }
                 } else {
+                    if snapshot.db.contains_key(&remote_path) && same_content(&local_path, &remote_path, remote, client, cancel).is_some() {
+                        eprintln!("sync: '{remote_path}' only changed its time here; the content is the same on both sides — recording it as synced.");
+                        record_upsert(repo, sync_dir, &local_path, &remote_path, client, &remote.name, cancel);
+                        break 'action;
+                    }
                     emit_status(tr::tr!(
                         "[{}/{}] Uploading '{}'…",
                         pos,
@@ -154,6 +159,17 @@ where
                         break 'action;
                     }
                 } else {
+                    // Only the remote's time changed: take over the time the file was last modified instead of the same bytes again.
+                    if snapshot.db.contains_key(&remote_path)
+                        && let Some(details) = same_content(&local_path, &remote_path, remote, client, cancel)
+                    {
+                        eprintln!("sync: '{remote_path}' only changed its time on the remote; the content is the same on both sides — taking over its time.");
+                        if let Err(err) = set_mtime(&local_path, details.mod_time.unix_timestamp()) {
+                            eprintln!("sync: could not give '{local_path}' the remote's modification time: {err}");
+                        }
+                        record_upsert(repo, sync_dir, &local_path, &remote_path, client, &remote.name, cancel);
+                        break 'action;
+                    }
                     if let Some(parent) = Path::new(&local_path).parent() {
                         let _ = fs::create_dir_all(parent);
                     }
@@ -408,6 +424,23 @@ fn inspect_conflict(local_path: &str, remote_path: &str, kind: ConflictKind, rem
     })
 }
 
+/// The remote copy's details when it holds the same content as the local file, by SHA-1 where the backend keeps one; a transfer would then only move the same bytes again.
+fn same_content(local_path: &str, remote_path: &str, remote: &Remote, client: &dyn BackendClient, cancel: &Cancel) -> Option<FileDetails> {
+    let meta = fs::metadata(local_path).ok().filter(fs::Metadata::is_file)?;
+    let details = client.details(&remote.name, remote_path, cancel).ok().flatten()?;
+    let remote_sha1 = details.sha1.as_deref()?;
+    if details.size.is_some_and(|size| size != meta.len()) {
+        return None;
+    }
+    (sha1_of(Path::new(local_path))?.as_str() == remote_sha1).then_some(details)
+}
+
+/// Sets a file's modification time to `secs` after 1970.
+fn set_mtime(path: &str, secs: i64) -> std::io::Result<()> {
+    let secs = u64::try_from(secs).map_err(|_| std::io::Error::other("modification time before 1970"))?;
+    fs::File::options().write(true).open(path)?.set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+}
+
 fn sha1_of(path: &Path) -> Option<String> {
     use sha1::{Digest, Sha1};
     let mut file = fs::File::open(path).ok()?;
@@ -483,10 +516,9 @@ fn record_download(
         }
     };
     let remote_ts = rstat.mod_time.unix_timestamp();
-    let set = u64::try_from(remote_ts)
-        .map_err(|_| std::io::Error::other("modification time before 1970"))
-        .and_then(|secs| fs::File::options().write(true).open(local_path)?.set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs)));
-    if let Err(err) = set {
+    // The file gets the time it was last modified, which Proton keeps apart from the listing's time (the upload's); the row keeps the listing's time to compare against.
+    let file_ts = client.details(remote_name, remote_path, cancel).ok().flatten().map_or(remote_ts, |d| d.mod_time.unix_timestamp());
+    if let Err(err) = set_mtime(local_path, file_ts) {
         eprintln!("sync: could not give '{local_path}' the remote's modification time: {err}");
     }
     let Some(local_ts) = local_timestamp(Path::new(local_path)) else {

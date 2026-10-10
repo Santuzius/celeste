@@ -255,6 +255,69 @@ fn a_folder_whose_time_changed_is_left_alone() {
     assert!(client.mkdir_calls.lock().unwrap().is_empty());
 }
 
+/// Proton lists the time of the upload but keeps the time the file was last modified; a download gets the latter, the row the former.
+#[test]
+fn a_download_gets_the_time_the_file_was_last_modified() {
+    let tmp = TempDir::new("sync_download_original_time");
+    let repo = FakeRepo::new();
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("scan.pdf", false, 1_776_000_000)]));
+    client.set_stat("scan.pdf", Ok(Some(remote_item("scan.pdf", false, 1_776_000_000))));
+    client.details_time_map.lock().unwrap().insert("scan.pdf".to_owned(), 1_772_000_000);
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    let local_path = tmp.path.join("scan.pdf");
+    let mtime = fs::metadata(&local_path).unwrap().modified().unwrap().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    assert_eq!(mtime, 1_772_000_000);
+    let row = repo.items.lock().unwrap().iter().find(|i| i.remote_path == "scan.pdf").cloned().unwrap();
+    assert_eq!((row.last_local_timestamp, row.last_remote_timestamp), (1_772_000_000, 1_776_000_000));
+}
+
+/// A tracked file whose time changed on one side but whose content is the same on both is not transferred. Changed on the remote, the local file takes over the time the file was last modified there; changed here, it keeps its own.
+#[test]
+fn a_changed_time_with_the_same_content_transfers_nothing() {
+    let tmp = TempDir::new("sync_same_content");
+    let pulled = tmp.write_file("pulled.txt", b"same");
+    touch_mtime(&pulled, 1_700_000_000);
+    let restored = tmp.write_file("restored.txt", b"also same");
+    touch_mtime(&restored, 1_500_000_000);
+    let repo = FakeRepo::new();
+    // Remote time differs from the row (an older Celeste recorded another one): would download.
+    repo.insert_item(SyncDirId(1), pulled.to_str().unwrap(), "pulled.txt", 1_700_000_000, 1_700_000_500);
+    // Local time differs from the row (put back from a backup): would upload.
+    repo.insert_item(SyncDirId(1), restored.to_str().unwrap(), "restored.txt", 1_700_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("pulled.txt", false, 1_700_000_000), remote_item("restored.txt", false, 1_700_000_000)]));
+    client.set_stat("pulled.txt", Ok(Some(remote_item("pulled.txt", false, 1_700_000_000))));
+    client.set_stat("restored.txt", Ok(Some(remote_item("restored.txt", false, 1_700_000_000))));
+    let pulled_sha1 = {
+        use sha1::{Digest, Sha1};
+        Sha1::digest(b"same").iter().map(|b| format!("{b:02x}")).collect::<String>()
+    };
+    let restored_sha1 = {
+        use sha1::{Digest, Sha1};
+        Sha1::digest(b"also same").iter().map(|b| format!("{b:02x}")).collect::<String>()
+    };
+    client.sha1_map.lock().unwrap().insert("pulled.txt".to_owned(), pulled_sha1);
+    client.details_time_map.lock().unwrap().insert("pulled.txt".to_owned(), 1_600_000_000);
+    client.sha1_map.lock().unwrap().insert("restored.txt".to_owned(), restored_sha1);
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    let mtime = fs::metadata(&restored).unwrap().modified().unwrap().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    assert_eq!(mtime, 1_500_000_000);
+    // The file pulled only by time takes over the time it was last modified; the row follows.
+    let pulled_mtime = fs::metadata(&pulled).unwrap().modified().unwrap().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    assert_eq!(pulled_mtime, 1_600_000_000);
+    let row = repo.items.lock().unwrap().iter().find(|i| i.remote_path == "pulled.txt").cloned().unwrap();
+    assert_eq!((row.last_local_timestamp, row.last_remote_timestamp), (1_600_000_000, 1_700_000_000));
+}
+
 /// The part file of a download cut off by Celeste's end is removed and never uploaded; other programs' part files stay untouched.
 #[test]
 fn an_unfinished_download_is_cleaned_up_and_not_uploaded() {
