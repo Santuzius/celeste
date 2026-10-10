@@ -49,8 +49,8 @@ pub struct Power {
 }
 
 /// `compact`: the phone layout, where the button groups go below their labels.
-/// `note`: how the last export or import went.
-pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, detailed_log: bool, note: Option<&'a str>, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
+/// `log_note`: how the last copy or clear of the log went; `note`: how the last export or import went.
+pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, detailed_log: bool, log_note: Option<&'a str>, note: Option<&'a str>, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
     let android = cfg!(target_os = "android");
     let size_hint = if android { "Text and everything else in this window, relative to the system's font and display size." } else { "Text and everything else in this window." };
     let mut rows = column![
@@ -113,6 +113,9 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
             .spacing(8)
             .into(),
         ));
+    if let Some(log_note) = log_note {
+        rows = rows.push(row_note(log_note));
+    }
     let transfer = row![
         button(text("Export…").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Export),
         button(text("Import…").size(TEXT)).padding([6, 14]).style(theme::button_secondary).on_press(Msg::Import),
@@ -120,7 +123,7 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
     .spacing(8);
     rows = rows.push(separator()).push(choice_row(compact, "Settings file", "Remotes, folders and these preferences, without sign-ins. Imported remotes ask you to sign in again.", transfer.into()));
     if let Some(note) = note {
-        rows = rows.push(container(text(note).size(CAPTION).style(theme::muted)).padding(iced::Padding { top: 0.0, right: 14.0, bottom: 12.0, left: 14.0 }));
+        rows = rows.push(row_note(note));
     }
 
     let mut content = column![
@@ -137,6 +140,11 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
     ]);
 
     container(content).padding(22).max_width(560).style(theme::dialog).into()
+}
+
+/// A short note under the row above it.
+fn row_note(note: &str) -> Element<'_, Msg> {
+    container(text(note).size(CAPTION).style(theme::muted)).padding(iced::Padding { top: 0.0, right: 14.0, bottom: 12.0, left: 14.0 }).into()
 }
 
 /// The power mode with what it does, and a warning while Android may stop Celeste in the background.

@@ -173,6 +173,8 @@ pub struct CelesteApp {
     detailed_log: bool,
     /// How the last export or import of the settings file went, shown in the Preferences dialog.
     preferences_note: Option<String>,
+    /// How the last copy or clear of the log went; shown under the log row.
+    log_note: Option<String>,
     /// Why saving a preference failed, shown in the Preferences dialog.
     preferences_error: Option<String>,
     /// Files per sync dir that changed on both sides: the engine's list, minus choices made since it was published.
@@ -244,6 +246,7 @@ impl CelesteApp {
             system_scale: 1.0,
             detailed_log: crate::services::diagnostics::detailed_log(),
             preferences_note: None,
+            log_note: None,
             preferences_error: None,
             conflicts: HashMap::new(),
             conflict_dialog: None,
@@ -381,6 +384,7 @@ impl CelesteApp {
             Message::Main(main_page::Msg::OpenPreferences) => {
                 self.preferences_open = true;
                 self.preferences_note = None;
+                self.log_note = None;
                 self.autostart = autostart::enabled();
                 self.background = power::background_enabled();
                 self.preferences_error = None;
@@ -451,17 +455,20 @@ impl CelesteApp {
                 let log = crate::infrastructure::stderr_capture::dump();
                 let lines = log.lines().count();
                 self.preferences_error = None;
-                self.preferences_note = Some(if lines == 1 { "Copied 1 line to the clipboard.".to_owned() } else { format!("Copied {lines} lines to the clipboard.") });
+                self.preferences_note = None;
+                self.log_note = Some(if lines == 1 { "Copied 1 line to the clipboard.".to_owned() } else { format!("Copied {lines} lines to the clipboard.") });
                 iced::clipboard::write(log)
             }
             Message::Preferences(preferences::Msg::ClearLog) => {
                 crate::infrastructure::stderr_capture::clear();
                 self.preferences_error = None;
-                self.preferences_note = Some("Log cleared.".to_owned());
+                self.preferences_note = None;
+                self.log_note = Some("Log cleared.".to_owned());
                 Task::none()
             }
             Message::Preferences(preferences::Msg::Export) => {
                 self.preferences_note = None;
+                self.log_note = None;
                 self.preferences_error = None;
                 let (repo, router) = (self.repo.clone(), self.rclone.clone());
                 Task::perform(
@@ -478,6 +485,7 @@ impl CelesteApp {
             }
             Message::Preferences(preferences::Msg::Import) => {
                 self.preferences_note = None;
+                self.log_note = None;
                 self.preferences_error = None;
                 let (repo, router) = (self.repo.clone(), self.rclone.clone());
                 Task::perform(
@@ -701,7 +709,7 @@ impl CelesteApp {
             stack![base, remote_page::modal(preferences::background_dialog().map(Message::Preferences), Some(Message::Preferences(preferences::Msg::KeepOptimized)))].into()
         } else if self.preferences_open {
             let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, background: self.background, background_allowed: self.background_allowed });
-            let dialog = preferences::view(self.appearance, power, self.autostart, self.detailed_log, self.preferences_note.as_deref(), self.preferences_error.as_deref(), compact).map(Message::Preferences);
+            let dialog = preferences::view(self.appearance, power, self.autostart, self.detailed_log, self.log_note.as_deref(), self.preferences_note.as_deref(), self.preferences_error.as_deref(), compact).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
             stack![base, remote_page::modal(about::view().map(Message::About), Some(Message::About(about::Msg::Close)))].into()
