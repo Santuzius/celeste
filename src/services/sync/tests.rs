@@ -267,6 +267,23 @@ fn identical_content_is_no_conflict() {
     assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
 }
 
+/// A folder on both sides gets its row from the pass's own listing, also where the remote can't stat it; otherwise every pass would try again.
+#[test]
+fn a_folder_on_both_sides_is_recorded_once() {
+    let tmp = TempDir::new("sync_record_folder");
+    let local = PathBuf::from(tmp.as_str()).join("stats");
+    fs::create_dir(&local).unwrap();
+    let repo = FakeRepo::new();
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("stats", true, 1_700_000_000)]));
+
+    run_full(&tmp, &repo, &client);
+    assert!(repo.has_item(local.to_str().unwrap(), "stats"));
+    run_full(&tmp, &repo, &client);
+    assert_eq!(repo.item_count(), 1);
+    assert!(client.stat_calls.lock().unwrap().is_empty());
+}
+
 /// Deleted locally but edited remotely: the edit wins and is downloaded instead of deleted.
 #[test]
 fn remote_edit_beats_local_delete() {

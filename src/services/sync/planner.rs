@@ -39,9 +39,12 @@ pub(super) enum Action {
         remote_path: String,
     },
     /// Present on both sides but not tracked yet (a folder created on both sides): only the DB row is missing. Without it, deleting the folder on one side would bring it back from the other.
+    /// The timestamps come from this pass's walk and listing, so recording needs no further call to the remote.
     RecordDbRow {
         local_path: String,
         remote_path: String,
+        local_mtime: i64,
+        remote_mtime: i64,
     },
     /// A file exists on both sides and the planner can't tell which copy is right. The applier compares content first (identical copies just get a DB row) and otherwise asks the user — see [`ConflictKind`].
     Conflict {
@@ -161,6 +164,10 @@ pub(super) fn log_plan_summary(
     snapshot: &Snapshot,
     actions: &[Action],
 ) {
+    // A pass with nothing to do is the common case; only the detailed log keeps a line for it.
+    if actions.is_empty() && !crate::infrastructure::stderr_capture::detailed() {
+        return;
+    }
     let (mut uploads, mut downloads) = (0usize, 0usize);
     let (mut delete_local, mut delete_remote) = (0usize, 0usize);
     let (mut conflicts, mut clear_rows, mut record_rows) = (0usize, 0usize, 0usize);
@@ -284,6 +291,8 @@ fn plan_one(
                 return Some(Action::RecordDbRow {
                     local_path: l.absolute_path.clone(),
                     remote_path: remote_path.to_owned(),
+                    local_mtime: l.mtime_secs,
+                    remote_mtime: r.mod_time.unix_timestamp(),
                 });
             }
             if l.is_dir != r.is_dir {

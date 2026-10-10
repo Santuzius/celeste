@@ -245,9 +245,11 @@ where
             Action::RecordDbRow {
                 local_path,
                 remote_path,
+                local_mtime,
+                remote_mtime,
             } => {
                 eprintln!("sync: RECORD '{remote_path}' — present on both sides but untracked; tracking it from now on.");
-                record_upsert(repo, sync_dir, &local_path, &remote_path, client, &remote.name, cancel);
+                save_row(repo, sync_dir, &local_path, &remote_path, local_mtime, remote_mtime);
             }
             Action::Conflict {
                 local_path,
@@ -447,25 +449,18 @@ fn record_upsert(
             return;
         }
     };
-    let remote_ts = rstat.mod_time.unix_timestamp();
-    if let Some(existing) = util::await_future(
-        repo.find_sync_item_by_paths(sync_dir.id, local_path, remote_path),
-    )
-    .unwrap_or(None)
-    {
-        let _ = util::await_future(repo.update_sync_item_timestamps(
-            existing.id,
-            local_ts as i64,
-            remote_ts,
-        ));
-    } else {
-        let _ = util::await_future(repo.insert_sync_item(
-            sync_dir.id,
-            local_path.to_owned(),
-            remote_path.to_owned(),
-            local_ts as i64,
-            remote_ts,
-        ));
+    save_row(repo, sync_dir, local_path, remote_path, local_ts as i64, rstat.mod_time.unix_timestamp());
+}
+
+/// Inserts or updates the item's row; a failure is logged, as the next pass would plan the same again.
+fn save_row(repo: &dyn Repository, sync_dir: &SyncDir, local_path: &str, remote_path: &str, local_ts: i64, remote_ts: i64) {
+    let saved = match util::await_future(repo.find_sync_item_by_paths(sync_dir.id, local_path, remote_path)) {
+        Ok(Some(existing)) => util::await_future(repo.update_sync_item_timestamps(existing.id, local_ts, remote_ts)).map(|_| ()),
+        Ok(None) => util::await_future(repo.insert_sync_item(sync_dir.id, local_path.to_owned(), remote_path.to_owned(), local_ts, remote_ts)).map(|_| ()),
+        Err(err) => Err(err),
+    };
+    if let Err(err) = saved {
+        eprintln!("sync: could not record '{remote_path}' in the database: {err}");
     }
 }
 
