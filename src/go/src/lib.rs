@@ -107,6 +107,12 @@ unsafe fn take_string(ptr: *mut c_char) -> String {
     text
 }
 
+/// How often remotes with change notification (Google Drive) ask their provider's change log; `None` restores the default of 5 s.
+pub fn set_change_poll_interval(interval: Option<std::time::Duration>) {
+    let seconds = interval.map_or(0, |d| d.as_secs().clamp(1, i32::MAX as u64) as i32);
+    unsafe { ffi::RcloneSetChangePollSeconds(seconds) };
+}
+
 /// Whether the rclone remote `remote` (name without colon) may have changed on the provider's side since the previous call. Cheap: no network, the backend polls its change log in the background. Always `true` for backends without change notification.
 pub fn remote_changed(remote: &str) -> bool {
     let Ok(c_remote) = CString::new(remote) else {

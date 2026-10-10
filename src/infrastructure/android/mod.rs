@@ -5,10 +5,14 @@
 pub mod folders;
 pub mod secrets;
 
-use std::sync::OnceLock;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    OnceLock,
+};
 
 use jni::{
     objects::{GlobalRef, JClass, JObject, JValue},
+    sys::{jboolean, JNI_TRUE},
     JNIEnv, JavaVM,
 };
 
@@ -38,6 +42,25 @@ extern "system" fn Java_io_github_santuzius_celeste_CelesteApplication_nativeIni
 extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeStartEngine(_: JNIEnv, _: JClass) {
     // Setting up opens the database and resumes sessions over the network; keep that off the service's main thread.
     std::thread::spawn(crate::start_engine);
+}
+
+/// Whether the screen is off, as `SyncService` last reported it.
+static SCREEN_OFF: AtomicBool = AtomicBool::new(false);
+
+/// Called by `SyncService` when the screen goes off or on: with nobody looking, sync and watch Google Drive's change log less often (see [`Command::Quiet`](crate::engine::Command::Quiet)).
+#[unsafe(no_mangle)]
+extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeScreenOff(_: JNIEnv, _: JClass, off: jboolean) {
+    SCREEN_OFF.store(off == JNI_TRUE, Ordering::Relaxed);
+    apply_screen_state();
+}
+
+/// Hands the screen state to the engine, if it runs yet; it starts asynchronously and calls this once it does.
+pub fn apply_screen_state() {
+    let quiet = SCREEN_OFF.load(Ordering::Relaxed);
+    celeste_go::set_change_poll_interval(quiet.then_some(crate::engine::QUIET_INTERVAL));
+    if let Some(engine) = crate::engine::get() {
+        engine.send(crate::engine::Command::Quiet(quiet));
+    }
 }
 
 /// Runs `f` with a JNI environment and the Application context, attaching the current thread to the Java VM first. Logs Java exceptions instead of leaving them pending.

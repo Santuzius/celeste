@@ -52,7 +52,12 @@ pub enum Command {
     Resolve { remote_id: RemoteId, sync_dir_id: SyncDirId, resolution: Resolution },
     /// Add a line to a folder's log.
     Log(SyncDirId, String),
+    /// Nobody is looking (the phone's screen is off): stretch every interval to at least [`QUIET_INTERVAL`] to save battery. Leaving it syncs everything right away.
+    Quiet(bool),
 }
+
+/// The shortest interval while [`Command::Quiet`].
+pub const QUIET_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// Everything the engine feeds into its loop.
 #[derive(Debug)]

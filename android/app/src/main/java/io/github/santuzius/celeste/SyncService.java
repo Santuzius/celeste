@@ -3,11 +3,14 @@ package io.github.santuzius.celeste;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.util.Log;
 
 /** Keeps the process, and with it the sync engine, alive while Celeste is not on screen. Its silent notification shows the sync status. Started by the engine itself and after a reboot. */
@@ -20,6 +23,17 @@ public class SyncService extends Service {
 
     /** Starts the sync engine without a GUI, unless it already runs. */
     static native void nativeStartEngine();
+
+    /** With the screen off, Celeste syncs less often. */
+    static native void nativeScreenOff(boolean off);
+
+    /** Screen on/off can only be received by a receiver registered at runtime. */
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            nativeScreenOff(Intent.ACTION_SCREEN_OFF.equals(intent.getAction()));
+        }
+    };
 
     /** Shows `text` as the sync status, with `sinceMillis` (0 for none) as its age, starting the service if needed. */
     static void show(Context context, String text, long sinceMillis) {
@@ -46,6 +60,10 @@ public class SyncService extends Service {
     public void onCreate() {
         super.onCreate();
         running = this;
+        nativeScreenOff(!getSystemService(PowerManager.class).isInteractive());
+        IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        registerReceiver(screenReceiver, filter);
         nativeStartEngine();
     }
 
@@ -63,6 +81,7 @@ public class SyncService extends Service {
 
     @Override
     public void onDestroy() {
+        unregisterReceiver(screenReceiver);
         running = null;
         super.onDestroy();
     }

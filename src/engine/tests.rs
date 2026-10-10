@@ -110,6 +110,25 @@ async fn due_remotes_sync_once_and_wait_for_their_interval() {
 }
 
 #[tokio::test]
+async fn quiet_stretches_the_interval_and_waking_syncs_at_once() {
+    let mut rig = rig().await;
+    let now = Instant::now();
+    rig.core.start_due(now);
+    rig.settle().await;
+
+    rig.send(Command::Quiet(true)).await;
+    let due = rig.core.next_due().expect("scheduled");
+    assert!(due >= now + super::QUIET_INTERVAL - Duration::from_secs(1), "due {:?} after the pass", due - now);
+    rig.core.start_due(now + Duration::from_secs(120));
+    assert!(rig.snap().syncing.is_empty(), "synced while quiet");
+
+    rig.send(Command::Quiet(false)).await;
+    rig.core.start_due(Instant::now());
+    assert_eq!(rig.snap().syncing.len(), 2);
+    rig.settle().await;
+}
+
+#[tokio::test]
 async fn sync_now_while_syncing_queues_one_more_pass() {
     let mut rig = rig().await;
     rig.send(Command::SyncNow(R1)).await;

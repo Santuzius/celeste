@@ -25,6 +25,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"time"
 	"unsafe"
 
 	"celeste/go/drive"
@@ -94,6 +95,13 @@ func RcloneRemoteChanged(remote *C.char) C.int {
 //export RcloneForgetRemote
 func RcloneForgetRemote(remote *C.char) {
 	rclonewatch.Forget(C.GoString(remote))
+}
+
+// RcloneSetChangePollSeconds sets how often remotes with change notification ask their provider's change log; 0 restores the default. See rclonewatch.SetPollInterval.
+//
+//export RcloneSetChangePollSeconds
+func RcloneSetChangePollSeconds(seconds C.int) {
+	rclonewatch.SetPollInterval(time.Duration(seconds) * time.Second)
 }
 
 //export RcloneFreeString

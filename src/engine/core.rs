@@ -55,6 +55,8 @@ pub(crate) struct Core {
     conflicts_version: u64,
     passes_finished: u64,
     last_status: Option<TrayStatus>,
+    /// See [`Command::Quiet`].
+    quiet: bool,
 }
 
 impl Core {
@@ -80,6 +82,7 @@ impl Core {
             conflicts_version: 0,
             passes_finished: 0,
             last_status: None,
+            quiet: false,
         }
     }
 
@@ -113,7 +116,23 @@ impl Core {
             }
             Command::Resolve { remote_id, sync_dir_id, resolution } => self.resolve(remote_id, sync_dir_id, resolution),
             Command::Log(sync_dir_id, line) => self.push_log_line(sync_dir_id, line),
+            Command::Quiet(quiet) => {
+                let woke = self.quiet && !quiet;
+                self.quiet = quiet;
+                // Up to date by the time someone looks.
+                if woke {
+                    for id in self.remotes.iter().map(|r| r.id).collect::<Vec<_>>() {
+                        self.last_sync_at.remove(&id);
+                    }
+                }
+            }
         }
+    }
+
+    /// A remote's interval, stretched while quiet.
+    fn interval(&self, remote: &Remote) -> std::time::Duration {
+        let interval = remote.policy.interval.duration();
+        if self.quiet { interval.max(super::QUIET_INTERVAL) } else { interval }
     }
 
     /// Read remotes and folders from the database and align the state with them.
@@ -202,7 +221,7 @@ impl Core {
             .remotes
             .iter()
             .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
-            .map(|r| (r.id, r.policy.interval.duration()))
+            .map(|r| (r.id, self.interval(r)))
             .collect();
         for (id, interval) in candidates {
             if self.last_sync_at.get(&id).is_some_and(|t| now.duration_since(*t) < interval) {
@@ -221,7 +240,7 @@ impl Core {
         self.remotes
             .iter()
             .filter(|r| self.is_schedulable(r.id) && !self.syncing.contains(&r.id))
-            .map(|r| self.last_sync_at.get(&r.id).map_or_else(Instant::now, |t| *t + r.policy.interval.duration()))
+            .map(|r| self.last_sync_at.get(&r.id).map_or_else(Instant::now, |t| *t + self.interval(r)))
             .min()
     }
 

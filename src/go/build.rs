@@ -92,6 +92,7 @@ fn main() {
         .allowlist_function("RcloneFreeString")
         .allowlist_function("RcloneRemoteChanged")
         .allowlist_function("RcloneForgetRemote")
+        .allowlist_function("RcloneSetChangePollSeconds")
         .allowlist_function("CelesteAuthorize")
         .allowlist_function("CelesteAuthorizeURL")
         .allowlist_function("CelesteAuthorizeCancel")
