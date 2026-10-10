@@ -17,11 +17,27 @@ android {
         versionCode cargoVersion().tokenize('.').inject(0) { code, part -> code * 1000 + part.toInteger() }
     }
 
+    // The release key: android/keystore.properties (not committed) names the keystore and its passwords. Without it the release APK stays unsigned. Updates only install over an APK signed with the same key, so the keystore must never get lost.
+    def keystoreFile = rootProject.file('keystore.properties')
+    if (keystoreFile.exists()) {
+        def keystore = new Properties()
+        keystoreFile.withInputStream { keystore.load(it) }
+        signingConfigs {
+            release {
+                storeFile file(keystore.storeFile)
+                storePassword keystore.storePassword
+                keyAlias keystore.keyAlias
+                keyPassword keystore.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            // Signed with the debug key so the release build installs without setting up a keystore.
-            signingConfig signingConfigs.debug
+            if (keystoreFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
