@@ -100,9 +100,12 @@ impl Snapshot {
         //    may linger from before the descendant sync_dir was created.
         let db_rows = util::await_future(repo.list_sync_items(sync_dir.id))
             .unwrap_or_default();
+        let (excluded_rows, db_rows): (Vec<SyncItem>, Vec<SyncItem>) = db_rows
+            .into_iter()
+            .partition(|r| path_is_excluded(&r.local_path, &excluded_local_prefixes));
+        forget_vanished_excluded_rows(repo, sync_dir, &excluded_rows);
         let db: HashMap<String, SyncItem> = db_rows
             .into_iter()
-            .filter(|r| !path_is_excluded(&r.local_path, &excluded_local_prefixes))
             .map(|r| (r.remote_path.clone(), r))
             .collect();
 
@@ -191,6 +194,21 @@ fn absolute_remote_path(sync_dir: &SyncDir, relative: &str) -> String {
     } else {
         format!("{}/{}", sync_dir.remote_path, relative)
     }
+}
+
+/// Forgets the rows of an excluded subtree whose local copy is gone. The rows of copies still there let the clean-up find leftovers; the others only wait for the exclusion to end, when they would read as "deleted here" and delete the remote copies. Without a row a file there is downloaded or asked about, never deleted.
+fn forget_vanished_excluded_rows(repo: &dyn Repository, sync_dir: &SyncDir, rows: &[SyncItem]) {
+    let vanished: Vec<&SyncItem> = rows
+        .iter()
+        .filter(|r| fs::symlink_metadata(&r.local_path).is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound))
+        .collect();
+    if vanished.is_empty() {
+        return;
+    }
+    for row in &vanished {
+        let _ = util::await_future(repo.delete_sync_item_by_paths(sync_dir.id, &row.local_path, &row.remote_path));
+    }
+    eprintln!("sync: forgot {} rows under excluded folders of '{}' whose local copies are gone.", vanished.len(), sync_dir.local_path);
 }
 
 /// Returns true when `path` equals one of `excluded_prefixes` or starts

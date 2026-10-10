@@ -236,6 +236,28 @@ fn an_unfinished_download_is_cleaned_up_and_not_uploaded() {
     assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
 }
 
+/// Rows below a folder another sync folder covers are forgotten once their local copies are gone, so stopping that other folder later can't delete them remotely. Rows of copies still there stay for the leftover clean-up.
+#[test]
+fn rows_of_vanished_copies_under_a_nested_folder_are_forgotten() {
+    let tmp = TempDir::new("sync_nested_rows");
+    let repo = FakeRepo::new();
+    repo.insert_item(SyncDirId(1), &format!("{}/Obsidian", tmp.as_str()), "Obsidian", 1_700_000_000, 1_700_000_000);
+    repo.insert_item(SyncDirId(1), &format!("{}/Obsidian/note.md", tmp.as_str()), "Obsidian/note.md", 1_700_000_000, 1_700_000_000);
+    let leftover = tmp.write_file("Music/song.ogg", b"s");
+    repo.insert_item(SyncDirId(1), leftover.to_str().unwrap(), "Music/song.ogg", 1_700_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![]));
+    let nested = [sync_dir(2, 1, "/elsewhere/Obsidian", "Obsidian"), sync_dir(3, 1, "/elsewhere/Music", "Music")];
+
+    let r = remote(1, "TestRemote");
+    let sd = sync_dir(1, 1, tmp.as_str(), "");
+    let outcome = run(&r, &sd, &repo, &client, &nested, &[], |_| {}, &cancel_never(), |_| false);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(!repo.has_item(&format!("{}/Obsidian/note.md", tmp.as_str()), "Obsidian/note.md"));
+    assert!(!repo.has_item(&format!("{}/Obsidian", tmp.as_str()), "Obsidian"));
+    assert!(repo.has_item(leftover.to_str().unwrap(), "Music/song.ogg"));
+}
+
 /// A sub-folder Celeste may not read stops the whole folder's pass: nothing below it may pass for deleted, and nothing else is done either.
 #[test]
 fn an_unreadable_sub_folder_stops_the_pass() {
