@@ -140,6 +140,47 @@ fn local_deleted_mirrors_to_remote() {
     assert!(!repo.has_item(&local_path, "gone.txt"));
 }
 
+/// A delete whose target vanished since the listing did what it wanted: no warning, and the row goes.
+#[test]
+fn deleting_what_is_already_gone_is_no_problem() {
+    let tmp = TempDir::new("sync_del_gone");
+    let repo = FakeRepo::new();
+    let local_path = format!("{}/gone.txt", tmp.as_str());
+    repo.insert_item(SyncDirId(1), &local_path, "gone.txt", 1_700_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("gone.txt", false, 1_700_000_000)]));
+    *client.delete_file_result.lock().unwrap() = Err("path 'gone.txt' not found on remote".to_owned());
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert!(!repo.has_item(&local_path, "gone.txt"));
+}
+
+/// A folder deleted locally is purged on the remote as a whole; its files are not deleted one by one afterwards, which would only fail because they are gone already.
+#[test]
+fn a_deleted_folder_is_purged_once() {
+    let tmp = TempDir::new("sync_del_folder");
+    let repo = FakeRepo::new();
+    let keep = tmp.write_file("keep.txt", b"k");
+    touch_mtime(&keep, 1_700_000_000);
+    repo.insert_item(SyncDirId(1), keep.to_str().unwrap(), "keep.txt", 1_700_000_000, 1_700_000_000);
+    repo.insert_item(SyncDirId(1), &format!("{}/old", tmp.as_str()), "old", 1_700_000_000, 1_700_000_000);
+    let mut listing = vec![remote_item("keep.txt", false, 1_700_000_000), remote_item("old", true, 1_700_000_000)];
+    for i in 0..3 {
+        repo.insert_item(SyncDirId(1), &format!("{}/old/file_{i}.txt", tmp.as_str()), &format!("old/file_{i}.txt"), 1_700_000_000, 1_700_000_000);
+        listing.push(remote_item(&format!("old/file_{i}.txt"), false, 1_700_000_000));
+    }
+    let client = FakeBackend::default();
+    client.set_list("", Ok(listing));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert_eq!(*client.purge_calls.lock().unwrap(), vec!["old".to_owned()]);
+    assert!(client.delete_file_calls.lock().unwrap().is_empty());
+}
+
 /// Remote deleted between syncs → mirror locally. DB row cleared.
 #[test]
 fn remote_deleted_mirrors_locally() {

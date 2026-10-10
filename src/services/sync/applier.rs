@@ -192,7 +192,9 @@ where
                 } else {
                     fs::remove_file(&local_path)
                 };
-                if let Err(err) = res {
+                if let Err(err) = res
+                    && err.kind() != std::io::ErrorKind::NotFound
+                {
                     emit_error(SyncError::General(local_path.clone(), err.to_string()));
                     break 'action;
                 }
@@ -222,9 +224,14 @@ where
                 } else {
                     client.delete_file(&remote.name, &remote_path, cancel)
                 };
+                // Already gone, e.g. deleted elsewhere since the listing: that is what this action wanted.
                 if let Err(err) = res {
-                    emit_error(SyncError::General(remote_path.clone(), err));
-                    break 'action;
+                    if is_gone(&err) {
+                        eprintln!("sync: '{remote_path}' was already gone on the remote.");
+                    } else {
+                        emit_error(SyncError::General(remote_path.clone(), err));
+                        break 'action;
+                    }
                 }
                 let _ = util::await_future(repo.delete_sync_item_by_paths(
                     sync_dir.id,
@@ -472,4 +479,10 @@ fn local_timestamp(path: &Path) -> Option<u64> {
         .duration_since(SystemTime::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
+}
+
+/// Whether a delete failed only because its target no longer exists. Providers word it differently: "object not found" and "directory not found" (rclone), "not found on remote" (native Proton client), "no such file or directory".
+fn is_gone(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("not found") || lower.contains("no such file")
 }

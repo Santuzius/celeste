@@ -370,7 +370,8 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
     let detail: String = match folder.state {
         RunState::Syncing(_) => folder.latest_line.unwrap_or(status_label(folder.state)).to_owned(),
         _ if conflict_note.is_some() => "Choose which version to keep".to_owned(),
-        RunState::Warning | RunState::Error => folder.latest_problem.unwrap_or(status_label(folder.state)).to_owned(),
+        // The status icon already shows the warning sign that starts the log line.
+        RunState::Warning | RunState::Error => folder.latest_problem.map_or(status_label(folder.state), |line| line.trim_start_matches('⚠').trim_start()).to_owned(),
         state => status_label(state).to_owned(),
     };
     let detail_text = text(detail).size(CAPTION).wrapping(Wrapping::WordOrGlyph);
