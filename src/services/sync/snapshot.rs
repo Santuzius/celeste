@@ -280,6 +280,13 @@ fn walk_dir(
             }
         };
         if crate::services::editor_temp::is_editor_temp(&name) {
+            // A Proton download cut off by Celeste's end leaves its part file behind (src/go/drive/download.go); no download runs into this folder while it is walked.
+            if crate::services::editor_temp::is_celeste_part(&name) {
+                match fs::remove_file(entry.path()) {
+                    Ok(()) => eprintln!("sync: removed the unfinished download '{}'.", entry.path().display()),
+                    Err(err) => eprintln!("sync: could not remove the unfinished download '{}': {err}", entry.path().display()),
+                }
+            }
             continue;
         }
         let remote_name = local_names::from_local(&name);

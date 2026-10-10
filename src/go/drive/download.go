@@ -25,6 +25,9 @@ import (
 	"path/filepath"
 
 	"github.com/ProtonMail/go-proton-api"
+	"github.com/ProtonMail/gopenpgp/v2/crypto"
+
+	"celeste/go/proton-ext"
 )
 
 // Errors specific to the download path.
@@ -70,10 +73,11 @@ func (s *Session) getRevisionAllBlocks(
 }
 
 // DownloadFile downloads the active revision of `linkID` to
-// `destPath`, creating parent directories as needed. The file is
-// truncated first — this matches the sync engine's "replace local
-// copy with remote" semantics; caller is responsible for any atomic-
-// rename choreography around the destination.
+// `destPath`, creating parent directories as needed. The content goes
+// to a hidden `.part` file next to it first (the sync walk skips those)
+// and replaces `destPath` only once complete: a download cut off by a
+// network change must not leave an empty or half file behind, which
+// the next pass would take for a newer local copy and upload.
 func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) error {
 	if destPath == "" {
 		return ErrInvalidDestination
@@ -117,16 +121,24 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
-	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	out, err := os.CreateTemp(filepath.Dir(destPath), ".celeste-*.part")
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	partPath := out.Name()
+	done := false
+	defer func() {
+		if !done {
+			out.Close()
+			os.Remove(partPath)
+		}
+	}()
 
 	// Decrypt blocks in order, streaming plaintext into `out` via a
 	// reusable buffer. gopenpgp takes `io.ReaderFrom` — bytes.Buffer
 	// satisfies that; we then copy its contents to the file.
 	buf := &bytes.Buffer{}
+	var written int64
 	for i := range revision.Blocks {
 		block := &revision.Blocks[i]
 		blockBody, err := s.c.GetBlock(ctx, block.BareURL, block.Token)
@@ -147,9 +159,42 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 		if err != nil {
 			return err
 		}
-		if _, err := buf.WriteTo(out); err != nil {
+		n, err := buf.WriteTo(out)
+		written += n
+		if err != nil {
 			return err
 		}
 	}
+	// The uploader records the plaintext size; a revision whose blocks don't add up to it is incomplete.
+	if size, ok := s.plainSize(ctx, link, revisionID, nodeKR); ok && size != written {
+		return fmt.Errorf("download incomplete: got %d of %d bytes", written, size)
+	}
+	// CreateTemp makes it private; downloads get the usual mode. Android's shared storage ignores modes, so a failure doesn't matter.
+	_ = out.Chmod(0o644)
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(partPath, destPath); err != nil {
+		os.Remove(partPath)
+		done = true
+		return err
+	}
+	done = true
 	return nil
+}
+
+// plainSize is the plaintext size the uploader recorded in the revision's extended attributes; false when the revision has none.
+func (s *Session) plainSize(ctx context.Context, link proton.Link, revisionID string, nodeKR *crypto.KeyRing) (int64, bool) {
+	rev, err := protonext.GetRevisionXAttr(ctx, s.protonextAuth(), s.mainShare.ShareID, link.LinkID, revisionID)
+	if err != nil || rev.XAttr == "" {
+		return 0, false
+	}
+	xa, err := protonext.DecryptRevisionXAttr(rev.XAttr, s.defaultAddrKR, nodeKR)
+	if err != nil || xa == nil {
+		return 0, false
+	}
+	return xa.Size, true
 }

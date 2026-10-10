@@ -25,10 +25,16 @@ pub fn is_editor_temp(name: &str) -> bool {
     if name.starts_with(".goutputstream-") {
         return true;
     }
-    if name.ends_with(".crdownload") || name.ends_with(".part") {
+    // `.partial`: rclone's download in progress; `.part` also Celeste's own for Proton (src/go/drive/download.go).
+    if name.ends_with(".crdownload") || name.ends_with(".part") || name.ends_with(".partial") {
         return true;
     }
     false
+}
+
+/// A Proton download in progress, named by `os.CreateTemp(dir, ".celeste-*.part")` in src/go/drive/download.go.
+pub fn is_celeste_part(name: &str) -> bool {
+    name.starts_with(".celeste-") && name.ends_with(".part")
 }
 
 #[cfg(test)]
@@ -47,6 +53,15 @@ mod tests {
         assert!(is_editor_temp(".goutputstream-abc"));
         assert!(is_editor_temp("file.crdownload"));
         assert!(is_editor_temp("file.part"));
+        assert!(is_editor_temp("file.pdf.4f3a2b1c.partial"));
+        assert!(is_editor_temp(".celeste-123456.part"));
+    }
+
+    #[test]
+    fn only_celestes_own_part_files_count_as_unfinished_downloads() {
+        assert!(is_celeste_part(".celeste-123456.part"));
+        assert!(!is_celeste_part("video.part"));
+        assert!(!is_celeste_part(".celeste-notes.txt"));
     }
 
     #[test]

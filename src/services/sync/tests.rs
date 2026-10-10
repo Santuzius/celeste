@@ -199,6 +199,24 @@ fn a_download_keeps_the_remote_modification_time() {
     assert!(repo.has_item(local_path.to_str().unwrap(), "new.txt"));
 }
 
+/// The part file of a download cut off by Celeste's end is removed and never uploaded; other programs' part files stay untouched.
+#[test]
+fn an_unfinished_download_is_cleaned_up_and_not_uploaded() {
+    let tmp = TempDir::new("sync_part");
+    let leftover = tmp.write_file(".celeste-123456.part", b"half");
+    let foreign = tmp.write_file("movie.part", b"browser");
+    let repo = FakeRepo::new();
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![]));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert!(!leftover.exists());
+    assert!(foreign.exists());
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+}
+
 /// A sub-folder Celeste may not read stops the whole folder's pass: nothing below it may pass for deleted, and nothing else is done either.
 #[test]
 fn an_unreadable_sub_folder_stops_the_pass() {
