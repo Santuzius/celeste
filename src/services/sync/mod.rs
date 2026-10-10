@@ -48,6 +48,12 @@ pub enum Outcome {
     Degraded,
 }
 
+/// What a folder shows when part of it may not be read.
+#[cfg(target_os = "android")]
+const NOT_READABLE: &str = "Celeste may not read this. Allow All files access, or on GrapheneOS add the folder to Storage Scopes, then sync again.";
+#[cfg(not(target_os = "android"))]
+const NOT_READABLE: &str = "Celeste may not read this. Change its permissions or exclude it, then sync again.";
+
 /// Entry point. Builds the snapshot, plans, applies. `cancel` is polled
 /// at the start of each destructive action so the pass can bail out
 /// promptly when the user disables the remote or shuts down the app —
@@ -135,6 +141,14 @@ where
             return Outcome::Aborted;
         }
     };
+
+    // A directory Celeste may not read hides everything below it, which would look deleted or never synced. Do nothing for this folder until a later pass can read it all.
+    if let Some(dir) = &snapshot.walk_denied {
+        eprintln!("sync: STOP for '{}' — not allowed to read '{dir}'; nothing is synced until a pass can read the whole folder.", sync_dir.local_path);
+        emit_error(SyncError::General(crate::util::fmt_home(dir), NOT_READABLE.to_owned()));
+        emit_state(RunState::Error);
+        return Outcome::Aborted;
+    }
 
     if is_cancelled() {
         emit_status(tr::tr!("Sync cancelled."));

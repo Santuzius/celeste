@@ -40,6 +40,8 @@ pub(super) struct Snapshot {
     /// racing Celeste on the same tree). The planner refuses to fire
     /// `DeleteRemote` for anything whose ancestor chain lands here.
     pub walk_unreliable: HashSet<String>,
+    /// The first local directory the walk was not allowed to read. The pass stops there: everything below it would look missing.
+    pub walk_denied: Option<String>,
 }
 
 impl Snapshot {
@@ -139,13 +141,14 @@ impl Snapshot {
             .collect();
 
         // 3. Local walk — skip subtrees managed by descendant sync_dirs.
-        let (local, walk_unreliable) = walk_local(sync_dir, &excluded_local_prefixes);
+        let (local, walk_unreliable, walk_denied) = walk_local(sync_dir, &excluded_local_prefixes);
 
         Ok(Snapshot {
             remote,
             local,
             db,
             walk_unreliable,
+            walk_denied,
         })
     }
 }
@@ -201,19 +204,28 @@ fn path_is_excluded(path: &str, excluded_prefixes: &[String]) -> bool {
 fn walk_local(
     sync_dir: &SyncDir,
     excluded_local_prefixes: &[String],
-) -> (HashMap<String, LocalEntry>, HashSet<String>) {
+) -> (HashMap<String, LocalEntry>, HashSet<String>, Option<String>) {
     let root = Path::new(&sync_dir.local_path);
     let mut out: HashMap<String, LocalEntry> = HashMap::new();
     let mut unreliable: HashSet<String> = HashSet::new();
+    let mut denied: Option<String> = None;
     walk_dir(
         root,
         sync_dir,
         &mut out,
         &mut unreliable,
+        &mut denied,
         &sync_dir.remote_path,
         excluded_local_prefixes,
     );
-    (out, unreliable)
+    (out, unreliable, denied)
+}
+
+/// Remember the first directory the walk may not read (EACCES, or EPERM as on Android without All files access or outside GrapheneOS' Storage Scopes).
+fn note_denied(denied: &mut Option<String>, dir: &Path, err: &std::io::Error) {
+    if denied.is_none() && err.kind() == std::io::ErrorKind::PermissionDenied {
+        *denied = Some(dir.display().to_string());
+    }
 }
 
 /// Walks `dir`, populating `out` with every entry and recording any I/O
@@ -226,12 +238,14 @@ fn walk_dir(
     sync_dir: &SyncDir,
     out: &mut HashMap<String, LocalEntry>,
     unreliable: &mut HashSet<String>,
+    denied: &mut Option<String>,
     current_dir_key: &str,
     excluded_local_prefixes: &[String],
 ) {
     let read = match fs::read_dir(dir) {
         Ok(r) => r,
         Err(err) => {
+            note_denied(denied, dir, &err);
             eprintln!(
                 "sync: walk read_dir failed for '{}' (key='{current_dir_key}'): {err}; marking subtree unreliable.",
                 dir.display(),
@@ -244,6 +258,7 @@ fn walk_dir(
         let entry = match entry {
             Ok(e) => e,
             Err(err) => {
+                note_denied(denied, dir, &err);
                 eprintln!(
                     "sync: walk entry iteration failed under '{}' (key='{current_dir_key}'): {err}; marking subtree unreliable.",
                     dir.display(),
@@ -312,7 +327,7 @@ fn walk_dir(
             },
         );
         if file_type.is_dir() {
-            walk_dir(&path, sync_dir, out, unreliable, &remote_key, excluded_local_prefixes);
+            walk_dir(&path, sync_dir, out, unreliable, denied, &remote_key, excluded_local_prefixes);
         }
     }
 }

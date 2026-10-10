@@ -199,6 +199,28 @@ fn a_download_keeps_the_remote_modification_time() {
     assert!(repo.has_item(local_path.to_str().unwrap(), "new.txt"));
 }
 
+/// A sub-folder Celeste may not read stops the whole folder's pass: nothing below it may pass for deleted, and nothing else is done either.
+#[test]
+fn an_unreadable_sub_folder_stops_the_pass() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new("sync_denied");
+    tmp.write_file("new.txt", b"n");
+    let locked = tmp.path.join("locked");
+    fs::create_dir_all(&locked).unwrap();
+    fs::write(locked.join("inside.txt"), b"i").unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let repo = FakeRepo::new();
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("locked", true, 1_700_000_000), remote_item("locked/inside.txt", false, 1_700_000_000)]));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(outcome, Outcome::Aborted);
+    assert_eq!(errors(&events).len(), 1);
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+}
+
 /// Remote deleted between syncs → mirror locally. DB row cleared.
 #[test]
 fn remote_deleted_mirrors_locally() {
@@ -832,8 +854,9 @@ fn walk_read_dir_error_blocks_delete_remote_under_subtree() {
         ]),
     );
 
+    // A directory Celeste may not read now stops the pass altogether (see `an_unreadable_sub_folder_stops_the_pass`).
     let (outcome, _events) = run_full(&tmp, &repo, &client);
-    assert_eq!(outcome, Outcome::Synced);
+    assert_eq!(outcome, Outcome::Aborted);
     assert!(
         client.delete_file_calls.lock().unwrap().is_empty(),
         "no file deletes may fire while the walk reported an error on the subtree",
