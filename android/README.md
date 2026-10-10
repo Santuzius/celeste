@@ -32,4 +32,4 @@ The release APK is signed with the release key. `android/keystore.properties` (n
     keyAlias=celeste
     keyPassword=…
 
-Android installs an update only over an APK signed with the same key, so keep a backup of the keystore and its password; without them no update of the published app is possible. The versionCode follows from the version in `Cargo.toml` (0.21.0 → 21000).
+Android installs an update only over an APK signed with the same key, so keep a backup of the keystore and its password; without them no update of the published app is possible. The versionCode follows from the version in `Cargo.toml` (0.21.0 → 21000). The whole release is described in [doc/release.md](../doc/release.md).

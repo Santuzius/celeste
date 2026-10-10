@@ -94,6 +94,7 @@ No global `rustup`, `go`, or system headers are required — everything is pulle
 
 - **AppImage:** `scripts/build-appimage.sh` builds it in an Ubuntu 22.04 container and needs Docker.
 - **Android:** see [android/README.md](android/README.md).
+- **Releases:** see [doc/release.md](doc/release.md).
 
 ## Used components
 - [rclone](https://rclone.org/) for Google Drive (other rclone-supported providers would be possible, but are not implemented)
