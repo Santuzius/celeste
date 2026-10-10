@@ -9,6 +9,7 @@ use crate::domain::{
     sync::{RemoteItem, SyncDir, SyncItem},
 };
 
+use super::local_names;
 use super::snapshot::{LocalEntry, Snapshot};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -442,7 +443,7 @@ fn derive_local_path(remote_path: &str, sync_dir: &SyncDir) -> String {
     if relative.is_empty() {
         sync_dir.local_path.clone()
     } else {
-        format!("{}/{}", sync_dir.local_path, relative)
+        format!("{}/{}", sync_dir.local_path, local_names::to_local(&relative))
     }
 }
 

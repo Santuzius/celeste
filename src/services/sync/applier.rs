@@ -17,6 +17,7 @@ use crate::{
     util,
 };
 
+use super::local_names;
 use super::planner::{Action, ConflictKind};
 use super::snapshot::Snapshot;
 
@@ -291,7 +292,7 @@ where
                         continue 'action;
                     }
                     Some(ConflictChoice::KeepBoth { local_name }) => {
-                        let renamed = Path::new(&local_path).with_file_name(&local_name);
+                        let renamed = Path::new(&local_path).with_file_name(&*local_names::to_local(&local_name));
                         if local_name.is_empty() || local_name.contains('/') || renamed.exists() {
                             emit_error(SyncError::General(local_path.clone(), tr::tr!("Can't keep both: '{}' is not a free file name.", local_name)));
                             break 'action;

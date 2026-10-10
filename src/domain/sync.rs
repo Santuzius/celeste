@@ -89,6 +89,7 @@ pub enum ConflictChoice {
     /// Overwrite the local copy with the remote one.
     KeepRemote,
     /// Rename the local copy to `local_name` (same folder), then fetch the remote one; the renamed file is uploaded as a new file.
+    /// `local_name` is the new name as it would be on the remote (see `services::sync::local_names`).
     KeepBoth { local_name: String },
 }
 

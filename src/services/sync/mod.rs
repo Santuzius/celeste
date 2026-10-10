@@ -26,6 +26,7 @@ use crate::domain::{
 };
 
 mod applier;
+pub mod local_names;
 mod planner;
 mod snapshot;
 

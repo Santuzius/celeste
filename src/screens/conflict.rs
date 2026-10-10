@@ -14,6 +14,7 @@ use crate::{
         remote::RemoteId,
         sync::{Conflict, FileDetails, SyncDirId},
     },
+    services::sync::local_names,
     theme::{self, CAPTION, HEADING, ROW_SPACING, TEXT},
     util::fmt_home,
     widgets::{icon::icon, text},
@@ -50,7 +51,7 @@ pub struct Dialog {
 
 impl Dialog {
     pub fn new(remote_id: RemoteId, remote_name: String, sync_dir_id: SyncDirId, conflict: Conflict, position: usize, total: usize) -> Self {
-        let new_name = file_name(&conflict.local_path).to_owned();
+        let new_name = local_names::from_local(file_name(&conflict.local_path)).into_owned();
         Self { remote_id, remote_name, sync_dir_id, conflict, new_name, position, total }
     }
 
@@ -61,13 +62,14 @@ impl Dialog {
             && !name.contains('/')
             && name != "."
             && name != ".."
-            && name != file_name(&self.conflict.local_path)
-            && !Path::new(&self.conflict.local_path).with_file_name(name).exists()
+            && *local_names::to_local(name) != *file_name(&self.conflict.local_path)
+            && !Path::new(&self.conflict.local_path).with_file_name(&*local_names::to_local(name)).exists()
     }
 
     /// `name (1).ext`, `name (2).ext`, … — the first one not taken in the local folder.
     pub fn suggest_name(&mut self) {
-        let current = file_name(&self.conflict.local_path);
+        let current = local_names::from_local(file_name(&self.conflict.local_path)).into_owned();
+        let current = current.as_str();
         let (stem, ext) = match current.rfind('.') {
             Some(i) if i > 0 => (&current[..i], &current[i..]),
             _ => (current, ""),
@@ -75,7 +77,7 @@ impl Dialog {
         let folder = Path::new(&self.conflict.local_path);
         for n in 1.. {
             let candidate = format!("{stem} ({n}){ext}");
-            if !folder.with_file_name(&candidate).exists() {
+            if !folder.with_file_name(&*local_names::to_local(&candidate)).exists() {
                 self.new_name = candidate;
                 return;
             }

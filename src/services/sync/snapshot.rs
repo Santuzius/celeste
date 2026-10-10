@@ -9,6 +9,7 @@ use std::{
     time::SystemTime,
 };
 
+use super::local_names;
 use crate::{
     domain::{
         ports::{BackendClient, Cancel, Repository},
@@ -75,7 +76,7 @@ impl Snapshot {
                     .push(absolute_remote_path(sync_dir, &rel));
                 excluded_remote_prefixes.push(rel.clone());
                 excluded_local_prefixes
-                    .push(format!("{}/{}", sync_dir.local_path, rel));
+                    .push(format!("{}/{}", sync_dir.local_path, local_names::to_local(&rel)));
             }
         }
 
@@ -89,7 +90,7 @@ impl Snapshot {
             excluded_remote_prefixes
                 .push(absolute_remote_path(sync_dir, &excl.remote_path));
             excluded_remote_prefixes.push(excl.remote_path.clone());
-            excluded_local_prefixes.push(format!("{}/{}", sync_dir.local_path, excl.remote_path));
+            excluded_local_prefixes.push(format!("{}/{}", sync_dir.local_path, local_names::to_local(&excl.remote_path)));
         }
 
         // 1. DB (cheap, authoritative for "what we last saw"). Drop any
@@ -266,10 +267,11 @@ fn walk_dir(
         if crate::services::editor_temp::is_editor_temp(&name) {
             continue;
         }
+        let remote_name = local_names::from_local(&name);
         let remote_key = if current_dir_key.is_empty() {
-            name.clone()
+            remote_name.into_owned()
         } else {
-            format!("{current_dir_key}/{name}")
+            format!("{current_dir_key}/{remote_name}")
         };
         let file_type = match entry.file_type() {
             Ok(t) => t,
