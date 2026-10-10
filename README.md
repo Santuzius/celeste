@@ -23,6 +23,7 @@ Two-way file sync between folders on your Linux computer or Android phone and Go
 - Conflict resolution: a file changed on both sides is never overwritten silently; you keep the local version, the remote one, or both
 - Credentials stay on the device: in the system keyring on Linux, encrypted with the Android Keystore on Android
 - Starts at login or after the phone's restart (can be switched off), Start / Pause per account
+- On Android: power modes that sync less often with the screen off, and optionally no syncing on mobile data or other metered networks
 - Light and dark theme, adjustable content size, settings export and import (without sign-ins)
 
 ![The same window in the light theme](doc/img/Screenshot_light.png)

@@ -59,6 +59,8 @@ struct Preferences {
     #[serde(default)]
     power_mode: Option<String>,
     #[serde(default)]
+    sync_metered: Option<bool>,
+    #[serde(default)]
     run_in_background: Option<bool>,
     #[serde(default)]
     autostart: Option<bool>,
@@ -103,11 +105,13 @@ pub fn export(repo: &dyn Repository, client: &dyn BackendClient) -> Result<Strin
     }
 
     let data_dir = util::get_data_dir();
-    let power_mode = conf_to_map(&power::PowerSettings::load(&data_dir).to_conf()).get("mode").and_then(Value::as_str).map(str::to_owned);
+    let power_settings = power::PowerSettings::load(&data_dir);
+    let power_mode = conf_to_map(&power_settings.to_conf()).get("mode").and_then(Value::as_str).map(str::to_owned);
     let android = cfg!(target_os = "android");
     let preferences = Preferences {
         appearance: conf_to_map(&Appearance::load(&data_dir).to_conf()),
         power_mode: power_mode.filter(|_| android),
+        sync_metered: android.then_some(power_settings.sync_metered),
         run_in_background: android.then(power::background_enabled),
         autostart: Some(autostart::enabled()),
     };
@@ -173,11 +177,12 @@ fn apply_preferences(preferences: &Preferences) -> std::io::Result<()> {
     if !preferences.appearance.is_empty() {
         Appearance::parse(&map_to_conf(&preferences.appearance)).save(&data_dir)?;
     }
-    if let Some(mode) = &preferences.power_mode {
+    if preferences.power_mode.is_some() || preferences.sync_metered.is_some() {
         // Whether Celeste asked about battery optimization belongs to this device.
         let current = power::PowerSettings::load(&data_dir);
-        let mode = power::PowerSettings::parse(&format!("mode={mode}\n")).mode;
-        power::PowerSettings { mode, ..current }.save(&data_dir)?;
+        let mode = preferences.power_mode.as_ref().map_or(current.mode, |mode| power::PowerSettings::parse(&format!("mode={mode}\n")).mode);
+        let sync_metered = preferences.sync_metered.unwrap_or(current.sync_metered);
+        power::PowerSettings { mode, sync_metered, ..current }.save(&data_dir)?;
         power::apply();
     }
     if cfg!(target_os = "android")

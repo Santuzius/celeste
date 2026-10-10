@@ -91,6 +91,8 @@ pub struct Page<'a> {
     pub syncing: bool,
     /// Time to the next scheduled pass and whether a backoff is active; `None` while paused / signed out.
     pub next_sync: Option<(Duration, bool)>,
+    /// Scheduled passes wait for an unmetered network (Preferences → Sync on metered networks).
+    pub held_on_metered: bool,
     pub dirs: Vec<Folder<'a>>,
     pub draft_local: &'a str,
     pub draft_remote: &'a str,
@@ -315,7 +317,9 @@ fn status_line(page: &Page<'_>) -> String {
         RunState::Syncing(_) => status_label(page.state).to_owned(),
         _ if page.syncing => "Syncing…".to_owned(),
         _ if page.dirs.is_empty() => format!("{NO_FOLDERS} — add one below to start syncing"),
+        RunState::Waiting if page.held_on_metered => "Waiting for a network that isn't metered".to_owned(),
         RunState::Waiting => next("Waiting for the first sync"),
+        state if page.held_on_metered => format!("{} · on hold on a metered network", status_label(state)),
         state => next(status_label(state)),
     }
 }

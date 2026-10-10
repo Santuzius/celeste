@@ -50,22 +50,37 @@ extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeStartEngin
     std::thread::spawn(crate::start_engine);
 }
 
-/// The screen, the charger and the battery saver, as `SyncService` last reported them.
-static CONDITIONS: Mutex<Conditions> = Mutex::new(Conditions { screen_off: false, charging: false, battery_saver: false });
+/// The screen, the charger and the battery saver, as `SyncService` last reported them, and whether the network is metered, as `Bridge.watchNetwork` last reported it.
+static CONDITIONS: Mutex<Conditions> = Mutex::new(Conditions { screen_off: false, charging: false, battery_saver: false, metered: false });
+
+/// What the power mode and the choice about metered networks currently go by.
+pub fn conditions() -> Conditions {
+    CONDITIONS.lock().map(|c| *c).unwrap_or_default()
+}
 
 /// Called by `SyncService` when the screen goes off or on, the charger is plugged in or out, or Android's battery saver toggles: the power mode decides how often to sync (see [`crate::services::power`]).
 #[unsafe(no_mangle)]
 extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeConditions(_: JNIEnv, _: JClass, screen_off: jboolean, charging: jboolean, battery_saver: jboolean) {
     if let Ok(mut conditions) = CONDITIONS.lock() {
-        *conditions = Conditions { screen_off: screen_off == JNI_TRUE, charging: charging == JNI_TRUE, battery_saver: battery_saver == JNI_TRUE };
+        *conditions = Conditions { screen_off: screen_off == JNI_TRUE, charging: charging == JNI_TRUE, battery_saver: battery_saver == JNI_TRUE, ..*conditions };
     }
     apply_power_state();
 }
 
+/// Called by `Bridge.watchNetwork` in every process when the default network changes and whether it is metered: Preferences may hold syncing on metered networks.
+#[unsafe(no_mangle)]
+extern "system" fn Java_io_github_santuzius_celeste_Bridge_nativeMetered(_: JNIEnv, _: JClass, metered: jboolean) {
+    let metered = metered == JNI_TRUE;
+    let changed = CONDITIONS.lock().map(|mut c| std::mem::replace(&mut c.metered, metered) != metered).unwrap_or(false);
+    if changed {
+        log::info!("network {}", if metered { "metered" } else { "unmetered" });
+        apply_power_state();
+    }
+}
+
 /// Hands the cadence for the saved power mode and the current conditions to the engine, if it runs yet; it starts asynchronously and calls this once it does, and Preferences after a change.
 pub fn apply_power_state() {
-    let conditions = CONDITIONS.lock().map(|c| *c).unwrap_or_default();
-    let cadence = PowerSettings::load(&crate::util::get_data_dir()).mode.cadence(conditions);
+    let cadence = PowerSettings::load(&crate::util::get_data_dir()).cadence(conditions());
     // Google Drive's and Dropbox's change logs in the same rhythm; hourly while held.
     celeste_go::set_change_poll_interval(match cadence {
         Cadence::Full => None,

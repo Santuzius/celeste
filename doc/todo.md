@@ -1,0 +1,4 @@
+# To do
+
+- **Metered networks on the desktop:** "Sync on metered networks" exists only on Android. On Linux, NetworkManager tells over D-Bus whether the connection is metered (`org.freedesktop.NetworkManager`, property `Metered`, with change signals). Report it into `Conditions::metered` (src/services/power.rs) like `Bridge.watchNetwork` does on Android, and show the switch in Preferences on the desktop too. Without NetworkManager, assume unmetered.
+- **Android: the window doesn't come back after starting while locked:** Started with the screen locked (e.g. by `scripts/android-dev.sh`), unlocking failed in wgpu with `AndroidSurface failed: ERROR_NATIVE_WINDOW_IN_USE_KHR`; every later attempt to open the window in the same process then panicked with `Create event loop: RecreationAttempt` (iced/winit/src/lib.rs). Only a restart of the app helped. Seen once on the Pixel 4a on 2026-10-10.

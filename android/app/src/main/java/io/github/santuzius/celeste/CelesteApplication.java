@@ -36,5 +36,6 @@ public class CelesteApplication extends Application {
 
         System.loadLibrary("celeste");
         nativeInit(this);
+        Bridge.watchNetwork(this);
     }
 }

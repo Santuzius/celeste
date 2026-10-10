@@ -10,6 +10,9 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -33,7 +36,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 /**
- * Static helpers the native library calls (src/infrastructure/android/ in the repository): notifications, the sync service, the folder picker and the Keystore.
+ * Static helpers the native library calls (src/infrastructure/android/ in the repository): notifications, the sync service, the folder picker, the Keystore and whether the network is metered.
  *
  * They run on whatever native thread calls them; UI work is posted to the activity's UI thread.
  */
@@ -63,6 +66,22 @@ public final class Bridge {
 
     /** The picked folder's path, or null when cancelled or when it has none. Answers {@link #pickFolder}. */
     static native void nativeFolderPicked(String path);
+
+    /** Whether the default network is metered; reported by {@link #watchNetwork}. */
+    static native void nativeMetered(boolean metered);
+
+    /** Reports whether the default network is metered, right away and on every change, for as long as the process lives. Without a network the last answer stands: syncing fails anyway, and the next network reports itself. */
+    static void watchNetwork(Context context) {
+        context.getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                // Android 11+ marks networks unmetered for a while, e.g. 5G on an unlimited plan.
+                boolean unmetered = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                        || (Build.VERSION.SDK_INT >= 30 && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED));
+                nativeMetered(!unmetered);
+            }
+        });
+    }
 
     static void setActivity(Activity current) {
         activity = new WeakReference<>(current);

@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Whether the network is metered, for "Sync on metered networks". -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Synced folders can be anywhere in shared storage; Android 11+ grants that through "All files access", older versions through the storage permission. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />

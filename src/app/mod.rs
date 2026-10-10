@@ -426,6 +426,11 @@ impl CelesteApp {
                 power::apply();
                 Task::none()
             }
+            Message::Preferences(preferences::Msg::SyncMeteredToggled(on)) => {
+                self.set_power(PowerSettings { sync_metered: on, ..self.power });
+                power::apply();
+                Task::none()
+            }
             Message::Preferences(preferences::Msg::AllowBackground) => {
                 self.background_dialog_open = false;
                 self.set_power(PowerSettings { asked_battery: true, ..self.power });
@@ -724,7 +729,7 @@ impl CelesteApp {
         } else if self.background_dialog_open {
             stack![base, remote_page::modal(preferences::background_dialog().map(Message::Preferences), Some(Message::Preferences(preferences::Msg::KeepOptimized)))].into()
         } else if self.preferences_open {
-            let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, background: self.background, background_allowed: self.background_allowed });
+            let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, sync_metered: self.power.sync_metered, background: self.background, background_allowed: self.background_allowed });
             let dialog = preferences::view(self.appearance, power, self.autostart, self.detailed_log, self.log_note.as_deref(), self.preferences_note.as_deref(), self.preferences_error.as_deref(), compact).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {
@@ -807,11 +812,14 @@ impl CelesteApp {
                 }
             })
             .collect();
+        let held_on_metered = power::held_on_metered(self.power);
         remote_page::Page {
             remote,
             state: self.display_state(remote),
             syncing: self.snapshot.syncing.contains(&remote.id),
-            next_sync: self.next_sync_eta(remote.id),
+            // No countdown while held: nothing is scheduled until the network changes.
+            next_sync: if held_on_metered { None } else { self.next_sync_eta(remote.id) },
+            held_on_metered,
             dirs: folders,
             draft_local,
             draft_remote,

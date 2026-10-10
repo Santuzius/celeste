@@ -1,4 +1,4 @@
-//! App-wide preferences dialog (as opposed to the per-remote settings): colours of the window and the tray icon, the size of the window's content, the power mode on Android, start at login — one labelled row each, like the remote settings.
+//! App-wide preferences dialog (as opposed to the per-remote settings): colours of the window and the tray icon, the size of the window's content, the power mode and metered networks on Android, start at login — one labelled row each, like the remote settings.
 
 use iced::{
     widget::{button, column, container, row, rule, toggler, Row, Space},
@@ -20,6 +20,7 @@ pub enum Msg {
     TrayIconChanged(TrayIconChoice),
     SizeChanged(SizeChoice),
     PowerModeChanged(PowerMode),
+    SyncMeteredToggled(bool),
     /// Ask Android to leave Celeste out of battery optimization.
     AllowBackground,
     BackgroundToggled(bool),
@@ -42,6 +43,8 @@ pub enum Msg {
 #[derive(Debug, Clone, Copy)]
 pub struct Power {
     pub mode: PowerMode,
+    /// Sync on metered networks too.
+    pub sync_metered: bool,
     /// "Run in background" is on.
     pub background: bool,
     /// Android leaves Celeste out of battery optimization.
@@ -87,7 +90,13 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
                 .push(separator())
                 .push(setting_row("Start when the device starts", autostart_hint, autostart_toggle.into()))
                 .push(separator())
-                .push(power_row(power));
+                .push(power_row(power))
+                .push(separator())
+                .push(setting_row(
+                    "Sync on metered networks",
+                    "Mobile data and hotspots. When off, syncing waits for Wi-Fi or another unmetered network; Sync now still syncs.",
+                    toggler(power.sync_metered).on_toggle(Msg::SyncMeteredToggled).size(20).into(),
+                ));
         }
         None => {
             rows = rows.push(separator()).push(setting_row(

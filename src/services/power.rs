@@ -1,4 +1,4 @@
-//! How much battery syncing may use on Android: the power mode chosen in Preferences and what it means for the sync engine's [`Cadence`] given the screen, the charger and Android's battery saver. Kept in `power.conf` in the data dir as `key=value` lines, together with whether Celeste already asked to be exempted from battery optimization.
+//! How much battery and mobile data syncing may use on Android: the power mode chosen in Preferences and what it means for the sync engine's [`Cadence`] given the screen, the charger, Android's battery saver and a metered network. Kept in `power.conf` in the data dir as `key=value` lines, together with whether to sync on metered networks and whether Celeste already asked to be exempted from battery optimization.
 
 use std::{io, path::Path, time::Duration};
 
@@ -77,13 +77,23 @@ pub struct Conditions {
     /// Plugged in, whether or not the battery is full.
     pub charging: bool,
     pub battery_saver: bool,
+    /// The network is charged by the amount of data, e.g. mobile data or a hotspot, as Android judges it.
+    pub metered: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowerSettings {
     pub mode: PowerMode,
+    /// Sync on metered networks too; when off, scheduled passes wait for another network, but "Sync now" still syncs.
+    pub sync_metered: bool,
     /// Celeste asked once to be exempted from battery optimization, whatever the answer.
     pub asked_battery: bool,
+}
+
+impl Default for PowerSettings {
+    fn default() -> Self {
+        Self { mode: PowerMode::default(), sync_metered: true, asked_battery: false }
+    }
 }
 
 impl PowerSettings {
@@ -98,6 +108,7 @@ impl PowerSettings {
             let Some((key, value)) = line.split_once('=') else { continue };
             match key.trim() {
                 "mode" => settings.mode = PowerMode::parse(value).unwrap_or_default(),
+                "sync_metered" => settings.sync_metered = value.trim() != "no",
                 "asked_battery" => settings.asked_battery = value.trim() == "yes",
                 _ => {}
             }
@@ -114,7 +125,29 @@ impl PowerSettings {
 
     /// As `key=value` lines, the form [`parse`](Self::parse) reads.
     pub fn to_conf(&self) -> String {
-        format!("mode={}\nasked_battery={}\n", self.mode.key(), if self.asked_battery { "yes" } else { "no" })
+        let yes_no = |on: bool| if on { "yes" } else { "no" };
+        format!("mode={}\nsync_metered={}\nasked_battery={}\n", self.mode.key(), yes_no(self.sync_metered), yes_no(self.asked_battery))
+    }
+
+    /// The engine's cadence under `now`: held on a metered network if so chosen, otherwise as the power mode says.
+    pub fn cadence(self, now: Conditions) -> Cadence {
+        if self.held_on_metered(now) { Cadence::Held } else { self.mode.cadence(now) }
+    }
+
+    /// Scheduled passes wait because the network is metered.
+    pub fn held_on_metered(self, now: Conditions) -> bool {
+        !self.sync_metered && now.metered
+    }
+}
+
+/// Whether scheduled passes wait for an unmetered network right now; never on the desktop, which doesn't tell metered networks apart yet.
+pub fn held_on_metered(settings: PowerSettings) -> bool {
+    #[cfg(target_os = "android")]
+    return settings.held_on_metered(crate::infrastructure::android::conditions());
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = settings;
+        false
     }
 }
 
@@ -182,11 +215,26 @@ mod tests {
     }
 
     #[test]
+    fn a_metered_network_holds_syncing_only_when_chosen_even_while_charging() {
+        let metered = Conditions { metered: true, charging: true, ..Conditions::default() };
+        let everywhere = PowerSettings { mode: PowerMode::SyncSpeed, ..PowerSettings::default() };
+        assert_eq!(everywhere.cadence(metered), Cadence::Full);
+        let unmetered_only = PowerSettings { sync_metered: false, ..everywhere };
+        assert_eq!(unmetered_only.cadence(metered), Cadence::Held);
+        assert_eq!(unmetered_only.cadence(Conditions { metered: false, ..metered }), Cadence::Full);
+    }
+
+    #[test]
+    fn older_files_without_the_metered_choice_sync_on_metered_networks() {
+        assert!(PowerSettings::parse("mode=balanced\nasked_battery=yes\n").sync_metered);
+    }
+
+    #[test]
     fn missing_file_is_balanced_and_saved_settings_load_back() {
         let dir = std::env::temp_dir().join(format!("celeste-power-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(PowerSettings::load(&dir), PowerSettings::default());
-        let chosen = PowerSettings { mode: PowerMode::PowerSave, asked_battery: true };
+        let chosen = PowerSettings { mode: PowerMode::PowerSave, sync_metered: false, asked_battery: true };
         chosen.save(&dir).unwrap();
         assert_eq!(PowerSettings::load(&dir), chosen);
         let _ = std::fs::remove_dir_all(&dir);
