@@ -18,7 +18,7 @@
 
 use std::{
     collections::VecDeque,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader},
     os::fd::{FromRawFd, IntoRawFd, OwnedFd},
     sync::{Arc, Mutex, OnceLock},
     thread,
@@ -140,7 +140,12 @@ fn reader_loop(
 ) {
     let file = std::fs::File::from(read_fd);
     let mut reader = BufReader::new(file);
+    #[cfg(not(target_os = "android"))]
+    use std::io::Write;
+    #[cfg(not(target_os = "android"))]
     let mut sink = std::fs::File::from(saved_stderr);
+    #[cfg(target_os = "android")]
+    drop(saved_stderr);
     let mut line = String::new();
     loop {
         line.clear();
@@ -148,9 +153,14 @@ fn reader_loop(
             Ok(0) => break, // writer end closed
             Ok(_) => {
                 // Forward verbatim first so the real stderr stays live
-                // even if the ring lock is briefly held.
-                let _ = sink.write_all(line.as_bytes());
-                let _ = sink.flush();
+                // even if the ring lock is briefly held. Android's stderr is /dev/null (or a pipe the GUI set up only later), so lines go to logcat there.
+                #[cfg(target_os = "android")]
+                log::info!(target: "stderr", "{}", line.trim_end());
+                #[cfg(not(target_os = "android"))]
+                {
+                    let _ = sink.write_all(line.as_bytes());
+                    let _ = sink.flush();
+                }
 
                 let received_at = Instant::now();
                 let mut guard = ring.lock().unwrap();
