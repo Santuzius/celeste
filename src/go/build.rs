@@ -21,6 +21,7 @@ fn main() {
     println!("cargo:rerun-if-changed=go.mod");
     println!("cargo:rerun-if-changed=go.sum");
     println!("cargo:rerun-if-changed=wrapper.go");
+    println!("cargo:rerun-if-changed=authorize.go");
     // The proton-api submodule is the real source of truth for that
     // dependency; its HEAD commit is tracked by git submodule, but
     // when we edit files there we want a rebuild.
@@ -91,6 +92,9 @@ fn main() {
         .allowlist_function("RcloneFreeString")
         .allowlist_function("RcloneRemoteChanged")
         .allowlist_function("RcloneForgetRemote")
+        .allowlist_function("CelesteAuthorize")
+        .allowlist_function("CelesteAuthorizeURL")
+        .allowlist_function("CelesteAuthorizeCancel")
         .allowlist_function("ProtonDrive_Version")
         .allowlist_function("ProtonDrive_SetAppVersion")
         .allowlist_function("ProtonDrive_Login")

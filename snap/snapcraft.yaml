@@ -38,7 +38,7 @@ apps:
       - home
       - removable-media
       - network
-      # Local callback port of the Google sign-in (`rclone authorize`).
+      # Local callback port of the Google sign-in (rclone's authorize flow, built in).
       - network-bind
       # Sign-in tokens live in the Secret Service keyring. Not auto-connected for new snaps; see doc/snap.md.
       - password-manager-service
@@ -62,7 +62,6 @@ parts:
       # Some dependencies use unstable rustc features behind RUSTC_BOOTSTRAP, as in the Nix build.
       - RUSTC_BOOTSTRAP: "1"
     stage-packages:
-      - rclone # `rclone authorize` for the Google Drive sign-in
       - fontconfig # fc-match, which locates the UI font
       - libdbus-1-3
       - libvulkan1

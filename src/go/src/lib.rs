@@ -71,6 +71,42 @@ pub fn rpc<S1: Into<String>, S2: Into<String>>(method: S1, input: S2) -> Result<
     }
 }
 
+/// Run rclone's OAuth flow for the backend `kind` (`drive`, `dropbox`, `pcloud`) in-process, like `rclone authorize`, with the given client ID and secret unless empty. Blocks until the browser has come back to rclone's local web server or [`authorize_cancel`] is called; returns the token JSON. Instead of opening a browser, rclone leaves the link to [`authorize_url`].
+pub fn authorize(kind: &str, client_id: &str, client_secret: &str) -> Result<String, String> {
+    #[derive(Deserialize)]
+    struct Reply {
+        token: Option<String>,
+        error: Option<String>,
+    }
+    let (Ok(kind), Ok(id), Ok(secret)) = (CString::new(kind), CString::new(client_id), CString::new(client_secret)) else {
+        return Err("invalid client ID or secret".to_owned());
+    };
+    let reply = unsafe { take_string(ffi::CelesteAuthorize(kind.as_ptr() as *mut c_char, id.as_ptr() as *mut c_char, secret.as_ptr() as *mut c_char)) };
+    match serde_json::from_str::<Reply>(&reply) {
+        Ok(Reply { token: Some(token), .. }) => Ok(token),
+        Ok(Reply { error: Some(error), .. }) => Err(error),
+        _ => Err(format!("unexpected reply from rclone: {reply}")),
+    }
+}
+
+/// The authorization link of the running [`authorize`], once rclone has made it.
+pub fn authorize_url() -> Option<String> {
+    let url = unsafe { ffi::CelesteAuthorizeURL() };
+    (!url.is_null()).then(|| unsafe { take_string(url) })
+}
+
+/// Make a running [`authorize`] return with an error.
+pub fn authorize_cancel() {
+    unsafe { ffi::CelesteAuthorizeCancel() };
+}
+
+/// Copy a string the Go side allocated, and free it.
+unsafe fn take_string(ptr: *mut c_char) -> String {
+    let text = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    unsafe { ffi::RcloneFreeString(ptr) };
+    text
+}
+
 /// Whether the rclone remote `remote` (name without colon) may have changed on the provider's side since the previous call. Cheap: no network, the backend polls its change log in the background. Always `true` for backends without change notification.
 pub fn remote_changed(remote: &str) -> bool {
     let Ok(c_remote) = CString::new(remote) else {
@@ -469,6 +505,28 @@ fn _path_used_somewhere(_p: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::proton::HumanVerification;
+
+    /// The in-process `rclone authorize` hands over its link and stops on cancel, freeing its port for the next try. Opens no browser and needs no network.
+    #[test]
+    fn authorize_hands_over_link_and_cancels() {
+        super::initialize();
+        for _ in 0..2 {
+            let flow = std::thread::spawn(|| super::authorize("drive", "id.apps.googleusercontent.com", "secret"));
+            let url = loop {
+                if let Some(url) = super::authorize_url() {
+                    break url;
+                }
+                assert!(!flow.is_finished(), "authorize ended early: {:?}", flow.join());
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            };
+            assert!(url.starts_with("http://127.0.0.1:53682/auth?state="), "{url}");
+            while !flow.is_finished() {
+                super::authorize_cancel();
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            assert!(flow.join().unwrap().is_err());
+        }
+    }
 
     #[test]
     fn parses_human_verification_errors() {

@@ -2,13 +2,27 @@ use std::path::PathBuf;
 
 use futures::future::Future;
 
-/// Block the current thread on a future. Safe from any thread;
-/// `block_on` has no main-context requirements.
 /// How the UI names the machine Celeste runs on.
 pub const THIS_DEVICE: &str = if cfg!(target_os = "android") { "this device" } else { "this computer" };
 
+/// Block the current thread on a future. Safe from any thread;
+/// `block_on` has no main-context requirements.
 pub fn await_future<F: Future>(future: F) -> F::Output {
     futures::executor::block_on(future)
+}
+
+/// Hand a URL to the desktop's default browser.
+#[cfg(not(target_os = "android"))]
+pub fn open_in_browser(url: &str) {
+    if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
+        eprintln!("celeste: couldn't open {url} ({err}).");
+    }
+}
+
+/// Hand a URL to Android's default browser.
+#[cfg(target_os = "android")]
+pub fn open_in_browser(url: &str) {
+    crate::infrastructure::android::open_url(url);
 }
 
 /// The user's real home directory, as the user knows it. Inside a snap `$HOME` points to the snap's private data directory, the real one is in `$SNAP_REAL_HOME`; data files stay under `$HOME` either way.

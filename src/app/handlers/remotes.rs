@@ -10,6 +10,7 @@ use crate::{
     },
     engine::Command,
     screens::{add_remote, remote_page},
+    util::open_in_browser,
 };
 
 use super::super::{map_domain_provider_to_add_remote, CelesteApp, Message};
@@ -140,7 +141,7 @@ impl CelesteApp {
                 }
             }
             add_remote::Msg::Cancel => {
-                // Stops a pending `rclone authorize`; its result then
+                // Stops a pending authorization; its result then
                 // arrives as a cancellation and is ignored.
                 if let Some(handle) = &draft.oauth {
                     handle.cancel();
@@ -527,18 +528,4 @@ impl CelesteApp {
         self.add_remote_draft = Some(draft);
         Task::none()
     }
-}
-
-/// Hand a URL to the desktop's default browser.
-#[cfg(not(target_os = "android"))]
-pub(in crate::app) fn open_in_browser(url: &str) {
-    if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
-        eprintln!("celeste: couldn't open {url} ({err}).");
-    }
-}
-
-/// Hand a URL to Android's default browser.
-#[cfg(target_os = "android")]
-pub(in crate::app) fn open_in_browser(url: &str) {
-    crate::infrastructure::android::open_url(url);
 }
