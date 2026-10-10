@@ -22,7 +22,7 @@ Celeste is a file synchronization client for Linux and Android, maintained by Al
 Credentials never leave your device, except to sign in to the provider they belong to.
 
 - **Linux:** all credentials are stored in your system keyring (e.g. GNOME Keyring or KWallet).
-- **Android:** each credential is stored as a file in Celeste's private app storage, encrypted (AES-256-GCM) with a key that the Android Keystore generates and never hands out. Other apps cannot read this storage, and Celeste is excluded from Android's backups, so credentials are not copied to Google's cloud backup or to another phone.
+- **Android:** each credential is stored as a file in Celeste's private app storage, encrypted (AES-256-GCM) with a key that the Android Keystore generates and never hands out. Other apps cannot read this storage. Celeste excludes all its data from Android's cloud backup and from the transfer to a new phone, so neither credentials nor the file list below leave the phone that way.
 - **Proton Drive:** your password is used once to sign in and is not stored. The key passphrase derived from it is, so Celeste can encrypt and decrypt your files without asking again. Anyone who can read your unlocked keyring, or who has root access to your phone, can therefore read your Proton Drive files. Proton's own apps keep the same kind of key.
 - **Google Drive:** Celeste also keeps its tokens in a file that only Celeste can read, encrypted with rclone's config encryption under a random password stored like the other credentials. On Linux it is a temporary file deleted when you log out; on Android it stays in Celeste's private app storage.
 - Celeste also keeps a local database of your folder pairs and the names of synced files, to detect changes, and prints file names in its diagnostic output (the system journal on Linux, Android's log on Android). Neither contains passwords, keys or tokens.
@@ -30,7 +30,7 @@ Credentials never leave your device, except to sign in to the provider they belo
 
 ## How data is shared
 
-- Files are transferred only between your computer and the provider you connected, over encrypted connections.
+- Files are transferred only between your computer or phone and the provider you connected, over encrypted connections.
 - Proton Drive is end-to-end encrypted: Celeste encrypts file contents and names before upload, so Proton cannot read them.
 - Like any client, Celeste shows the provider your IP address, the files it transfers and an app identification.
 - Google Drive is accessed through the open-source [rclone](https://rclone.org) library and Proton Drive through Proton's [go-proton-api](https://github.com/ProtonMail/go-proton-api). Both run inside Celeste and send nothing to their developers.
