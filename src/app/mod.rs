@@ -98,8 +98,8 @@ pub enum Message {
     Back,
     /// Android: room taken by the system bars, cutout and keyboard.
     Insets(iced_android::Insets),
-    /// Android's font size setting (see `iced_android::font_scale`).
-    FontScale(f32),
+    /// Android's font size setting and display size (see `iced_android::system_scale`).
+    SystemScale(f32),
     /// Compact layout: the scrim around the drawer was tapped.
     CloseDrawer,
 }
@@ -152,7 +152,7 @@ pub struct CelesteApp {
     /// Colour choices for the window and the tray icon.
     appearance: Appearance,
     /// Android's font size as a factor; 1 elsewhere.
-    system_font_scale: f32,
+    system_scale: f32,
     /// Why saving a preference failed, shown in the Preferences dialog.
     preferences_error: Option<String>,
     /// Files per sync dir that changed on both sides: the engine's list, minus choices made since it was published.
@@ -217,7 +217,7 @@ impl CelesteApp {
             preferences_open: false,
             autostart: autostart::enabled(),
             appearance: Appearance::load(&crate::util::get_data_dir()),
-            system_font_scale: 1.0,
+            system_scale: 1.0,
             preferences_error: None,
             conflicts: HashMap::new(),
             conflict_dialog: None,
@@ -254,7 +254,7 @@ impl CelesteApp {
 
     /// The chosen size on top of the system's font size; iced's logical pixels already follow the display scaling.
     fn scale_factor(&self, _id: window::Id) -> f32 {
-        self.appearance.size.factor() * self.system_font_scale
+        self.appearance.size.factor() * self.system_scale
     }
 
     fn theme(&self, _id: window::Id) -> Theme {
@@ -312,7 +312,7 @@ impl CelesteApp {
         });
         let foreground = iced_android::foreground().map(Message::Foreground);
         let insets = iced_android::insets().map(Message::Insets);
-        let font_scale = iced_android::font_scale().map(Message::FontScale);
+        let font_scale = iced_android::system_scale().map(Message::SystemScale);
         Subscription::batch([engine, ticker, tray, window_close, system_theme, show_requests, escape, foreground, insets, font_scale])
     }
 
@@ -365,8 +365,8 @@ impl CelesteApp {
                 self.set_appearance(Appearance { size: choice, ..self.appearance });
                 Task::none()
             }
-            Message::FontScale(scale) => {
-                self.system_font_scale = scale;
+            Message::SystemScale(scale) => {
+                self.system_scale = scale;
                 Task::none()
             }
             Message::Preferences(preferences::Msg::TrayIconChanged(choice)) => {

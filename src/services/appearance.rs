@@ -80,7 +80,7 @@ impl TrayIconChoice {
     }
 }
 
-/// Size of everything in the window, text and spacing alike, relative to the system's: on Android its font size, elsewhere the desktop's scaling.
+/// Size of everything in the window, text and spacing alike, relative to the system's: on Android its font and display size, elsewhere the desktop's scaling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SizeChoice {
     Smaller,

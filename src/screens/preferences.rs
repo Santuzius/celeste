@@ -23,7 +23,7 @@ pub enum Msg {
 /// `compact`: the phone layout, where the button groups go below their labels.
 pub fn view<'a>(appearance: Appearance, autostart: bool, error: Option<&'a str>, compact: bool) -> Element<'a, Msg> {
     let android = cfg!(target_os = "android");
-    let size_hint = if android { "Text and everything else in this window, relative to the system's font size." } else { "Text and everything else in this window." };
+    let size_hint = if android { "Text and everything else in this window, relative to the system's font and display size." } else { "Text and everything else in this window." };
     let mut rows = column![
         choice_row(compact, "Theme", "Colours of this window.", segmented(&ThemeChoice::ALL, ThemeChoice::label, appearance.window, Msg::WindowThemeChanged)),
         rule::horizontal(1).style(theme::separator),
