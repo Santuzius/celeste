@@ -25,6 +25,23 @@ pub fn open_in_browser(url: &str) {
     crate::infrastructure::android::open_url(url);
 }
 
+/// Show a local folder in the desktop's file manager.
+#[cfg(not(target_os = "android"))]
+pub fn open_folder(path: &str) {
+    open_in_browser(path);
+}
+
+/// Whether [`open_folder`] can show `path`: on Android only folders in shared storage, which file managers see.
+pub fn can_open_folder(path: &str) -> bool {
+    !cfg!(target_os = "android") || path.starts_with("/storage/")
+}
+
+/// Show a local folder in Android's file manager.
+#[cfg(target_os = "android")]
+pub fn open_folder(path: &str) {
+    crate::infrastructure::android::open_folder(path);
+}
+
 /// The user's real home directory, as the user knows it. Inside a snap `$HOME` points to the snap's private data directory, the real one is in `$SNAP_REAL_HOME`; data files stay under `$HOME` either way.
 pub fn user_home() -> Option<String> {
     std::env::var("SNAP_REAL_HOME").or_else(|_| std::env::var("HOME")).ok().filter(|h| !h.is_empty())

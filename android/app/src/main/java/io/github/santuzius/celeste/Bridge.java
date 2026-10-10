@@ -138,6 +138,29 @@ public final class Bridge {
         }
     }
 
+    /** Shows a folder in shared storage in the file manager: its document in the external storage provider, the reverse of {@link #treeToPath}. */
+    public static void openFolder(Context context, String path) {
+        String primary = Environment.getExternalStorageDirectory().getPath();
+        String id;
+        if (path.equals(primary) || path.startsWith(primary + "/")) {
+            id = "primary:" + path.substring(Math.min(path.length(), primary.length() + 1));
+        } else if (path.startsWith("/storage/")) {
+            String rest = path.substring("/storage/".length());
+            int slash = rest.indexOf('/');
+            id = slash < 0 ? rest + ":" : rest.substring(0, slash) + ":" + rest.substring(slash + 1);
+        } else {
+            Log.w(TAG, "not in shared storage: " + path);
+            return;
+        }
+        Uri folder = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", id);
+        Intent intent = new Intent(Intent.ACTION_VIEW).setDataAndType(folder, DocumentsContract.Document.MIME_TYPE_DIR).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Log.w(TAG, "no app shows " + folder, e);
+        }
+    }
+
     // Folder picker ---------------------------------------------------------
 
     /** Opens the system's folder picker; the answer goes to {@link #nativeFolderPicked}. Without access to shared storage it opens that setting instead and answers null. False when no activity is there to show it. */

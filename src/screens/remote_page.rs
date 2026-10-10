@@ -53,6 +53,8 @@ pub enum Msg {
     ConfirmDelete,
     /// Dialog Cancel pressed — drop the pending delete.
     CancelDelete,
+    /// Show the local folder in the file manager.
+    OpenFolder(String),
     ToggleExclusions(SyncDirId),
     ToggleLog(SyncDirId),
     DraftExclusionChanged(SyncDirId, String),
@@ -390,6 +392,13 @@ fn folder_card<'a>(remote: &'a Remote, folder: Folder<'a>) -> Element<'a, Msg> {
         ]
         .spacing(2)
         .width(Length::Fill),
+        with_tip(
+            button(icon(icondata::TbFolderOpenOutline, 16.0))
+                .padding(6)
+                .style(theme::button_toggle(false))
+                .on_press_maybe(crate::util::can_open_folder(&sd.local_path).then(|| Msg::OpenFolder(sd.local_path.clone()))),
+            "Open in the file manager",
+        ),
         with_tip(
             button(row![icon(icondata::TbFilterOutline, 16.0), text(excluded.to_string()).size(CAPTION)].spacing(4).align_y(Alignment::Center))
                 .padding([5, 8])

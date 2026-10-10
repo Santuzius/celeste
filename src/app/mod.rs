@@ -521,6 +521,10 @@ impl CelesteApp {
                 self.add_folder_open = true;
                 Task::none()
             }
+            Message::Remote(remote_page::Msg::OpenFolder(path)) => {
+                crate::util::open_folder(&path);
+                Task::none()
+            }
             Message::Remote(remote_page::Msg::CloseAddFolder) => {
                 self.add_folder_open = false;
                 Task::none()

@@ -94,6 +94,16 @@ pub fn ask_to_ignore_battery_optimizations() {
     });
 }
 
+/// Shows the folder at `path` in the default file manager.
+pub fn open_folder(path: &str) {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        let path = env.new_string(path)?;
+        env.call_static_method(class, "openFolder", "(Landroid/content/Context;Ljava/lang/String;)V", &[JValue::Object(context), JValue::Object(&path)])?;
+        Ok(())
+    });
+}
+
 /// Runs `f` with a JNI environment and the Application context, attaching the current thread to the Java VM first. Logs Java exceptions instead of leaving them pending.
 pub fn with_context<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>) -> Option<T> {
     let (vm, application) = CONTEXT.get()?;
