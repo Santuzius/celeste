@@ -29,6 +29,8 @@ Two-way file sync between folders on your Linux computer or Android phone and Go
 
 ![Resolving a file that changed both locally and on Google Drive](doc/img/Screenshot_conflict.png)
 
+![Celeste on an Android phone: a remote's folders, and the drawer with both remotes](doc/img/Screenshot_android.png)
+
 ## Installing
 ### AppImage
 For x86_64 distributions with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later). Needs a Secret Service keyring such as GNOME Keyring or KWallet, which most desktops include.
