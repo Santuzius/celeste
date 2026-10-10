@@ -61,10 +61,13 @@ fn write_at(path: &Path, enabled: bool, exec: &str) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// `celeste` when that name on `PATH` is this very binary (installed packages, the Snap), so the entry survives updates; otherwise the absolute path, e.g. for a development build.
+/// `celeste` when that name on `PATH` is this very binary (installed packages, the Snap), so the entry survives updates; the `.AppImage` file for an AppImage, whose binary lies in a mount point that changes with every start; otherwise the absolute path, e.g. for a development build.
 fn exec_command() -> String {
     if std::env::var_os("SNAP").is_some() {
         return "celeste".to_owned();
+    }
+    if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|path| !path.is_empty()) {
+        return quote(&appimage.to_string_lossy());
     }
     let Ok(exe) = std::env::current_exe().and_then(|p| p.canonicalize()) else {
         return "celeste".to_owned();

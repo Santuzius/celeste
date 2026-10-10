@@ -1,0 +1,4 @@
+#!/bin/sh
+# Entry point of the AppImage. The runtime sets $APPIMAGE to the .AppImage file, which Celeste puts into its autostart entry.
+here="$(dirname "$(readlink -f "$0")")"
+exec "$here/usr/bin/celeste" "$@"
