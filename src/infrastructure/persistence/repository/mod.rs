@@ -278,3 +278,34 @@ impl Repository for SeaOrmRepository {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::Database;
+
+    use super::SeaOrmRepository;
+    use crate::{
+        domain::ports::Repository,
+        infrastructure::persistence::migrations::{Migrator, MigratorTrait},
+        util::await_future,
+    };
+
+    #[test]
+    fn folders_and_remotes_with_exclusions_can_be_removed() {
+        let db = await_future(Database::connect("sqlite::memory:")).unwrap();
+        await_future(Migrator::up(&db, None)).unwrap();
+        let repo = SeaOrmRepository::new(db);
+        let id = await_future(repo.insert_remote("R".to_owned())).unwrap();
+        for local in ["/a", "/b"] {
+            await_future(repo.insert_sync_dir(id, local.to_owned(), String::new())).unwrap();
+        }
+        for dir in await_future(repo.list_sync_dirs(id)).unwrap() {
+            await_future(repo.insert_exclusion(dir.id, "Big".to_owned())).unwrap();
+        }
+
+        await_future(repo.cascade_delete_sync_dir("/a", "")).unwrap();
+        assert_eq!(await_future(repo.list_sync_dirs(id)).unwrap().len(), 1);
+        await_future(repo.cascade_delete_remote(id)).unwrap();
+        assert!(await_future(repo.list_remotes()).unwrap().is_empty());
+    }
+}

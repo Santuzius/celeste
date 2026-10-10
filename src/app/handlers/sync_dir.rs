@@ -228,7 +228,9 @@ impl CelesteApp {
         let engine = self.engine.clone();
         Task::perform(
             async move {
-                let _ = repo.cascade_delete_sync_dir(&local, &remote).await;
+                if let Err(err) = repo.cascade_delete_sync_dir(&local, &remote).await {
+                    eprintln!("celeste: could not remove the folder {local}: {err}");
+                }
                 engine.send(Command::Reload);
                 id
             },

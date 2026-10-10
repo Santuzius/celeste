@@ -10,7 +10,7 @@ use crate::domain::{
 };
 
 use super::super::models::{
-    RemotesActiveModel, RemotesColumn, RemotesEntity, SyncDirsColumn, SyncDirsEntity,
+    RemotesActiveModel, RemotesColumn, RemotesEntity, SyncDirExclusionsColumn, SyncDirExclusionsEntity, SyncDirsColumn, SyncDirsEntity,
     SyncItemsColumn, SyncItemsEntity,
 };
 use super::{map_err, map_remote};
@@ -114,6 +114,12 @@ pub(super) fn cascade_delete_remote(
         for sd in sync_dirs {
             SyncItemsEntity::delete_many()
                 .filter(SyncItemsColumn::SyncDirId.eq(sd.id))
+                .exec(db)
+                .await
+                .map_err(map_err)?;
+            // Its exclusions refer to it; SQLite refuses to delete it before them.
+            SyncDirExclusionsEntity::delete_many()
+                .filter(SyncDirExclusionsColumn::SyncDirId.eq(sd.id))
                 .exec(db)
                 .await
                 .map_err(map_err)?;

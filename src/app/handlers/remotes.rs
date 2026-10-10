@@ -492,11 +492,9 @@ impl CelesteApp {
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
-                    let _ = crate::services::remote_lifecycle::delete_remote(
-                        &name,
-                        &*repo_blocking,
-                        &*rclone,
-                    );
+                    if let Err(err) = crate::services::remote_lifecycle::delete_remote(&name, &*repo_blocking, &*rclone) {
+                        eprintln!("celeste: could not remove '{name}': {err}");
+                    }
                 })
                 .await
                 .ok();
