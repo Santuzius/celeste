@@ -287,7 +287,10 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
                         .style(theme::button_secondary)
                         .on_press(Msg::CopyPrivacyLink),
                 ]
-                .spacing(ROW_SPACING),
+                .spacing(ROW_SPACING)
+                // On a phone the second button goes below the first instead of squeezing its text.
+                .wrap()
+                .vertical_spacing(ROW_SPACING),
             );
             body = body.push(field("Client ID", input("…apps.googleusercontent.com", &draft.client_id, Msg::ClientIdChanged)));
             body = body.push(field("Client secret", input("client secret", &draft.client_secret, Msg::ClientSecretChanged).secure(true)));

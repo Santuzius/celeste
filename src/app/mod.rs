@@ -369,7 +369,7 @@ impl CelesteApp {
                 Task::none()
             }
             Message::About(about::Msg::Open(url)) => {
-                handlers::remotes::open_in_browser(url);
+                crate::util::open_in_browser(url);
                 Task::none()
             }
             Message::Remote(remote_page::Msg::RequestDeleteRemote(id, name)) => {
@@ -448,8 +448,10 @@ impl CelesteApp {
                 Task::none()
             }
             Message::Insets(insets) => {
+                // The keyboard opened (or grew) and may cover the field being typed into.
+                let keyboard_grew = insets.bottom > self.insets.bottom;
                 self.insets = insets;
-                Task::none()
+                if keyboard_grew { iced_android::scroll_to_focused() } else { Task::none() }
             }
             Message::CloseDrawer => {
                 self.drawer_open = false;

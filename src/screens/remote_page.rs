@@ -716,8 +716,9 @@ pub fn modal<'a, M: Clone + 'a>(content: Element<'a, M>, on_dismiss: Option<M>) 
     if let Some(msg) = on_dismiss {
         backdrop = backdrop.on_press(msg);
     }
-    // The padding keeps dialogs off the edges of a phone screen.
-    stack![opaque(backdrop), center(opaque(content)).padding(12)].into()
+    // The padding keeps dialogs off the edges of a phone screen; scrolling keeps tall ones, or ones the soft keyboard squeezes, reachable.
+    let dialog = scrollable(container(opaque(content)).center_x(Length::Fill)).direction(theme::slim_scrollbar()).style(theme::scrollbar);
+    stack![opaque(backdrop), center(dialog).padding(12)].into()
 }
 
 fn format_duration(d: Duration) -> String {
