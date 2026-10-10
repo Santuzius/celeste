@@ -33,7 +33,7 @@ fn is_stale_copy(item: &SyncItem) -> bool {
         .ok()
         .filter(fs::Metadata::is_file)
         .and_then(|m| mtime_secs(&m))
-        .is_some_and(|secs| secs <= item.last_local_timestamp)
+        .is_some_and(|secs| secs == item.last_local_timestamp)
 }
 
 /// Number of synced-and-unchanged files under `root`.

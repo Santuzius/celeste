@@ -336,7 +336,7 @@ fn preflight(action: Action, db: &HashMap<String, SyncItem>, remote: &Remote, cl
         matches!(client.stat(&remote.name, remote_path, cancel), Ok(Some(item)) if !item.is_dir && item.mod_time.unix_timestamp() > row.last_remote_timestamp)
     };
     let local_changed = |local_path: &str, row: &SyncItem| {
-        fs::metadata(local_path).is_ok_and(|m| m.is_file()) && local_timestamp(Path::new(local_path)).is_some_and(|ts| ts as i64 > row.last_local_timestamp)
+        fs::metadata(local_path).is_ok_and(|m| m.is_file()) && local_timestamp(Path::new(local_path)).is_some_and(|ts| ts as i64 != row.last_local_timestamp)
     };
     match action {
         Action::Upload { local_path, remote_path, is_dir: false } => match db.get(&remote_path) {

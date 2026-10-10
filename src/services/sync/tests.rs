@@ -199,6 +199,25 @@ fn a_download_keeps_the_remote_modification_time() {
     assert!(repo.has_item(local_path.to_str().unwrap(), "new.txt"));
 }
 
+/// A file put back from a backup keeps its old modification time; it still counts as changed and goes up.
+#[test]
+fn a_file_restored_with_an_older_time_is_uploaded() {
+    let tmp = TempDir::new("sync_restored");
+    let restored = tmp.write_file("letter.pdf", b"the real content");
+    touch_mtime(&restored, 1_560_000_000);
+    let repo = FakeRepo::new();
+    repo.insert_item(SyncDirId(1), restored.to_str().unwrap(), "letter.pdf", 1_700_000_000, 1_700_000_000);
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("letter.pdf", false, 1_700_000_000)]));
+    client.set_stat("letter.pdf", Ok(Some(remote_item("letter.pdf", false, 1_700_000_000))));
+
+    let (outcome, events) = run_full(&tmp, &repo, &client);
+    assert_eq!(outcome, Outcome::Synced);
+    assert!(errors(&events).is_empty());
+    assert_eq!(client.copy_to_remote_calls.lock().unwrap().len(), 1);
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+}
+
 /// The part file of a download cut off by Celeste's end is removed and never uploaded; other programs' part files stay untouched.
 #[test]
 fn an_unfinished_download_is_cleaned_up_and_not_uploaded() {

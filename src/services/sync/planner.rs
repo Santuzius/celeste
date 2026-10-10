@@ -332,9 +332,9 @@ fn plan_one(
             // upload that rclone cleaned up (e.g. hash mismatch on transfer)
             // than with an intentional remote deletion. Re-upload rather
             // than destroy the newer local copy.
-            if !l.is_dir && l.mtime_secs > db.last_local_timestamp {
+            if !l.is_dir && l.mtime_secs != db.last_local_timestamp {
                 eprintln!(
-                    "sync: SWAP DeleteLocal → Upload for '{remote_path}' — local mtime {} newer than last synced {} (likely failed upload cleanup); retrying upload.",
+                    "sync: SWAP DeleteLocal → Upload for '{remote_path}' — local mtime {} differs from last synced {} (likely failed upload cleanup); retrying upload.",
                     l.mtime_secs, db.last_local_timestamp,
                 );
                 return Some(Action::Upload {
@@ -401,7 +401,8 @@ fn plan_one(
         }
         // Full triple — compare timestamps against the recorded values.
         (Some(l), Some(r), Some(db)) => {
-            let local_changed = l.mtime_secs > db.last_local_timestamp;
+            // Any other time counts, not only a newer one: a file put back from a backup keeps its old time.
+            let local_changed = l.mtime_secs != db.last_local_timestamp;
             let remote_changed =
                 r.mod_time.unix_timestamp() > db.last_remote_timestamp;
             match (local_changed, remote_changed) {
