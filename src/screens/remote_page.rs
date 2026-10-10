@@ -317,9 +317,9 @@ fn status_line(page: &Page<'_>) -> String {
         RunState::Syncing(_) => status_label(page.state).to_owned(),
         _ if page.syncing => "Syncing…".to_owned(),
         _ if page.dirs.is_empty() => format!("{NO_FOLDERS} — add one below to start syncing"),
-        RunState::Waiting if page.held_on_metered => "Waiting for a network that isn't metered".to_owned(),
+        RunState::Held => "Held — the network is metered".to_owned(),
         RunState::Waiting => next("Waiting for the first sync"),
-        state if page.held_on_metered => format!("{} · on hold on a metered network", status_label(state)),
+        state if page.held_on_metered => format!("{} · held (metered)", status_label(state)),
         state => next(status_label(state)),
     }
 }

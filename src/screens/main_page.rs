@@ -130,6 +130,7 @@ pub fn status_label(state: RunState) -> &'static str {
         RunState::Warning => "Synced with problems",
         RunState::Error => "Sync failed",
         RunState::Waiting => "Waiting",
+        RunState::Held => "Held (metered)",
     }
 }
 

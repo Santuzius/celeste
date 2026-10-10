@@ -41,6 +41,8 @@ pub enum RunState {
     Warning,
     /// Last pass aborted (listing failed, etc.). Sticky like `Warning`.
     Error,
+    /// Idle, but scheduled passes wait for a network that isn't metered (Preferences → Sync on metered networks). Only the GUI shows it, in place of `Synced` or `Waiting`; the engine never sets it.
+    Held,
 }
 
 impl RunState {
@@ -48,7 +50,7 @@ impl RunState {
         match self {
             Self::Waiting => 0,
             Self::Paused => 1,
-            Self::Synced => 2,
+            Self::Synced | Self::Held => 2,
             Self::Syncing(_) => 3,
             Self::Warning => 4,
             Self::Error => 5,

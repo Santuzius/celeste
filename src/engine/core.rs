@@ -119,6 +119,8 @@ impl Core {
             Command::Cadence(cadence) => {
                 let woke = cadence.looser_than(self.cadence);
                 self.cadence = cadence;
+                // The summary may say why syncing is held; send it again.
+                self.last_status = None;
                 // Up to date by the time someone looks.
                 if woke {
                     for id in self.remotes.iter().map(|r| r.id).collect::<Vec<_>>() {

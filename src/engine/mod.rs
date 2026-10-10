@@ -217,7 +217,9 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Input>, snapshot_tx
 fn status_changed(status: &crate::infrastructure::tray::TrayStatus) {
     use crate::infrastructure::tray::{description_for, TrayStatus};
     // "Up to date" with the time of the last sync, which Android shows as an age that stays current; the engine only reports changes.
+    let power = crate::services::power::PowerSettings::load(&crate::util::get_data_dir());
     match status {
+        TrayStatus::Done { .. } if crate::services::power::held_on_metered(power) => crate::infrastructure::android::show_sync_status("Held (metered)", 0),
         TrayStatus::Done { last_sync_ago: Some(ago) } => {
             let at = std::time::SystemTime::now() - *ago;
             let millis = at.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);

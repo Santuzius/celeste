@@ -155,7 +155,7 @@ pub fn status_color(theme: &Theme, state: RunState) -> Color {
     let t = tones(theme);
     match state {
         RunState::Waiting => t.muted,
-        RunState::Paused => t.warning,
+        RunState::Paused | RunState::Held => t.warning,
         RunState::Synced => t.success,
         RunState::Syncing(_) => t.accent,
         RunState::Warning | RunState::AuthNeeded => t.caution,

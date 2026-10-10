@@ -780,11 +780,21 @@ impl CelesteApp {
     /// Roll-up shown for a remote; falls back to the policy before the
     /// state machine knows the remote.
     fn display_state(&self, remote: &Remote) -> RunState {
-        self.snapshot.state.roll_up(remote.id).unwrap_or(if remote.policy.enabled {
+        let state = self.snapshot.state.roll_up(remote.id).unwrap_or(if remote.policy.enabled {
             RunState::Waiting
         } else {
             RunState::Paused
-        })
+        });
+        self.held(remote, state)
+    }
+
+    /// `Held` in place of an idle state while scheduled passes wait for an unmetered network; problems, passes and pauses show as they are.
+    fn held(&self, remote: &Remote, state: RunState) -> RunState {
+        if remote.policy.enabled && matches!(state, RunState::Synced | RunState::Waiting) && power::held_on_metered(self.power) {
+            RunState::Held
+        } else {
+            state
+        }
     }
 
     /// Collect everything the remote page renders.
@@ -799,7 +809,7 @@ impl CelesteApp {
             .map(|dir| {
                 remote_page::Folder {
                     dir,
-                    state: self.snapshot.state.dir_state(remote.id, dir.id),
+                    state: self.held(remote, self.snapshot.state.dir_state(remote.id, dir.id)),
                     latest_line: self.snapshot.pass_lines.get(&dir.id).map(String::as_str),
                     latest_problem: self.snapshot.problems.get(&dir.id).map(String::as_str),
                     log: self.sync_dir_log_content.get(&dir.id),

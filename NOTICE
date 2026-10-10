@@ -23,3 +23,7 @@ This program incorporates third-party software:
   * native-go/drive/ contains code ported and adapted from
     github.com/rclone/Proton-API-Bridge (MIT, © 2023 Chun-Hung Tseng).
     See native-go/drive/LICENSE.
+
+  * src/icons.rs contains icon paths from Tabler Icons (MIT, © 2020-2024
+    Paweł Kuna, https://tabler.io/icons) and Ionicons (MIT, © 2015-present
+    Ionic, https://ionic.io/ionicons).
