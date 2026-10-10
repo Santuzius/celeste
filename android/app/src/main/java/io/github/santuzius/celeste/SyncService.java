@@ -14,6 +14,8 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.util.Log;
 
+import java.io.File;
+
 /** Keeps the process, and with it the sync engine, alive while Celeste is not on screen. Its silent notification shows the sync status. Started by the engine itself and after a reboot. */
 public class SyncService extends Service {
     private static final int NOTIFICATION_ID = 1;
@@ -50,16 +52,21 @@ public class SyncService extends Service {
         nativeConditions(!power.isInteractive(), charging, power.isPowerSaveMode());
     }
 
-    /** Shows `text` as the sync status, with `sinceMillis` (0 for none) as its age, starting the service if needed. */
+    /** Shows `text` as the sync status, with `sinceMillis` (0 for none) as its age, starting the service if needed and allowed. */
     static void show(Context context, String text, long sinceMillis) {
         status = text;
         statusSince = sinceMillis;
         SyncService service = running;
         if (service != null) {
             context.getSystemService(NotificationManager.class).notify(NOTIFICATION_ID, service.notification());
-        } else {
+        } else if (!backgroundOff(context)) {
             start(context);
         }
+    }
+
+    /** The user turned off "Run in background": Celeste syncs only while it is open. The switch src/services/power.rs writes: $XDG_DATA_HOME/celeste/background-off. */
+    static boolean backgroundOff(Context context) {
+        return new File(context.getFilesDir(), "celeste/background-off").exists();
     }
 
     static void start(Context context) {

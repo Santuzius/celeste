@@ -111,6 +111,32 @@ impl PowerSettings {
     }
 }
 
+/// Where "Run in background" is switched off: Celeste then syncs on Android only while it is open. Android's sync service and boot receiver check the same file.
+fn background_off_path() -> std::path::PathBuf {
+    crate::util::get_data_dir().join("background-off")
+}
+
+/// Whether Celeste keeps syncing on Android after leaving it.
+pub fn background_enabled() -> bool {
+    !background_off_path().exists()
+}
+
+/// Switch "Run in background" and start or stop the sync service accordingly.
+pub fn set_background(enabled: bool) -> io::Result<()> {
+    let path = background_off_path();
+    if enabled {
+        match std::fs::remove_file(&path) {
+            Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err),
+            _ => {}
+        }
+    } else {
+        std::fs::write(&path, "")?;
+    }
+    #[cfg(target_os = "android")]
+    crate::infrastructure::android::run_in_background(enabled);
+    Ok(())
+}
+
 /// Whether Android leaves Celeste out of battery optimization; always elsewhere.
 pub fn background_allowed() -> bool {
     #[cfg(target_os = "android")]

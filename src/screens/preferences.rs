@@ -22,16 +22,20 @@ pub enum Msg {
     PowerModeChanged(PowerMode),
     /// Ask Android to leave Celeste out of battery optimization.
     AllowBackground,
+    BackgroundToggled(bool),
     /// "Not now" in [`background_dialog`].
     KeepOptimized,
     AutostartToggled(bool),
     Close,
 }
 
-/// The power mode and whether Android leaves Celeste out of battery optimization; Android only.
+/// Syncing in the background; Android only.
 #[derive(Debug, Clone, Copy)]
 pub struct Power {
     pub mode: PowerMode,
+    /// "Run in background" is on.
+    pub background: bool,
+    /// Android leaves Celeste out of battery optimization.
     pub background_allowed: bool,
 }
 
@@ -53,15 +57,36 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, e
             segmented(&TrayIconChoice::ALL, TrayIconChoice::label, appearance.tray_icon, Msg::TrayIconChanged),
         ));
     }
-    if let Some(power) = power {
-        rows = rows.push(rule::horizontal(1).style(theme::separator)).push(power_row(power));
+    let separator = || rule::horizontal(1).style(theme::separator);
+    match power {
+        // Starting with the device only makes sense while Celeste may run in the background.
+        Some(power) => {
+            let mut background = column![setting_row(
+                "Run in background",
+                "Keep syncing after you leave Celeste, with its status in a silent notification.",
+                toggler(power.background).on_toggle(Msg::BackgroundToggled).size(20).into(),
+            )];
+            if power.background && !power.background_allowed {
+                background = background.push(container(background_warning()).padding(iced::Padding { top: 0.0, right: 14.0, bottom: 12.0, left: 14.0 }));
+            }
+            let autostart_hint = if power.background { "Syncing resumes after a restart." } else { "Needs Run in background." };
+            let autostart_toggle = toggler(power.background && autostart).on_toggle_maybe(power.background.then_some(Msg::AutostartToggled)).size(20);
+            rows = rows
+                .push(separator())
+                .push(background)
+                .push(separator())
+                .push(setting_row("Start when the device starts", autostart_hint, autostart_toggle.into()))
+                .push(separator())
+                .push(power_row(power));
+        }
+        None => {
+            rows = rows.push(separator()).push(setting_row(
+                "Start Celeste when you log in",
+                "It starts hidden in the system tray and syncs in the background.",
+                toggler(autostart).on_toggle(Msg::AutostartToggled).size(20).into(),
+            ));
+        }
     }
-    let (autostart_label, autostart_hint) = if android {
-        ("Start Celeste when the device starts", "It syncs in the background, with its status in a silent notification.")
-    } else {
-        ("Start Celeste when you log in", "It starts hidden in the system tray and syncs in the background.")
-    };
-    rows = rows.push(rule::horizontal(1).style(theme::separator)).push(setting_row(autostart_label, autostart_hint, toggler(autostart).on_toggle(Msg::AutostartToggled).size(20).into()));
 
     let mut content = column![
         text("Preferences").size(HEADING + 2.0),
@@ -85,16 +110,13 @@ fn power_row<'a>(power: Power) -> Element<'a, Msg> {
     for &point in power.mode.points() {
         points = points.push(bullet(point));
     }
-    let mut row = column![
+    let row = column![
         column![text("Power mode").size(TEXT), text("How often to sync, depending on the screen and the charger.").size(CAPTION).style(theme::muted)].spacing(2),
         segmented(&PowerMode::ALL, PowerMode::label, power.mode, Msg::PowerModeChanged),
         points,
     ]
     .spacing(10)
     .padding([12, 14]);
-    if !power.background_allowed {
-        row = row.push(background_warning());
-    }
     row.into()
 }
 

@@ -94,6 +94,15 @@ pub fn ask_to_ignore_battery_optimizations() {
     });
 }
 
+/// Starts or stops the sync service after "Run in background" was switched.
+pub fn run_in_background(on: bool) {
+    with_context(|env, context| {
+        let class = bridge(env, context)?;
+        env.call_static_method(class, "runInBackground", "(Landroid/content/Context;Z)V", &[JValue::Object(context), JValue::Bool(on.into())])?;
+        Ok(())
+    });
+}
+
 /// Shows the folder at `path` in the default file manager.
 pub fn open_folder(path: &str) {
     with_context(|env, context| {

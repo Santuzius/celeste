@@ -6,12 +6,12 @@ import android.content.Intent;
 
 import java.io.File;
 
-/** Starts syncing after a reboot or an update of Celeste, unless the user turned off "Start at login" in the preferences. */
+/** Starts syncing after a reboot or an update of Celeste, unless the user turned off "Run in background" or "Start when the device starts" in the preferences. */
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         // The switch src/services/autostart_android.rs writes: $XDG_DATA_HOME/celeste/autostart-off.
-        if (new File(context.getFilesDir(), "celeste/autostart-off").exists()) {
+        if (SyncService.backgroundOff(context) || new File(context.getFilesDir(), "celeste/autostart-off").exists()) {
             return;
         }
         SyncService.start(context);

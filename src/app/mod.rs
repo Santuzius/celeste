@@ -156,6 +156,8 @@ pub struct CelesteApp {
     appearance: Appearance,
     /// The power mode, and whether Celeste asked to run in the background.
     power: PowerSettings,
+    /// "Run in background" (Android), as last read or written.
+    background: bool,
     /// Android leaves Celeste out of battery optimization; always on the desktop. Read again whenever the window comes back.
     background_allowed: bool,
     /// The question to leave Celeste out of battery optimization is shown.
@@ -227,6 +229,7 @@ impl CelesteApp {
             autostart: autostart::enabled(),
             appearance: Appearance::load(&crate::util::get_data_dir()),
             power: PowerSettings::default(),
+            background: power::background_enabled(),
             background_allowed: true,
             background_dialog_open: false,
             system_scale: 1.0,
@@ -245,7 +248,7 @@ impl CelesteApp {
         };
         state.power = PowerSettings::load(&crate::util::get_data_dir());
         state.background_allowed = power::background_allowed();
-        state.background_dialog_open = !state.background_allowed && !state.power.asked_battery;
+        state.background_dialog_open = state.background && !state.background_allowed && !state.power.asked_battery;
         let load = Task::perform(
             async move { repo.list_remotes().await.unwrap_or_default() },
             Message::RemotesLoaded,
@@ -367,6 +370,7 @@ impl CelesteApp {
             Message::Main(main_page::Msg::OpenPreferences) => {
                 self.preferences_open = true;
                 self.autostart = autostart::enabled();
+                self.background = power::background_enabled();
                 self.preferences_error = None;
                 Task::none()
             }
@@ -403,6 +407,20 @@ impl CelesteApp {
                 self.background_dialog_open = false;
                 self.set_power(PowerSettings { asked_battery: true, ..self.power });
                 power::allow_background();
+                Task::none()
+            }
+            Message::Preferences(preferences::Msg::BackgroundToggled(on)) => {
+                match power::set_background(on) {
+                    Ok(()) => {
+                        self.background = on;
+                        self.preferences_error = None;
+                        // Without Android's exemption the background would not last long.
+                        if on && !self.background_allowed {
+                            power::allow_background();
+                        }
+                    }
+                    Err(err) => self.preferences_error = Some(format!("Could not change \"Run in background\": {err}")),
+                }
                 Task::none()
             }
             Message::Preferences(preferences::Msg::KeepOptimized) => {
@@ -606,7 +624,7 @@ impl CelesteApp {
         } else if self.background_dialog_open {
             stack![base, remote_page::modal(preferences::background_dialog().map(Message::Preferences), Some(Message::Preferences(preferences::Msg::KeepOptimized)))].into()
         } else if self.preferences_open {
-            let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, background_allowed: self.background_allowed });
+            let power = cfg!(target_os = "android").then_some(preferences::Power { mode: self.power.mode, background: self.background, background_allowed: self.background_allowed });
             let dialog = preferences::view(self.appearance, power, self.autostart, self.preferences_error.as_deref(), compact).map(Message::Preferences);
             stack![base, remote_page::modal(dialog, Some(Message::Preferences(preferences::Msg::Close)))].into()
         } else if self.about_open {

@@ -98,6 +98,15 @@ public final class Bridge {
         SyncService.show(context, text, sinceMillis);
     }
 
+    /** Starts the sync service, or stops it, after "Run in background" was switched. */
+    public static void runInBackground(Context context, boolean on) {
+        if (on) {
+            SyncService.start(context);
+        } else {
+            context.stopService(new Intent(context, SyncService.class));
+        }
+    }
+
     /** Keeps the CPU running while a sync pass runs, so it finishes with the screen off; Android would otherwise suspend it halfway. */
     public static synchronized void keepAwake(Context context, boolean awake) {
         if (wakeLock == null) {
