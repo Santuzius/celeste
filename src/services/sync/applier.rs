@@ -169,6 +169,8 @@ where
                         emit_error(SyncError::General(remote_path.clone(), err));
                         break 'action;
                     }
+                    record_download(repo, sync_dir, &local_path, &remote_path, client, &remote.name, cancel);
+                    break 'action;
                 }
                 record_upsert(repo, sync_dir, &local_path, &remote_path, client, &remote.name, cancel);
             }
@@ -457,6 +459,41 @@ fn record_upsert(
         }
     };
     save_row(repo, sync_dir, local_path, remote_path, local_ts as i64, rstat.mod_time.unix_timestamp());
+}
+
+/// After a download: give the local copy the remote's modification time, then record both. Celeste's own Proton client writes the file with the time of the download, which made the copy look newer than the original: after a fresh start without a database, a first pass then uploaded it again.
+fn record_download(
+    repo: &dyn Repository,
+    sync_dir: &SyncDir,
+    local_path: &str,
+    remote_path: &str,
+    client: &dyn BackendClient,
+    remote_name: &str,
+    cancel: &Cancel,
+) {
+    let rstat = match client.stat(remote_name, remote_path, cancel) {
+        Ok(Some(rstat)) => rstat,
+        Ok(None) => {
+            eprintln!("sync: could not record '{remote_path}': the remote reports no such item although its listing has it.");
+            return;
+        }
+        Err(err) => {
+            eprintln!("sync: could not record '{remote_path}': {err}");
+            return;
+        }
+    };
+    let remote_ts = rstat.mod_time.unix_timestamp();
+    let set = u64::try_from(remote_ts)
+        .map_err(|_| std::io::Error::other("modification time before 1970"))
+        .and_then(|secs| fs::File::options().write(true).open(local_path)?.set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs)));
+    if let Err(err) = set {
+        eprintln!("sync: could not give '{local_path}' the remote's modification time: {err}");
+    }
+    let Some(local_ts) = local_timestamp(Path::new(local_path)) else {
+        eprintln!("sync: could not record '{remote_path}': no modification time for {local_path}.");
+        return;
+    };
+    save_row(repo, sync_dir, local_path, remote_path, local_ts as i64, remote_ts);
 }
 
 /// Inserts or updates the item's row; a failure is logged, as the next pass would plan the same again.

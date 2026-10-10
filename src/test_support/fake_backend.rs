@@ -167,7 +167,12 @@ impl BackendClient for FakeBackend {
             .lock()
             .unwrap()
             .push((local.to_owned(), path.to_owned()));
-        self.copy_to_local_result.lock().unwrap().clone()
+        let result = self.copy_to_local_result.lock().unwrap().clone();
+        // Like a real download: the file appears, with the time of the download.
+        if result.is_ok() {
+            let _ = std::fs::write(local, b"downloaded");
+        }
+        result
     }
     fn delete_config(&self, _remote: &str) -> Result<(), String> {
         Ok(())
