@@ -40,14 +40,7 @@ For x86_64 distributions with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedo
 To update, replace the file, or let [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or AppImageUpdate do it.
 
 ### Nix
-`github:Santuzius/celeste` always gives the latest release; `nix profile upgrade` moves you to a newer one.
-
-Compiling takes a while; to download Celeste instead, add its binary cache to `/etc/nix/nix.conf`:
-
-```
-extra-substituters = https://celeste.cachix.org
-extra-trusted-public-keys = celeste.cachix.org-1:iGmU8GUPr4AlGAiwmfAIDRhRKZwpIpWcz7DKwQBaRm8=
-```
+`github:Santuzius/celeste` always gives the latest release; `nix profile upgrade celeste` moves you to a newer one. Nix downloads the released program; to build it from source instead, install `github:Santuzius/celeste#celeste-source`.
 
 ### NixOS
 Add the flake to `inputs`:
@@ -64,7 +57,7 @@ inputs.celeste.nixosModules.default
 { programs.celeste.enable = true; }   # programs.celeste.autostart = false; to skip autostart
 ```
 
-The module also adds Celeste's binary cache (`programs.celeste.binaryCache = false;` to skip), so later rebuilds download Celeste instead of compiling it. This needs the input without `inputs.nixpkgs.follows`.
+To build Celeste from source instead of downloading the released program, add `programs.celeste.fromSource = true;`.
 
 Alternatively add `inputs.celeste.packages.${system}.default` to `environment.systemPackages` or use `overlays.default`.
 
