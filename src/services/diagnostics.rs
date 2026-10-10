@@ -24,10 +24,19 @@ pub fn set_detailed_log(on: bool) -> io::Result<()> {
         }
     }
     stderr_capture::set_detailed(on);
+    apply_to_rclone();
     Ok(())
 }
 
 /// Applies the saved switch; call once the capture is installed.
 pub fn apply() {
     stderr_capture::set_detailed(detailed_log());
+}
+
+/// rclone names every file it copies or deletes from level INFO on; by default it only reports problems (NOTICE). Call once rclone is initialised.
+pub fn apply_to_rclone() {
+    let level = if detailed_log() { "INFO" } else { "NOTICE" };
+    if let Err(err) = celeste_go::rpc("options/set", serde_json::json!({ "main": { "LogLevel": level } }).to_string()) {
+        eprintln!("celeste: could not set rclone's log level: {err}");
+    }
 }

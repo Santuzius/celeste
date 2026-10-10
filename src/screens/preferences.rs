@@ -100,7 +100,7 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
 
     rows = rows
         .push(separator())
-        .push(setting_row("Detailed log", if cfg!(target_os = "android") { "Write every sync pass to Android's log, not only problems." } else { "Write every sync pass to the system journal, not only problems." }, toggler(detailed_log).on_toggle(Msg::DetailedLogToggled).size(20).into()))
+        .push(setting_row("Detailed log", if cfg!(target_os = "android") { "Also log every file copied or deleted and every sync pass, and write it all to Android's log, not only problems." } else { "Also log every file copied or deleted and every sync pass, and write it all to the system journal, not only problems." }, toggler(detailed_log).on_toggle(Msg::DetailedLogToggled).size(20).into()))
         .push(separator())
         .push(choice_row(
             compact,

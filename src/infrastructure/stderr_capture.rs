@@ -51,6 +51,10 @@ pub fn set_detailed(on: bool) {
     DETAILED.store(on, Ordering::Relaxed);
 }
 
+pub fn detailed() -> bool {
+    DETAILED.load(Ordering::Relaxed)
+}
+
 /// Whether a line is worth the system log without the detailed log: errors, warnings, conflicts, sign-in and rate-limit trouble.
 fn is_problem(line: &str) -> bool {
     const MARKERS: [&str; 11] = ["error", "warn", "fail", "could not", "couldn't", "panic", "denied", "expired", "too many requests", "rate limit", "reauth"];

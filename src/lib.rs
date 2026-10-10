@@ -123,6 +123,7 @@ fn set_up() -> Option<Services> {
         json!({ "path": rclone_config }).to_string(),
     )
     .expect("failed to set rclone config path");
+    services::diagnostics::apply_to_rclone();
 
     let mut db_path = data_dir.clone();
     db_path.push("data.sqlite");
