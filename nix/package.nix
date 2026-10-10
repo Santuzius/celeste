@@ -9,7 +9,6 @@
   makeWrapper,
   makeDesktopItem,
   copyDesktopItems,
-  rclone,
   src,
 }:
 
@@ -70,6 +69,7 @@ rustPlatform.buildRustPackage {
       "iced-0.14.1" = "sha256-yBVh30RzNJd0dDuoKuQtuwok1TeCCGerH71jtku3jK0=";
       "iced_android-0.1.0" = "sha256-srhzPdXQcoifK5aOzvhn6HXB5WNxPjkxANQoSaC1Puk=";
     };
+  };
 
   # Some dependencies use unstable rustc features gated behind RUSTC_BOOTSTRAP.
   env.RUSTC_BOOTSTRAP = 1;
@@ -88,14 +88,15 @@ rustPlatform.buildRustPackage {
 
   desktopItems = [ desktopItem ];
 
+  # The cdylib is the Android app's library and of no use here.
   postInstall = ''
+    rm -r $out/lib
     install -Dm 644 assets/celeste-icon.svg $out/share/icons/hicolor/scalable/apps/celeste-icon.svg
   '';
 
-  # winit/wgpu load Wayland, X11 and Vulkan libraries at run time; rclone must be on PATH for OAuth sign-in (`rclone authorize`).
+  # winit/wgpu load Wayland, X11 and Vulkan libraries at run time.
   postFixup = ''
     wrapProgram $out/bin/celeste \
-      --prefix PATH : ${lib.makeBinPath [ rclone ]} \
       --prefix LD_LIBRARY_PATH : ${shell.LD_LIBRARY_PATH}
   '';
 
