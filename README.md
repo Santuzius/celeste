@@ -10,7 +10,7 @@ Two-way file sync between folders on your Linux computer or Android phone and Go
 1. **Install** Celeste; details are under [Installing](#installing).
    - **Linux, any distribution:** the [AppImage](#appimage) from the [latest release](https://github.com/Santuzius/celeste/releases/latest), or with the [Nix package manager](#nix): `nix profile add github:Santuzius/celeste`
    - **NixOS:** the [module](#nixos)
-   - **Android 8 or newer:** the APK from the latest release, best through [Obtainium](#android), which keeps it up to date
+   - **Android 8 or newer:** the APK from the latest release, best through [Obtainium](#android), which keeps it up to date ([note on Android's future](#android))
 2. **Start Celeste.** On Linux it lives in the system tray (on GNOME with the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)), and closing the window keeps it syncing in the background. On Android it syncs in the background with a silent notification.
 3. **Add a remote:** click *Add remote* and choose the provider.
    - **Proton Drive:** sign in with your Proton username and password.
@@ -65,6 +65,11 @@ To build Celeste from source instead of downloading the released program, add `p
 Alternatively add `inputs.celeste.packages.${system}.default` to `environment.systemPackages` or use `overlays.default`.
 
 ### Android
+> [!WARNING]
+> **Free and open-source Android is under threat.**
+>
+> Starting in 2027, Google plans to block every app on certified Android devices whose developer has not registered with Google and handed over a government ID. Celeste is published only outside Google Play, so this concerns it directly. Make your voice heard: [**Keep Android Open**](https://keepandroidopen.org/).
+
 For phones with Android 8 or newer and a 64-bit ARM processor (`arm64-v8a`, nearly every phone since 2017).
 
 - **With [Obtainium](https://obtainium.imranr.dev)** (recommended): *Add app*, enter `https://github.com/Santuzius/celeste` and install. Obtainium then reports new releases and installs them.
@@ -98,13 +103,21 @@ No global `rustup`, `go`, or system headers are required — everything is pulle
 - [iced](https://iced.rs/) for the GUI, on Android through [iced_android](https://github.com/Santuzius/iced_android)
 
 ## FAQ
+### What are use cases of Celeste?
+- Syncing folders anywhere on your system, not just inside one sync folder.
+- Two-way sync of ordinary files and folders.
+- One-way sync of backups: exclude the backup folder on your other devices so that it stays only on this device and in the cloud.
+- Two-way sync of program settings and game saves.
+  - But be careful: a few apps cope well with being used on several devices at the same time (e.g. [Obsidian](https://obsidian.md)), but most apps and games would cause conflicts. With those, use the program on only one device at a time and make sure the folder has finished syncing before you start it.
+
 ### Why not also add other providers?
-- As the sole maintainer I don't have enough time for this.
-- Some of them already have a good Linux integration:
-  - [OneDrive](https://abraunegg.github.io)
+- I test Proton Drive and Google Drive extensively in everyday use with my own personal data. I cannot ensure that other providers keep your data as safe as these two.
+- Many of them already have good Linux clients:
+  - OneDrive: [abraunegg/onedrive](https://abraunegg.github.io)
   - [Dropbox](https://www.dropbox.com/install-linux)
   - [Nextcloud](https://nextcloud.com/install/)
   - etc.
+- As the sole maintainer, I have little time for the project.
 
 ### Why not Flatpak, F-Droid or distribution packages?
 This is my first published app, and packaging takes time. The AppImage runs on most distributions, and the Snap package is the next step.
