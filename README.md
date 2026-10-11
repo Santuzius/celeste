@@ -7,17 +7,45 @@ Two-way file sync between folders on your Linux computer or Android phone and Go
 ![Celeste's main window in the dark theme, with two remotes and several synced folders](doc/img/Screenshot_dark.png)
 
 ## Quick start
-1. **Install** Celeste; details are under [Installing](#installing).
-   - **Linux, any distribution:** the [AppImage](#appimage) from the [latest release](https://github.com/Santuzius/celeste/releases/latest), or with the [Nix package manager](#nix): `nix profile add github:Santuzius/celeste`
+1. **Install** Celeste
+   - **Linux, any distribution:**
+     - the [AppImage](#appimage) from the [latest release](https://github.com/Santuzius/celeste/releases/latest)
+     - the [Nix package manager](#nix): `nix profile add github:Santuzius/celeste`
    - **NixOS:** the [module](#nixos)
-   - **Android 8 or newer:** the APK from the latest release, best through [Obtainium](#android), which keeps it up to date ([note on Android's future](#android))
+   - **Android 8 or newer** ([note on Android's future](#android)):
+     - [Obtainium](#android) (recommended), which keeps it up to date
+     - the APK from the [latest release](https://github.com/Santuzius/celeste/releases/latest)
 2. **Start Celeste.** On Linux it lives in the system tray (on GNOME with the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)), and closing the window keeps it syncing in the background. On Android it syncs in the background with a silent notification.
 3. **Add a remote:** click *Add remote* and choose the provider.
    - **Proton Drive:** sign in with your Proton username and password.
    - **Google Drive:** needs your own OAuth client ID, which takes a few minutes in the Google Cloud console ([rclone's guide](https://rclone.org/drive/#making-your-own-client-id)). In the consent screen's **Branding** settings, enter [`https://github.com/Santuzius/celeste/blob/main/PRIVACY.md`](./PRIVACY.md) as **Application privacy policy link** and your own website or social media profile as **Application home page**, e.g. `https://t.me/YourTelegramName`. Then paste client ID and secret into Celeste, click *Connect* and grant access in your browser.
 4. **Add a folder:** pick a local folder and the path on the remote it should mirror. Missing folders are created on both sides, and Celeste keeps them in sync at the interval set in the remote's settings.
 
-## Features
+## Use Cases
+- Syncing folders anywhere on your system, not just inside one sync folder.
+- Two-way sync of ordinary files and folders.
+- One-way sync of backups: exclude the backup folder on your other devices so that it stays only on this device and in the cloud.
+- Two-way sync of program settings and game saves.
+  - But be careful: a few apps cope well with being used on several devices at the same time (e.g. [Obsidian](https://obsidian.md)), but most apps and games would cause conflicts. With those, use the program on only one device at a time and make sure the folder has finished syncing before you start it.
+
+## Screenshots
+<details>
+<summary>Linux</summary>
+
+![Celeste's main window in the light theme](doc/img/Screenshot_light.png)
+
+![Resolving a file that changed both locally and on Google Drive](doc/img/Screenshot_conflict.png)
+
+</details>
+
+<details>
+<summary>Android</summary>
+
+![Celeste on an Android phone: a remote's folders, and the drawer with both remotes](doc/img/Screenshot_android.png)
+
+</details>
+
+## Most Important Features
 - Two-way sync, several folders per account, several accounts at the same time
 - Exclusions for sub-folders and files, with a clean-up of copies left behind by an exclusion
 - Conflict resolution: a file changed on both sides is never overwritten silently; you keep the local version, the remote one, or both
@@ -25,12 +53,6 @@ Two-way file sync between folders on your Linux computer or Android phone and Go
 - Starts at login or after the phone's restart (can be switched off), Start / Pause per account
 - On Android: power modes that sync less often with the screen off, and optionally no syncing on mobile data or other metered networks
 - Light and dark theme, adjustable content size, settings export and import (without sign-ins)
-
-![The same window in the light theme](doc/img/Screenshot_light.png)
-
-![Resolving a file that changed both locally and on Google Drive](doc/img/Screenshot_conflict.png)
-
-![Celeste on an Android phone: a remote's folders, and the drawer with both remotes](doc/img/Screenshot_android.png)
 
 ## Installing
 ### AppImage
@@ -78,7 +100,7 @@ For phones with Android 8 or newer and a 64-bit ARM processor (`arm64-v8a`, near
 Celeste needs **All files access** to sync folders anywhere in the phone's storage; while it is missing, a bar at the top offers to allow it. It also asks for permission to run in the background.
 
 ### Snap
-A Snap package is prepared (`snap/snapcraft.yaml`, see [doc/snap.md](doc/snap.md)) but not yet published in the Snap Store.
+A Snap package is prepared but not yet published in the Snap Store.
 
 ## Building
 The project ships a `shell.nix` that provides a stable Rust toolchain, Go, and all runtime libraries (Wayland/Vulkan/X11, OpenSSL, rclone). From the repo root:
@@ -103,15 +125,8 @@ No global `rustup`, `go`, or system headers are required — everything is pulle
 - [iced](https://iced.rs/) for the GUI, on Android through [iced_android](https://github.com/Santuzius/iced_android)
 
 ## FAQ
-### What are use cases of Celeste?
-- Syncing folders anywhere on your system, not just inside one sync folder.
-- Two-way sync of ordinary files and folders.
-- One-way sync of backups: exclude the backup folder on your other devices so that it stays only on this device and in the cloud.
-- Two-way sync of program settings and game saves.
-  - But be careful: a few apps cope well with being used on several devices at the same time (e.g. [Obsidian](https://obsidian.md)), but most apps and games would cause conflicts. With those, use the program on only one device at a time and make sure the folder has finished syncing before you start it.
-
 ### Why not also add other providers?
-- I test Proton Drive and Google Drive extensively in everyday use with my own personal data. I cannot ensure that other providers keep your data as safe as these two.
+- I test Proton Drive and Google Drive extensively in everyday use with my own personal data. I cannot ensure that an untested integration of another provider would keep your data as safe as these two.
 - Many of them already have good Linux clients:
   - OneDrive: [abraunegg/onedrive](https://abraunegg.github.io)
   - [Dropbox](https://www.dropbox.com/install-linux)
