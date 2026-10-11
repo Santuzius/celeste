@@ -72,10 +72,18 @@ fn exec_command() -> String {
     let Ok(exe) = std::env::current_exe().and_then(|p| p.canonicalize()) else {
         return "celeste".to_owned();
     };
+    let exe = nix_wrapper(&exe).unwrap_or(exe);
     let on_path = std::env::var_os("PATH")
         .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join("celeste").canonicalize().is_ok_and(|p| p == exe)))
         .unwrap_or(false);
     if on_path { "celeste".to_owned() } else { quote(&exe.to_string_lossy()) }
+}
+
+/// The script `bin/celeste` that Nix's `wrapProgram` puts in front of the real binary `bin/.celeste-wrapped`. Only the script sets `LD_LIBRARY_PATH`, so started directly the binary finds no Wayland library and panics.
+fn nix_wrapper(exe: &Path) -> Option<PathBuf> {
+    let name = exe.file_name()?.to_str()?.strip_prefix('.')?.strip_suffix("-wrapped")?;
+    let wrapper = exe.with_file_name(name);
+    wrapper.is_file().then_some(wrapper)
 }
 
 /// Quote an `Exec` argument as the Desktop Entry spec asks when it contains anything but plain path characters.
@@ -118,6 +126,18 @@ mod tests {
         write_at(&path, true, "celeste").unwrap();
         assert!(enabled_at(&path));
         let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn nix_binary_is_replaced_by_its_wrapper() {
+        let dir = std::env::temp_dir().join(format!("celeste-autostart-wrapper-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let binary = dir.join(".celeste-wrapped");
+        assert_eq!(nix_wrapper(&binary), None);
+        std::fs::write(dir.join("celeste"), "").unwrap();
+        assert_eq!(nix_wrapper(&binary), Some(dir.join("celeste")));
+        assert_eq!(nix_wrapper(&dir.join("celeste")), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
