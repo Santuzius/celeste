@@ -1,8 +1,9 @@
-# Syncative
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/syncative-banner-wide-dark.svg">
+  <img alt="Syncative: your files, just in sync. Proton Drive, Google Drive, Linux, Android" src="assets/syncative-banner-wide.svg">
+</picture>
 
 Two-way file sync between folders on your Linux computer or Android phone and Google Drive or Proton Drive.
-
-> Syncative - your files, just in sync.
 
 > [!NOTE]
 > This is a third-party application not officially supported by Google or Proton. Built and tested only on Linux and Android.
