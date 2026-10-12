@@ -1,4 +1,4 @@
-# Local development against checkouts of the forks instead of their pushed branches. Copy to .cargo/config.toml (gitignored) and adjust the paths; relative paths start from the repository root. Cargo then writes path sources into Cargo.lock: don't commit that, and remove .cargo/config.toml before a release build (doc/release.md).
+# Local development against checkouts of the forks instead of their pushed tags. Copy to .cargo/config.toml (gitignored) and adjust the paths; relative paths start from the repository root. Cargo then writes path sources into Cargo.lock: don't commit that, and remove .cargo/config.toml before a release build (doc/release.md).
 
 [patch."https://github.com/Santuzius/iced"]
 iced = { path = "../iced" }

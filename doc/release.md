@@ -16,7 +16,7 @@ The branch flow:
 
 - **Clean `Cargo.lock`:**
   - Without `.cargo/config.toml`: its `[patch]` sections point Cargo at local checkouts of the forks and put path sources into `Cargo.lock`.
-  - The forks (iced, iced_android, android-activity) must be pushed. Nix and the AppImage build fetch them from GitHub.
+  - The forks (iced, iced_android, android-activity) must be pushed and tagged ([below](#the-android-forks)). Nix and the AppImage build fetch them from GitHub.
 - **Docker** for the AppImage, **rustup with the Android targets** and the Nix shells for the APK (see [android/README.md](../android/README.md)).
 - **`android/keystore.properties`** with the release key (below).
 
@@ -52,6 +52,17 @@ The branch flow:
 - **AppImage:** It runs `--help` in `ubuntu:24.04`, `debian:12` and `fedora:42` containers (with `--appimage-extract-and-run` and the distribution's dbus library). It needs nothing but glibc 2.35 and `libdbus-1`.
 - **Nix:** `nix build github:Santuzius/syncative/vX.Y.Z` downloads the AppImage without compiling anything, and `result/bin/syncative --help` runs. This only works once the release is published, because the flake fetches the AppImage from it.
 - **Downloads:** The release assets downloaded with `gh release download` match `SHA256SUMS`.
+
+## The Android forks
+
+Syncative uses iced_android and its two forks by tag, so other apps can use the same tested state. A change to any of them is a new iced_android release:
+
+1. **Pick the version** `X.Y.Z` of iced_android: a bug fix raises Z, anything else Y (0.x has no stable API).
+2. **Tag the forks** `iced_android-vX.Y.Z`: the iced fork on `android-0.14`, the android-activity fork on `process-lifetime-0.6`, even if one didn't change. Push the tags.
+3. **In iced_android:** set `version` in `Cargo.toml`, the tags in `Cargo.toml`, `examples/runtime/Cargo.toml` and the README to the new ones, run `cargo update` so `Cargo.lock` follows, commit, tag `vX.Y.Z`, and push branch and tag.
+4. **In Syncative:** set the same tags in `Cargo.toml` (`iced` twice, `iced_android`, `android-activity`), run `cargo update`, set the changed entries of `outputHashes` in `nix/package.nix` to `lib.fakeHash` and copy the hashes from the failing `nix build .#syncative-source`.
+
+Cargo treats the same repository under two different tags as two different sources, so all of them must name the same release.
 
 ## The APK release key
 

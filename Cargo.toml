@@ -24,10 +24,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 clap = { version = "4.6.1", features = ["derive", "env"] }
 futures = "0.3.32"
-# iced from the fork that runs it on Android (branch `android-0.14`, see github.com/Santuzius/iced_android). `x11` only satisfies iced's check that Unix targets pick a display server; nothing of it is built for Android. The desktop-only features are added below.
-iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "tokio", "lazy", "svg", "x11"] }
+# iced from the fork that runs it on Android (tagged with each iced_android release, see doc/release.md). `x11` only satisfies iced's check that Unix targets pick a display server; nothing of it is built for Android. The desktop-only features are added below.
+iced = { git = "https://github.com/Santuzius/iced", tag = "iced_android-v0.1.0", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "tokio", "lazy", "svg", "x11"] }
 # Soft keyboard, insets, back gesture and fonts on Android; does nothing on desktop.
-iced_android = { git = "https://github.com/Santuzius/iced_android", features = ["emoji"] }
+iced_android = { git = "https://github.com/Santuzius/iced_android", tag = "v0.1.0", features = ["emoji"] }
 # Status-icon SVGs for the per-sync-dir cards and the system-tray
 # pixmaps. Only the icon packs we actually pull from are enabled so
 # we don't compile the rest of the icondata corpus.
@@ -69,13 +69,13 @@ dbus = "0.9"
 keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 ksni = "0.3.4"
 notify-rust = "4"
-iced = { git = "https://github.com/Santuzius/iced", branch = "android-0.14", default-features = false, features = ["wayland", "linux-theme-detection", "thread-pool"] }
+iced = { git = "https://github.com/Santuzius/iced", tag = "iced_android-v0.1.0", default-features = false, features = ["wayland", "linux-theme-detection", "thread-pool"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15"
 jni = "0.21"
 log = "0.4"
 
-# Lets android_main outlive a destroyed activity, so the sync engine keeps running while Android has closed Syncative's window (branch `process-lifetime-0.6` on top of 0.6.1).
+# Lets android_main outlive a destroyed activity, so the sync engine keeps running while Android has closed Syncative's window (on top of 0.6.1).
 [patch.crates-io]
-android-activity = { git = "https://github.com/Santuzius/android-activity", branch = "process-lifetime-0.6" }
+android-activity = { git = "https://github.com/Santuzius/android-activity", tag = "iced_android-v0.1.0" }
