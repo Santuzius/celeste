@@ -77,6 +77,8 @@ where
         if is_cancelled() {
             return Applied { failures: failures.get(), conflicts, cancelled: true };
         }
+        // Proton's refresh tokens work once: one renewed during a long pass must be stored right away, not at its end, or an app killed in between (Android, an update) has to sign in again. Cheap when nothing was renewed.
+        client.checkpoint_session(&remote.name);
         // The listing may be a few seconds old (cached until the provider's change log reports something), so re-check the target right before anything gets overwritten or deleted.
         let mut action = preflight(action, &snapshot.db, remote, client, cancel);
         if let Some(activity) = activity_of(&action)
