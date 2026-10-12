@@ -103,6 +103,8 @@ fn set_up() -> Option<Services> {
     }
 
     legacy_config_dir::run(&data_dir);
+    #[cfg(not(target_os = "android"))]
+    celeste_to_syncative::move_autostart_entry();
     services::autostart::refresh();
     fold_stale_rclone_into_keyring(&data_dir);
 

@@ -3,7 +3,9 @@
 //! - The data dir moves from `${XDG_DATA_HOME:-~/.local/share}/celeste` to `…/syncative` at startup, before anything opens it. After the move, the old cache dir, which only held the icon, is removed.
 //! - Keyring entries move from the service `Celeste Keys` to `Syncative Keys` the first time each is read (`take_celeste_key`), so no list of accounts is needed. `secrets::delete` also removes an entry left under the old service.
 //!
-//! The autostart entry `celeste.desktop` is left alone. On Android the app id changed with the name, so the old app's data is out of reach and nothing moves.
+//! - The autostart entry `celeste.desktop` gives way to Syncative's own (`move_autostart_entry`).
+//!
+//! On Android the app id changed with the name, so the old app's data is out of reach and nothing moves.
 
 use std::{fs::File, os::fd::AsRawFd, path::Path};
 
@@ -53,6 +55,29 @@ fn holds_instance_lock(dir: &Path) -> bool {
     };
     // SAFETY: plain syscall on a valid, owned fd; closing the file releases a lock taken here.
     unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) != 0 }
+}
+
+/// Remove the autostart entry `celeste.desktop`; switched off there, Syncative's own entry starts switched off too. An AppImage updated in place keeps its path, so both entries would start it at login, and the second start would open the window.
+#[cfg(not(target_os = "android"))]
+pub fn move_autostart_entry() {
+    let new = crate::services::autostart::entry_path();
+    move_autostart_entry_at(&new.with_file_name("celeste.desktop"), &new);
+}
+
+#[cfg(not(target_os = "android"))]
+fn move_autostart_entry_at(old: &Path, new: &Path) {
+    use crate::services::autostart;
+    if !old.exists() {
+        return;
+    }
+    if !new.exists() && !autostart::enabled_at(old) {
+        if let Err(err) = autostart::write_at(new, false, &autostart::exec_command()) {
+            eprintln!("syncative: couldn't write {}: {err}", new.display());
+        }
+    }
+    if let Err(err) = std::fs::remove_file(old) {
+        eprintln!("syncative: couldn't remove {}: {err}", old.display());
+    }
 }
 
 /// The value of `account` under the old service, moved to the current one. `Ok(None)` when there is none.
@@ -111,6 +136,25 @@ mod tests {
         assert_eq!(move_data_dir(&root.join("syncative")).ok(), Some(false));
         assert_eq!(std::fs::read_to_string(root.join("syncative/data.sqlite")).unwrap(), "new");
         assert!(root.join("celeste").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_old_autostart_entry_goes_and_passes_on_off() {
+        use crate::services::autostart::{enabled_at, write_at};
+        let root = temp_root("autostart");
+        let (old, new) = (root.join("celeste.desktop"), root.join("syncative.desktop"));
+        write_at(&old, false, "celeste").unwrap();
+        move_autostart_entry_at(&old, &new);
+        assert!(!old.exists());
+        assert!(new.exists() && !enabled_at(&new));
+
+        std::fs::remove_file(&new).unwrap();
+        write_at(&old, true, "celeste").unwrap();
+        move_autostart_entry_at(&old, &new);
+        assert!(!old.exists());
+        // Left to `autostart::refresh`, which creates the entry switched on.
+        assert!(!new.exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 

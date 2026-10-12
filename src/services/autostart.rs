@@ -40,14 +40,14 @@ pub fn refresh() {
     }
 }
 
-fn enabled_at(path: &Path) -> bool {
+pub(crate) fn enabled_at(path: &Path) -> bool {
     let Ok(content) = std::fs::read_to_string(path) else {
         return true;
     };
     !content.lines().map(str::trim).any(|line| line.eq_ignore_ascii_case("Hidden=true") || line.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false"))
 }
 
-fn write_at(path: &Path, enabled: bool, exec: &str) -> io::Result<()> {
+pub(crate) fn write_at(path: &Path, enabled: bool, exec: &str) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -62,7 +62,7 @@ fn write_at(path: &Path, enabled: bool, exec: &str) -> io::Result<()> {
 }
 
 /// `syncative` when that name on `PATH` is this very binary (installed packages, the Snap), so the entry survives updates; the `.AppImage` file for an AppImage, whose binary lies in a mount point that changes with every start; otherwise the absolute path, e.g. for a development build.
-fn exec_command() -> String {
+pub(crate) fn exec_command() -> String {
     if std::env::var_os("SNAP").is_some() {
         return "syncative".to_owned();
     }
