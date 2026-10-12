@@ -507,6 +507,23 @@ fn identical_content_is_no_conflict() {
     assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
 }
 
+/// A file on both sides that was never tracked, e.g. after a reinstall, with the same time on both sides and no digest on the remote: recorded as synced, not downloaded again.
+#[test]
+fn untracked_file_with_the_same_time_is_not_downloaded_again() {
+    let tmp = TempDir::new("sync_same_time_untracked");
+    let local = tmp.write_file("a.txt", b"v1");
+    touch_mtime(&local, 1_700_000_000);
+    let repo = FakeRepo::new();
+    let client = FakeBackend::default();
+    client.set_list("", Ok(vec![remote_item("a.txt", false, 1_700_000_000)]));
+    client.set_stat("a.txt", Ok(Some(remote_item("a.txt", false, 1_700_000_000))));
+    let (_outcome, events) = run_full(&tmp, &repo, &client);
+    assert!(conflicts(&events).is_empty());
+    assert!(client.copy_to_local_calls.lock().unwrap().is_empty());
+    assert!(client.copy_to_remote_calls.lock().unwrap().is_empty());
+    assert!(repo.has_item(local.to_str().unwrap(), "a.txt"));
+}
+
 /// A folder on both sides gets its row from the pass's own listing, also where the remote can't stat it; otherwise every pass would try again.
 #[test]
 fn a_folder_on_both_sides_is_recorded_once() {

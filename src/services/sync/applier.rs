@@ -411,6 +411,10 @@ fn inspect_conflict(local_path: &str, remote_path: &str, kind: ConflictKind, rem
     if local_sha1.is_some() && local_sha1 == remote_details.sha1 {
         return Inspected::Identical;
     }
+    // Without a digest on the remote, the same size and modification time stand for the same content, as in rsync: a download takes over the remote's time. Otherwise the first pass after a reinstall would download every such file again.
+    if remote_details.sha1.is_none() && size_may_match && local_stamp as i64 == remote_stamp {
+        return Inspected::Identical;
+    }
     Inspected::Differs(Conflict {
         local_path: local_path.to_owned(),
         remote_path: remote_path.to_owned(),
