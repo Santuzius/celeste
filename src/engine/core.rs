@@ -212,7 +212,7 @@ impl Core {
         self.refresh_requested_after.insert(id);
         let queued: Vec<SyncDirId> = self.sync_dirs.iter().filter(|d| d.remote_id == id).map(|d| d.id).collect();
         for sd in queued {
-            self.push_log_line(sd, "⟳ Refresh queued — starts after the current pass finishes.".to_owned());
+            self.push_log_line(sd, "Refresh queued — starts after the current pass finishes.".to_owned());
         }
     }
 
@@ -304,7 +304,7 @@ impl Core {
     fn handle_event(&mut self, event: SyncEvent) {
         match event {
             SyncEvent::SyncDirStatus { sync_dir_id, text, .. } => self.push_log_line(sync_dir_id, text),
-            SyncEvent::SyncDirPending { sync_dir_id, text, .. } => self.push_log_line(sync_dir_id, format!("⟳ {text}")),
+            SyncEvent::SyncDirPending { sync_dir_id, text, .. } => self.push_log_line(sync_dir_id, text),
             SyncEvent::SyncDirError { remote_id, sync_dir_id, error } => {
                 let line = match &error {
                     SyncError::General(path, msg) => format!("⚠ {path}: {msg}"),

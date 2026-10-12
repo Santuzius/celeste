@@ -97,11 +97,7 @@ where
         // changing faster than the eye can follow. Cheap — one event
         // per batch, same channel as everything else.
         if idx > 0 && idx.is_multiple_of(16) {
-            emit_pending_local(tr::tr!(
-                "Applying {} actions ({} done)…",
-                total,
-                idx
-            ));
+            emit_pending_local(progress_text(current_activity, idx, total));
         }
         let pos = idx + 1;
         // A resolved conflict turns into a transfer: `continue 'action` runs that transfer, `break 'action` moves on to the next planned action.
@@ -460,6 +456,17 @@ fn sha1_of(path: &Path) -> Option<String> {
         hasher.update(&buf[..n]);
     }
     Some(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// The progress line every 16 actions, naming what the pass is doing.
+fn progress_text(activity: Option<SyncActivity>, done: usize, total: usize) -> String {
+    match activity {
+        Some(SyncActivity::Downloading) => tr::tr!("Downloading: {} of {} done…", done, total),
+        Some(SyncActivity::Uploading) => tr::tr!("Uploading: {} of {} done…", done, total),
+        Some(SyncActivity::Deleting) => tr::tr!("Deleting: {} of {} done…", done, total),
+        Some(SyncActivity::Resolving) => tr::tr!("Comparing files present on both sides: {} of {} done…", done, total),
+        Some(SyncActivity::Listing) | None => tr::tr!("{} of {} done…", done, total),
+    }
 }
 
 fn activity_of(action: &Action) -> Option<SyncActivity> {

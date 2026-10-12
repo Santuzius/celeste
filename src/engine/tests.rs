@@ -139,7 +139,7 @@ async fn sync_now_while_syncing_queues_one_more_pass() {
     let mut rig = rig().await;
     rig.send(Command::SyncNow(R1)).await;
     rig.send(Command::SyncNow(R1)).await;
-    assert!(rig.log(D1).iter().any(|l| l.starts_with("⟳ Refresh queued")));
+    assert!(rig.log(D1).iter().any(|l| l.starts_with("Refresh queued")));
     rig.settle().await;
     assert_eq!(rig.snap().passes_finished, 2);
 }

@@ -164,10 +164,7 @@ where
     // DB-only actions run silently; the user only hears about real changes.
     let total = actions.iter().filter(|a| !a.is_bookkeeping()).count();
     if total > 0 {
-        emit_pending(tr::tr!(
-            "Applying {} actions (0 done)…",
-            actions.len()
-        ));
+        emit_pending(plan_text(&actions));
     }
     let applied = applier::apply(
         actions,
@@ -229,4 +226,18 @@ where
     }
     emit_state(RunState::Synced);
     Outcome::Synced
+}
+
+/// What a pass is about to do, e.g. "To do: 2 to upload, 714 to compare." Bookkeeping actions are left out.
+fn plan_text(actions: &[planner::Action]) -> String {
+    use planner::Action;
+    let count = |f: fn(&Action) -> bool| actions.iter().filter(|a| f(a)).count();
+    let parts = [
+        (count(|a| matches!(a, Action::Upload { .. })), tr::tr!("to upload")),
+        (count(|a| matches!(a, Action::Download { .. })), tr::tr!("to download")),
+        (count(|a| matches!(a, Action::DeleteLocal { .. } | Action::DeleteRemote { .. })), tr::tr!("to delete")),
+        (count(|a| matches!(a, Action::Conflict { .. })), tr::tr!("to compare on both sides")),
+    ];
+    let parts: Vec<String> = parts.into_iter().filter(|(n, _)| *n > 0).map(|(n, what)| format!("{n} {what}")).collect();
+    tr::tr!("To do: {}.", parts.join(", "))
 }
