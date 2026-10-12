@@ -105,9 +105,7 @@ func (s *connSet) closeAll() int {
 
 // ResetConnections closes every connection to Proton, so that requests cut off by a network change fail at once and their retries dial over the new network.
 func ResetConnections() {
-	if n := liveConns.closeAll(); n > 0 {
-		logf("drive: network changed; closed %d connection(s) to Proton.", n)
-	}
+	logf("drive: network changed; closed %d connection(s) to Proton.", liveConns.closeAll())
 }
 
 // AppVersion is sent as `x-pm-appversion` on every Proton API call. Proton's guidelines for third-party Drive clients ask for `external-drive-{name}@{semver}-{channel}`; Syncative sets its real version through SetAppVersion at startup, before any session exists.

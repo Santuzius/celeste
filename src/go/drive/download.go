@@ -46,10 +46,10 @@ var (
 // server-side limits.
 const getRevisionPageSize = 500
 
-// blockAttempts and blockStallTimeout bound how a block download rides out a network change; see fetchBlock.
-const (
-	blockAttempts     = 3
+// blockStallTimeout and blockRetryDelays bound how a block download rides out a network change; see fetchBlock. Right after the change the new network may refuse connections for a few seconds, e.g. while a VPN app rebuilds its tunnel, so the attempts spread over about a minute.
+var (
 	blockStallTimeout = 30 * time.Second
+	blockRetryDelays  = []time.Duration{time.Second, 5 * time.Second, 15 * time.Second, 30 * time.Second}
 )
 
 // getRevisionAllBlocks returns a Revision with every block populated,
@@ -194,18 +194,24 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 	return nil
 }
 
-// fetchBlock downloads one encrypted block. A network change cuts the connection mid-block ("unexpected EOF") or leaves it open without data, so a block gets several attempts, each given up after blockStallTimeout without a byte.
+// fetchBlock downloads one encrypted block. A network change cuts the connection mid-block ("unexpected EOF") or leaves it open without data, so a block gets several attempts with growing pauses, each given up after blockStallTimeout without a byte.
 func (s *Session) fetchBlock(ctx context.Context, block *proton.Block) ([]byte, error) {
-	var err error
-	for attempt := 1; attempt <= blockAttempts; attempt++ {
-		var data []byte
-		data, err = s.fetchBlockOnce(ctx, block)
+	attempts := len(blockRetryDelays) + 1
+	for attempt := 1; ; attempt++ {
+		data, err := s.fetchBlockOnce(ctx, block)
 		if err == nil || ctx.Err() != nil {
 			return data, err
 		}
-		logf("drive: block %d, attempt %d of %d: %v", block.Index, attempt, blockAttempts, err)
+		logf("drive: block %d, attempt %d of %d: %v", block.Index, attempt, attempts, err)
+		if attempt == attempts {
+			return nil, err
+		}
+		select {
+		case <-time.After(blockRetryDelays[attempt-1]):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-	return nil, err
 }
 
 func (s *Session) fetchBlockOnce(ctx context.Context, block *proton.Block) ([]byte, error) {

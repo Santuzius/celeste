@@ -76,16 +76,7 @@ public final class Bridge {
     /** Reports whether the default network is metered, right away and on every change, and when it switches to another network, for as long as the process lives. Without a network the last answer stands: syncing fails anyway, and the next network reports itself. */
     static void watchNetwork(Context context) {
         context.getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
-            private Network current;
-
-            @Override
-            public void onAvailable(Network network) {
-                // The first network is the one Syncative started on; nothing was cut off yet.
-                if (current != null && !current.equals(network)) {
-                    nativeNetworkChanged();
-                }
-                current = network;
-            }
+            private String current;
 
             @Override
             public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
@@ -93,6 +84,14 @@ public final class Bridge {
                 boolean unmetered = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
                         || (Build.VERSION.SDK_INT >= 30 && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED));
                 nativeMetered(!unmetered);
+                // Behind a VPN the default network stays the same while Wi-Fi and mobile data take turns below it; its capabilities carry their transports, though. The first network is the one Syncative started on; nothing was cut off yet.
+                String now = network + (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ? " wifi" : "")
+                        + (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ? " cellular" : "")
+                        + (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ? " ethernet" : "");
+                if (current != null && !current.equals(now)) {
+                    nativeNetworkChanged();
+                }
+                current = now;
             }
         });
     }
