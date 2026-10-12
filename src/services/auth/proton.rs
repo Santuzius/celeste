@@ -2,7 +2,7 @@
 
 use std::{path::Path, sync::Arc};
 
-use celeste_go::proton::HumanVerification;
+use syncative_go::proton::HumanVerification;
 
 use crate::{
     domain::{
@@ -27,8 +27,8 @@ fn login_params(
     password: &str,
     totp: &str,
     hv: Option<&HumanVerification>,
-) -> celeste_go::proton::LoginParams {
-    celeste_go::proton::LoginParams {
+) -> syncative_go::proton::LoginParams {
+    syncative_go::proton::LoginParams {
         username: username.to_owned(),
         password: password.to_owned(),
         two_fa: totp.to_owned(),
@@ -45,7 +45,7 @@ fn login_params(
 ///
 /// Uses the native Proton client (no rclone in the path). Logs in
 /// against Proton's API, persists the reusable credential blob into
-/// the OS keyring under `Celeste Keys / proton-session-<name>`,
+/// the OS keyring under `Syncative Keys / proton-session-<name>`,
 /// inserts the remote with `backend = native-proton`, and registers
 /// the session's UID on the router so the sync engine picks up the
 /// native adapter immediately.
@@ -59,7 +59,7 @@ pub fn add_proton_drive_remote(
     router: &ClientRouter,
 ) -> Result<RemoteId, String> {
     let params = login_params(username, password, totp, hv);
-    let cred = celeste_go::proton::login(&params)?;
+    let cred = syncative_go::proton::login(&params)?;
 
     persist_session_to_keyring(name, &cred.uid)?;
 
@@ -100,7 +100,7 @@ pub fn reauth_proton_drive_remote(
     router: &ClientRouter,
 ) -> Result<(), String> {
     let params = login_params(username, password, totp, hv);
-    let cred = celeste_go::proton::login(&params)?;
+    let cred = syncative_go::proton::login(&params)?;
 
     persist_session_to_keyring(name, &cred.uid)?;
 
@@ -116,12 +116,12 @@ pub fn reauth_proton_drive_remote(
 /// surfaces a "reauth required" message); other errors propagate.
 pub fn resume_session_from_keyring(
     remote_name: &str,
-) -> Result<Option<celeste_go::proton::ReusableCredential>, String> {
+) -> Result<Option<syncative_go::proton::ReusableCredential>, String> {
     let Some(blob) = secrets::load(&secrets::proton_account(remote_name))? else {
         return Ok(None);
     };
     let tmp = TempBlob::write(&blob)?;
-    let cred = celeste_go::proton::resume_session(tmp.path())?;
+    let cred = syncative_go::proton::resume_session(tmp.path())?;
 
     // Resuming an expired access token forces an immediate token
     // refresh inside `resume_session`, rotating the refresh token. If
@@ -133,7 +133,7 @@ pub fn resume_session_from_keyring(
     // sync-pass checkpoint is the backstop.
     if let Err(err) = persist_session_if_rotated(remote_name, &cred.uid) {
         eprintln!(
-            "celeste: could not persist post-resume token rotation for '{remote_name}': {err}",
+            "syncative: could not persist post-resume token rotation for '{remote_name}': {err}",
         );
     }
     Ok(Some(cred))
@@ -150,7 +150,7 @@ pub fn forget_session(remote_name: &str) -> Result<(), String> {
 /// The tempfile is deleted on success or failure.
 fn persist_session_to_keyring(remote_name: &str, uid: &str) -> Result<(), String> {
     let tmp = TempBlob::reserve()?;
-    celeste_go::proton::save_session(uid, tmp.path())?;
+    syncative_go::proton::save_session(uid, tmp.path())?;
     let blob = std::fs::read_to_string(tmp.path())
         .map_err(|e| format!("reading proton session tempfile: {e}"))?;
     secrets::store(&secrets::proton_account(remote_name), &blob)?;
@@ -170,7 +170,7 @@ fn persist_session_to_keyring(remote_name: &str, uid: &str) -> Result<(), String
 /// lagged, and the next rotation re-arms the check.
 pub fn persist_session_if_rotated(remote_name: &str, uid: &str) -> Result<bool, String> {
     let tmp = TempBlob::reserve()?;
-    if !celeste_go::proton::save_session_if_rotated(uid, tmp.path())? {
+    if !syncative_go::proton::save_session_if_rotated(uid, tmp.path())? {
         return Ok(false);
     }
     let blob = std::fs::read_to_string(tmp.path())
@@ -235,5 +235,5 @@ fn tempfile_path(tag: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    dir.join(format!("celeste-proton-{tag}-{pid}-{nanos}.json"))
+    dir.join(format!("syncative-proton-{tag}-{pid}-{nanos}.json"))
 }

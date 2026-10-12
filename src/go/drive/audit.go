@@ -15,7 +15,7 @@ import (
 	"log"
 	"sync"
 
-	"celeste/go/proton-ext"
+	"syncative/go/proton-ext"
 
 	"github.com/ProtonMail/go-proton-api"
 )

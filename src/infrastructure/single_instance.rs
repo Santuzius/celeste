@@ -1,4 +1,4 @@
-//! One Celeste process per data dir.
+//! One Syncative process per data dir.
 //!
 //! Two instances on the same SQLite DB would run overlapping sync passes over the same trees. The first process takes an exclusive `flock` on `<data_dir>/instance.lock` and listens on `<data_dir>/instance.sock`; a later launch (e.g. the app-menu entry while the autostarted copy sits in the tray) fails the lock, asks the running instance to show its window over the socket, and exits.
 
@@ -33,7 +33,7 @@ pub fn acquire(data_dir: &Path) -> Instance {
     let lock = match File::options().create(true).truncate(false).write(true).open(data_dir.join("instance.lock")) {
         Ok(f) => f,
         Err(err) => {
-            eprintln!("celeste: couldn't open instance lock ({err}); continuing without single-instance guard.");
+            eprintln!("syncative: couldn't open instance lock ({err}); continuing without single-instance guard.");
             return Instance::Primary;
         }
     };
@@ -41,8 +41,8 @@ pub fn acquire(data_dir: &Path) -> Instance {
     let locked = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
     if !locked {
         match UnixStream::connect(&sock_path).and_then(|mut s| s.write_all(b"show\n")) {
-            Ok(()) => eprintln!("celeste: already running — asked the running instance to show its window."),
-            Err(err) => eprintln!("celeste: already running, but couldn't reach it ({err})."),
+            Ok(()) => eprintln!("syncative: already running — asked the running instance to show its window."),
+            Err(err) => eprintln!("syncative: already running, but couldn't reach it ({err})."),
         }
         return Instance::Secondary;
     }
@@ -53,7 +53,7 @@ pub fn acquire(data_dir: &Path) -> Instance {
         Ok(listener) => {
             let _ = LISTENER.set(Mutex::new(Some(listener)));
         }
-        Err(err) => eprintln!("celeste: couldn't bind {} ({err}); a second launch won't be able to raise this window.", sock_path.display()),
+        Err(err) => eprintln!("syncative: couldn't bind {} ({err}); a second launch won't be able to raise this window.", sock_path.display()),
     }
     Instance::Primary
 }

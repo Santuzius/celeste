@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12+ copies app data to a new phone even with allowBackup="false". Celeste's credentials are bound to this phone's Keystore and useless elsewhere, so nothing goes along, neither to the cloud nor to another device; settings move through Preferences → Export instead. -->
+<!-- Android 12+ copies app data to a new phone even with allowBackup="false". Syncative's credentials are bound to this phone's Keystore and useless elsewhere, so nothing goes along, neither to the cloud nor to another device; settings move through Preferences → Export instead. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

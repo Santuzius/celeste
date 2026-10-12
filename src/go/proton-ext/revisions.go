@@ -37,7 +37,7 @@ func DeleteRevision(ctx context.Context, auth Auth, shareID, linkID, revisionID 
 	return do(ctx, auth, "DELETE", path, nil, nil)
 }
 
-// RevisionWithXAttr is the subset of the GetRevision response Celeste
+// RevisionWithXAttr is the subset of the GetRevision response Syncative
 // actually consumes — currently just the encrypted XAttr blob. Upstream
 // returns the same JSON, but its `RevisionMetadata` doesn't decode the
 // XAttr field, so we re-decode here to capture it.
@@ -62,7 +62,7 @@ func GetRevisionXAttr(ctx context.Context, auth Auth, shareID, linkID, revisionI
 	return env.Revision, nil
 }
 
-// ListRevisionMeta is the metadata Celeste needs from /revisions when
+// ListRevisionMeta is the metadata Syncative needs from /revisions when
 // it's looking for non-active revisions to clean up. Mirrors the parts
 // of upstream's RevisionMetadata we use plus nothing else.
 type ListRevisionMeta struct {

@@ -91,7 +91,7 @@ fn rasterise(svg_bytes: &[u8]) -> Vec<Icon> {
     let tree = match usvg::Tree::from_data(svg_bytes, &opts) {
         Ok(tree) => tree,
         Err(err) => {
-            eprintln!("celeste: tray SVG parse failed ({err}); icon will be blank.");
+            eprintln!("syncative: tray SVG parse failed ({err}); icon will be blank.");
             return Vec::new();
         }
     };

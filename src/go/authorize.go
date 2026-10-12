@@ -18,7 +18,7 @@ import (
 	"github.com/rclone/rclone/lib/oauthutil"
 )
 
-// What `rclone authorize` does, inside Celeste: the rclone binary is not there on Android, and a separate process is not needed elsewhere either. Instead of opening a browser itself rclone hands the authorization link over (see CelesteAuthorizeURL), so Celeste can open it in the platform's way.
+// What `rclone authorize` does, inside Syncative: the rclone binary is not there on Android, and a separate process is not needed elsewhere either. Instead of opening a browser itself rclone hands the authorization link over (see SyncativeAuthorizeURL), so Syncative can open it in the platform's way.
 
 var (
 	authorizeURLMutex sync.Mutex
@@ -34,10 +34,10 @@ func init() {
 	}
 }
 
-// CelesteAuthorize runs rclone's OAuth flow for the backend `typ` ("drive", "dropbox", "pcloud"), with the given client ID and secret unless empty, and returns `{"token": "…"}` or `{"error": "…"}`. Blocks until the browser returns to rclone's local web server, or CelesteAuthorizeCancel. Free the result with RcloneFreeString.
+// SyncativeAuthorize runs rclone's OAuth flow for the backend `typ` ("drive", "dropbox", "pcloud"), with the given client ID and secret unless empty, and returns `{"token": "…"}` or `{"error": "…"}`. Blocks until the browser returns to rclone's local web server, or SyncativeAuthorizeCancel. Free the result with RcloneFreeString.
 //
-//export CelesteAuthorize
-func CelesteAuthorize(typ, clientID, clientSecret *C.char) *C.char {
+//export SyncativeAuthorize
+func SyncativeAuthorize(typ, clientID, clientSecret *C.char) *C.char {
 	// Cleared on the way out as well, so the next run never sees this run's link.
 	clearURL := func() {
 		authorizeURLMutex.Lock()
@@ -57,10 +57,10 @@ func CelesteAuthorize(typ, clientID, clientSecret *C.char) *C.char {
 	return C.CString(string(out))
 }
 
-// CelesteAuthorizeURL returns the authorization link of the running CelesteAuthorize, or NULL before rclone has made it. Free it with RcloneFreeString.
+// SyncativeAuthorizeURL returns the authorization link of the running SyncativeAuthorize, or NULL before rclone has made it. Free it with RcloneFreeString.
 //
-//export CelesteAuthorizeURL
-func CelesteAuthorizeURL() *C.char {
+//export SyncativeAuthorizeURL
+func SyncativeAuthorizeURL() *C.char {
 	authorizeURLMutex.Lock()
 	defer authorizeURLMutex.Unlock()
 	if authorizeURL == "" {
@@ -69,10 +69,10 @@ func CelesteAuthorizeURL() *C.char {
 	return C.CString(authorizeURL)
 }
 
-// CelesteAuthorizeCancel makes a running CelesteAuthorize return with an error. rclone waits for its web server without a timeout, so this calls the server the way the browser would, only without a code.
+// SyncativeAuthorizeCancel makes a running SyncativeAuthorize return with an error. rclone waits for its web server without a timeout, so this calls the server the way the browser would, only without a code.
 //
-//export CelesteAuthorizeCancel
-func CelesteAuthorizeCancel() {
+//export SyncativeAuthorizeCancel
+func SyncativeAuthorizeCancel() {
 	client := http.Client{Timeout: 2 * time.Second}
 	if resp, err := client.Get(oauthutil.RedirectURL); err == nil {
 		resp.Body.Close()

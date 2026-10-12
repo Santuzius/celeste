@@ -27,7 +27,7 @@ use crate::{
         client_router::ClientRouter,
         persistence::{
             self,
-            migrations::{legacy_config_dir, Migrator, MigratorTrait},
+            migrations::{celeste_to_syncative, legacy_config_dir, Migrator, MigratorTrait},
             repository::SeaOrmRepository,
         },
         proton::client::NativeProtonClient,
@@ -37,7 +37,7 @@ use crate::{
     services::secrets,
 };
 
-/// Entry point on Android, called by NativeActivity for the first activity of the process. With `iced_android` it keeps running after the activity is destroyed, so syncing goes on while the sync service keeps the process alive; later activities attach to it. `CelesteApplication` has already set up the environment and logging.
+/// Entry point on Android, called by NativeActivity for the first activity of the process. With `iced_android` it keeps running after the activity is destroyed, so syncing goes on while the sync service keeps the process alive; later activities attach to it. `SyncativeApplication` has already set up the environment and logging.
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(app: iced_android::AndroidApp) {
@@ -78,7 +78,7 @@ fn set_up() -> Option<Services> {
     let stderr = stderr_capture::install();
     services::diagnostics::apply();
 
-    // SQLite DB lives under ${XDG_DATA_HOME:-~/.local/share}/celeste.
+    // SQLite DB lives under ${XDG_DATA_HOME:-~/.local/share}/syncative.
     // The rclone config file (which holds OAuth tokens librclone writes
     // and reads as plaintext) lives in $XDG_RUNTIME_DIR — a per-session
     // tmpfs that's RAM-backed and wiped on logout — so the durable
@@ -86,6 +86,15 @@ fn set_up() -> Option<Services> {
     // When XDG_RUNTIME_DIR isn't set we fall back to the data dir with
     // a warning; that's the only path where tokens can hit disk.
     let data_dir = util::get_data_dir();
+    match celeste_to_syncative::move_data_dir(&data_dir) {
+        Ok(true) => celeste_to_syncative::remove_cache_dir(),
+        Ok(false) => {}
+        Err(celeste_to_syncative::CelesteRunning) => {
+            eprintln!("syncative: Celeste, the previous version, is still running; quit it from its tray icon, then start Syncative again.");
+            show_celeste_running_notification();
+            return None;
+        }
+    }
     std::fs::create_dir_all(&data_dir).expect("failed to create data dir");
 
     // Bail out before touching the DB or keyring when another process already owns this data dir.
@@ -104,7 +113,7 @@ fn set_up() -> Option<Services> {
         }
         None => {
             eprintln!(
-                "celeste: $XDG_RUNTIME_DIR is unset; rclone tokens will land on disk at {}",
+                "syncative: $XDG_RUNTIME_DIR is unset; rclone tokens will land on disk at {}",
                 data_dir.display(),
             );
             data_dir.join("rclone.conf")
@@ -112,13 +121,13 @@ fn set_up() -> Option<Services> {
     };
     hydrate_rclone_config(&rclone_config);
 
-    celeste_go::initialize();
+    syncative_go::initialize();
     // Prove the combined Go archive loaded — cheap (no network).
-    eprintln!("celeste: celeste-go identity = {}", celeste_go::proton_drive_version());
+    eprintln!("syncative: syncative-go identity = {}", syncative_go::proton_drive_version());
     // Proton's naming scheme for third-party Drive clients.
-    celeste_go::proton::set_app_version(concat!("external-drive-celeste@", env!("CARGO_PKG_VERSION"), "-stable"))
+    syncative_go::proton::set_app_version(concat!("external-drive-syncative@", env!("CARGO_PKG_VERSION"), "-stable"))
         .expect("failed to set the Proton app version");
-    celeste_go::rpc(
+    syncative_go::rpc(
         "config/setpath",
         json!({ "path": rclone_config }).to_string(),
     )
@@ -147,7 +156,7 @@ fn set_up() -> Option<Services> {
 
     let repo: Arc<dyn Repository> = Arc::new(SeaOrmRepository::new(db));
 
-    // Per-remote client router. celeste_go's librclone surface is the default — Celeste's
+    // Per-remote client router. syncative_go's librclone surface is the default — Syncative's
     // existing rclone-backed remotes keep working unchanged. Each
     // native-backend remote resumes its saved session up front so
     // the UID is registered before the first sync tick fires.
@@ -173,25 +182,25 @@ fn fold_stale_rclone_into_keyring(data_dir: &std::path::Path) {
             if !body.is_empty() {
                 if let Err(err) = secrets::store(secrets::RCLONE_ACCOUNT, &body) {
                     eprintln!(
-                        "celeste: keyring sync of stale rclone.conf failed: {err}; leaving file in place",
+                        "syncative: keyring sync of stale rclone.conf failed: {err}; leaving file in place",
                     );
                     return;
                 }
             }
             if let Err(err) = std::fs::remove_file(&stale) {
                 eprintln!(
-                    "celeste: couldn't delete stale rclone.conf at {}: {err}",
+                    "syncative: couldn't delete stale rclone.conf at {}: {err}",
                     stale.display(),
                 );
             } else {
                 eprintln!(
-                    "celeste: cleared stale rclone.conf from {}",
+                    "syncative: cleared stale rclone.conf from {}",
                     data_dir.display(),
                 );
             }
         }
         Err(err) => eprintln!(
-            "celeste: couldn't read stale rclone.conf at {}: {err}",
+            "syncative: couldn't read stale rclone.conf at {}: {err}",
             stale.display(),
         ),
     }
@@ -206,7 +215,7 @@ fn hydrate_rclone_config(rclone_config: &std::path::Path) {
         Ok(Some(body)) => {
             if let Err(err) = std::fs::write(rclone_config, body) {
                 eprintln!(
-                    "celeste: couldn't write rclone config to {}: {err}",
+                    "syncative: couldn't write rclone config to {}: {err}",
                     rclone_config.display(),
                 );
             }
@@ -218,11 +227,11 @@ fn hydrate_rclone_config(rclone_config: &std::path::Path) {
                 let _ = std::fs::File::create(rclone_config);
             }
         }
-        Err(err) => eprintln!("celeste: keyring read of rclone config failed: {err}"),
+        Err(err) => eprintln!("syncative: keyring read of rclone config failed: {err}"),
     }
 }
 
-/// Have rclone encrypt its config file with its own config encryption, under a password kept among Celeste's credentials, so the tokens never lie in the file in plain text (on Android `XDG_RUNTIME_DIR` is ordinary app storage, not a RAM disk). A config still in plain text from an older version is rewritten encrypted once, and the keyring gets the encrypted text. Without a working keyring the file stays in plain text as before: a password that cannot be kept would make the config unreadable after the next start.
+/// Have rclone encrypt its config file with its own config encryption, under a password kept among Syncative's credentials, so the tokens never lie in the file in plain text (on Android `XDG_RUNTIME_DIR` is ordinary app storage, not a RAM disk). A config still in plain text from an older version is rewritten encrypted once, and the keyring gets the encrypted text. Without a working keyring the file stays in plain text as before: a password that cannot be kept would make the config unreadable after the next start.
 fn encrypt_rclone_config(rclone_config: &std::path::Path) {
     const ENCRYPTED_MARK: &str = "RCLONE_ENCRYPT_V0:";
     let body = std::fs::read_to_string(rclone_config).unwrap_or_default();
@@ -230,44 +239,44 @@ fn encrypt_rclone_config(rclone_config: &std::path::Path) {
         Ok(Some(password)) => password,
         Ok(None) => {
             if body.contains(ENCRYPTED_MARK) {
-                eprintln!("celeste: the rclone config is encrypted, but its password is gone; remotes signed in through rclone (Google Drive) need to be signed in again");
+                eprintln!("syncative: the rclone config is encrypted, but its password is gone; remotes signed in through rclone (Google Drive) need to be signed in again");
             }
             let password = match random_password() {
                 Ok(password) => password,
                 Err(err) => {
-                    eprintln!("celeste: could not make a password for the rclone config, leaving it unencrypted: {err}");
+                    eprintln!("syncative: could not make a password for the rclone config, leaving it unencrypted: {err}");
                     return;
                 }
             };
             if let Err(err) = secrets::store(secrets::RCLONE_PASSWORD_ACCOUNT, &password) {
-                eprintln!("celeste: could not store the rclone config's password, leaving the config unencrypted: {err}");
+                eprintln!("syncative: could not store the rclone config's password, leaving the config unencrypted: {err}");
                 return;
             }
             password
         }
         Err(err) => {
-            eprintln!("celeste: could not read the rclone config's password, leaving the config unencrypted: {err}");
+            eprintln!("syncative: could not read the rclone config's password, leaving the config unencrypted: {err}");
             return;
         }
     };
-    if let Err(err) = celeste_go::set_config_password(&password) {
-        eprintln!("celeste: rclone refused the config password: {err}");
+    if let Err(err) = syncative_go::set_config_password(&password) {
+        eprintln!("syncative: rclone refused the config password: {err}");
         return;
     }
     if body.trim().is_empty() || body.contains(ENCRYPTED_MARK) {
         return;
     }
-    if let Err(err) = celeste_go::save_config() {
-        eprintln!("celeste: could not encrypt the rclone config: {err}");
+    if let Err(err) = syncative_go::save_config() {
+        eprintln!("syncative: could not encrypt the rclone config: {err}");
         return;
     }
     match std::fs::read_to_string(rclone_config) {
         Ok(encrypted) => {
             if let Err(err) = secrets::store(secrets::RCLONE_ACCOUNT, &encrypted) {
-                eprintln!("celeste: keyring sync of the encrypted rclone config failed: {err}");
+                eprintln!("syncative: keyring sync of the encrypted rclone config failed: {err}");
             }
         }
-        Err(err) => eprintln!("celeste: could not read back the encrypted rclone config: {err}"),
+        Err(err) => eprintln!("syncative: could not read back the encrypted rclone config: {err}"),
     }
 }
 
@@ -299,7 +308,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                 remote.name,
                 REAUTH_HINT,
             );
-            eprintln!("celeste: {reason}");
+            eprintln!("syncative: {reason}");
             notify_reauth_needed(&remote.name);
             router.register(
                 remote.name.clone(),
@@ -314,7 +323,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                     Arc::new(NativeProtonClient::new(cred.uid)),
                 );
                 eprintln!(
-                    "celeste: native-proton session resumed for '{}'.",
+                    "syncative: native-proton session resumed for '{}'.",
                     remote.name,
                 );
             }
@@ -324,7 +333,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                     remote.name,
                     REAUTH_HINT,
                 );
-                eprintln!("celeste: {reason}");
+                eprintln!("syncative: {reason}");
                 notify_reauth_needed(&remote.name);
                 router.register(
                     remote.name.clone(),
@@ -343,7 +352,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                     remote.name,
                     REAUTH_HINT,
                 );
-                eprintln!("celeste: {reason}");
+                eprintln!("syncative: {reason}");
                 notify_reauth_needed(&remote.name);
                 router.register(
                     remote.name.clone(),
@@ -355,7 +364,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                     "Proton Drive session for '{}' not resumed yet ({err}). Retrying automatically — no action needed.",
                     remote.name,
                 );
-                eprintln!("celeste: {reason}");
+                eprintln!("syncative: {reason}");
                 router.register(
                     remote.name.clone(),
                     Arc::new(PendingProtonClient::new(remote.name.clone(), reason)),
@@ -368,7 +377,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
 /// Best-effort OS notification when a native-proton remote can't resume
 /// its session at startup. Silently swallows errors — the remote page
 /// banner + button are the authoritative recovery surface; the toast
-/// is just there to nudge users who've minimised Celeste to the tray.
+/// is just there to nudge users who've minimised Syncative to the tray.
 ///
 /// Sent from a detached thread: at autostart the notification daemon
 /// may not be up yet, and a blocking D-Bus activation would otherwise
@@ -380,18 +389,35 @@ fn notify_reauth_needed(remote_name: &str) {
 
 #[cfg(target_os = "android")]
 fn show_reauth_notification(remote_name: &str) {
-    infrastructure::android::notify("Sign-in needed", &format!("Syncing '{remote_name}' is on hold. Open Celeste and tap Sign in again."));
+    infrastructure::android::notify("Sign-in needed", &format!("Syncing '{remote_name}' is on hold. Open Syncative and tap Sign in again."));
 }
 
 #[cfg(not(target_os = "android"))]
 fn show_reauth_notification(remote_name: &str) {
     let mut notification = notify_rust::Notification::new();
     notification
-        .summary("Celeste: sign-in needed")
+        .summary("Syncative: sign-in needed")
         .body(&format!(
-            "Syncing '{remote_name}' is on hold. Open Celeste and click Sign in again.",
+            "Syncing '{remote_name}' is on hold. Open Syncative and click Sign in again.",
         ))
-        .appname("Celeste");
+        .appname("Syncative");
+    if let Some(icon) = branding::icon_file_path() {
+        notification.icon(icon);
+    }
+    let _ = notification.show();
+}
+
+#[cfg(target_os = "android")]
+fn show_celeste_running_notification() {}
+
+/// Shown instead of starting while Celeste still runs on the data dir Syncative takes over.
+#[cfg(not(target_os = "android"))]
+fn show_celeste_running_notification() {
+    let mut notification = notify_rust::Notification::new();
+    notification
+        .summary("Syncative: quit Celeste first")
+        .body("Celeste, the previous version, is still running. Quit it from its tray icon, then start Syncative again; it takes over Celeste's folders and sign-ins.")
+        .appname("Syncative");
     if let Some(icon) = branding::icon_file_path() {
         notification.icon(icon);
     }
@@ -419,13 +445,13 @@ fn show_legacy_config_popup(data_dir: &std::path::Path) {
 
     fn legacy_view(state: &LegacyPopup) -> Element<'_, Msg> {
         column![
-            text("Outdated Celeste configuration detected").size(20),
+            text("Outdated Syncative configuration detected").size(20),
             text(format!(
-                "The sync algorithm was rewritten and the database schema is no longer compatible.\n\nDelete the following directory and restart Celeste:\n\n  {}",
+                "The sync algorithm was rewritten and the database schema is no longer compatible.\n\nDelete the following directory and restart Syncative:\n\n  {}",
                 state.data_dir,
             ))
             .size(14),
-            button(text("Close Celeste")).on_press(Msg::Ack),
+            button(text("Close Syncative")).on_press(Msg::Ack),
         ]
         .spacing(16)
         .padding(24)
@@ -446,7 +472,7 @@ fn show_legacy_config_popup(data_dir: &std::path::Path) {
         legacy_update,
         legacy_view,
     )
-    .title("Celeste — outdated configuration")
+    .title("Syncative — outdated configuration")
     .theme(legacy_theme)
     .run();
 }

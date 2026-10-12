@@ -16,18 +16,18 @@
 
     <!-- enableOnBackInvokedCallback: Android 13+ delivers back through IcedActivity's callback. -->
     <application
-        android:name=".CelesteApplication"
+        android:name=".SyncativeApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Celeste"
+        android:label="Syncative"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <!-- configChanges: rotation, dark mode, keyboard and the like reach the running app instead of restarting the activity. launchMode singleTask: the notification and the launcher return to the one activity. -->
         <activity
-            android:name=".CelesteActivity"
+            android:name=".SyncativeActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboard|keyboardHidden|navigation|uiMode|locale|layoutDirection|fontScale"
             android:exported="true"
             android:launchMode="singleTask"
@@ -37,7 +37,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <meta-data android:name="android.app.lib_name" android:value="celeste" />
+            <meta-data android:name="android.app.lib_name" android:value="syncative" />
         </activity>
 
         <!-- specialUse: dataSync services may only run 6 hours a day from Android 15 on, too little for a sync client that waits for changes. -->

@@ -1,13 +1,13 @@
-/celeste/src/style.css
-/celeste_*.snap
+/syncative/src/style.css
+/syncative_*.snap
 /target
 /src/style.css
 
 # src/go: the `go build -buildmode=c-archive` output. Emitted by
 # src/go/build.rs at OUT_DIR, and occasionally produced at the
 # crate root when running `go build` ad-hoc.
-/src/go/libceleste_go.a
-/src/go/libceleste_go.h
+/src/go/libsyncative_go.a
+/src/go/libsyncative_go.h
 
 
 temp

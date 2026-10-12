@@ -1,4 +1,4 @@
-# Celeste package, built fully inside the Nix sandbox: the Go c-archive (librclone + native Proton client) is built by src/go/build.rs from vendored Go modules, so no pre-built libceleste_go.a and no network access are needed.
+# Syncative package, built fully inside the Nix sandbox: the Go c-archive (librclone + native Proton client) is built by src/go/build.rs from vendored Go modules, so no pre-built libsyncative_go.a and no network access are needed.
 {
   lib,
   pkgs,
@@ -27,7 +27,7 @@ let
     hash = "sha256-e6s3cMTfgkbOoxWMwkxj2W7s7j3rz65TMSCITzF3OoA=";
   };
 
-  fullSrc = runCommand "celeste-source-${version}" { } ''
+  fullSrc = runCommand "syncative-source-${version}" { } ''
     cp -r ${src} $out
     chmod -R u+w $out
     rm -rf $out/src/go/proton-api $out/target $out/temp
@@ -37,7 +37,7 @@ let
   # Fixed-output derivation holding `go mod vendor` of src/go (including the replaced ./proton-api). Update `vendorHash` when src/go/go.mod or go.sum change: set it to lib.fakeHash, build, and copy the hash from the error.
   goModules =
     (buildGoModule {
-      pname = "celeste-go";
+      pname = "syncative-go";
       inherit version;
       src = fullSrc;
       modRoot = "src/go";
@@ -45,19 +45,19 @@ let
     }).goModules;
 
   desktopItem = makeDesktopItem {
-    name = "celeste";
-    desktopName = "Celeste";
+    name = "syncative";
+    desktopName = "Syncative";
     genericName = "File Synchronization Client";
     comment = "Sync local folders with Google Drive or Proton Drive";
-    exec = "celeste --show";
-    icon = "celeste-icon";
+    exec = "syncative --show";
+    icon = "syncative-icon";
     categories = [ "Utility" "FileTransfer" "Network" ];
     keywords = [ "sync" "cloud" "backup" "rclone" ];
-    startupWMClass = "celeste";
+    startupWMClass = "syncative";
   };
 in
 rustPlatform.buildRustPackage {
-  pname = "celeste";
+  pname = "syncative";
   inherit version;
   src = fullSrc;
 
@@ -91,20 +91,20 @@ rustPlatform.buildRustPackage {
   # The cdylib is the Android app's library and of no use here.
   postInstall = ''
     rm -r $out/lib
-    install -Dm 644 assets/celeste-icon.svg $out/share/icons/hicolor/scalable/apps/celeste-icon.svg
+    install -Dm 644 assets/syncative-icon.svg $out/share/icons/hicolor/scalable/apps/syncative-icon.svg
   '';
 
   # winit/wgpu load Wayland, X11 and Vulkan libraries at run time.
   postFixup = ''
-    wrapProgram $out/bin/celeste \
+    wrapProgram $out/bin/syncative \
       --prefix LD_LIBRARY_PATH : ${shell.LD_LIBRARY_PATH}
   '';
 
   meta = {
     description = "GUI file synchronization client for Google Drive and Proton Drive";
-    homepage = "https://github.com/Santuzius/celeste";
+    homepage = "https://github.com/Santuzius/syncative";
     license = lib.licenses.gpl3Plus;
-    mainProgram = "celeste";
+    mainProgram = "syncative";
     platforms = lib.platforms.linux;
   };
 }

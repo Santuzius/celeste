@@ -1,6 +1,6 @@
-//! What Celeste needs from Android's Java side: the Keystore for credentials, the folder picker, notifications and the sync service that keeps the process alive. The Java half is android/app/src/main/java/io/github/santuzius/celeste/.
+//! What Syncative needs from Android's Java side: the Keystore for credentials, the folder picker, notifications and the sync service that keeps the process alive. The Java half is android/app/src/main/java/io/github/santuzius/syncative/.
 //!
-//! `CelesteApplication` hands over the Java VM and the Application when the process starts, before any activity or service, so calls also work while no activity exists, e.g. when the sync service started the engine after a reboot. They go through the Application's class loader.
+//! `SyncativeApplication` hands over the Java VM and the Application when the process starts, before any activity or service, so calls also work while no activity exists, e.g. when the sync service started the engine after a reboot. They go through the Application's class loader.
 
 pub mod documents;
 pub mod folders;
@@ -22,18 +22,18 @@ use crate::{
     services::power::{Conditions, PowerSettings},
 };
 
-/// The Java class with Celeste's static helpers.
-const BRIDGE: &str = "io.github.santuzius.celeste.Bridge";
+/// The Java class with Syncative's static helpers.
+const BRIDGE: &str = "io.github.santuzius.syncative.Bridge";
 
-/// The process's Java VM and its Application, from [`CelesteApplication.nativeInit`](Java_io_github_santuzius_celeste_CelesteApplication_nativeInit).
+/// The process's Java VM and its Application, from [`SyncativeApplication.nativeInit`](Java_io_github_santuzius_syncative_SyncativeApplication_nativeInit).
 static CONTEXT: OnceLock<(JavaVM, GlobalRef)> = OnceLock::new();
 
-/// Called by `CelesteApplication.onCreate`, first thing in every process, after it has pointed the XDG and temp directories at the app's private storage (from Java, so the Go runtime sees them too).
+/// Called by `SyncativeApplication.onCreate`, first thing in every process, after it has pointed the XDG and temp directories at the app's private storage (from Java, so the Go runtime sees them too).
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_CelesteApplication_nativeInit(env: JNIEnv, _: JClass, application: JObject) {
+extern "system" fn Java_io_github_santuzius_syncative_SyncativeApplication_nativeInit(env: JNIEnv, _: JClass, application: JObject) {
     // sqlx logs every query and wgpu its whole adapter at info level.
     let filter = android_logger::FilterBuilder::new().parse("info,sqlx=warn,wgpu_core=error,wgpu_hal=error,iced_wgpu=warn,iced_winit=warn").build();
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("celeste").with_filter(filter));
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("syncative").with_filter(filter));
     std::panic::set_hook(Box::new(|info| log::error!("{info}")));
     match (env.get_java_vm(), env.new_global_ref(application)) {
         (Ok(vm), Ok(application)) => {
@@ -45,7 +45,7 @@ extern "system" fn Java_io_github_santuzius_celeste_CelesteApplication_nativeIni
 
 /// Called by `SyncService.onCreate`: starts the sync engine without a GUI, unless it already runs.
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeStartEngine(_: JNIEnv, _: JClass) {
+extern "system" fn Java_io_github_santuzius_syncative_SyncService_nativeStartEngine(_: JNIEnv, _: JClass) {
     // Setting up opens the database and resumes sessions over the network; keep that off the service's main thread.
     std::thread::spawn(crate::start_engine);
 }
@@ -60,7 +60,7 @@ pub fn conditions() -> Conditions {
 
 /// Called by `SyncService` when the screen goes off or on, the charger is plugged in or out, or Android's battery saver toggles: the power mode decides how often to sync (see [`crate::services::power`]).
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeConditions(_: JNIEnv, _: JClass, screen_off: jboolean, charging: jboolean, battery_saver: jboolean) {
+extern "system" fn Java_io_github_santuzius_syncative_SyncService_nativeConditions(_: JNIEnv, _: JClass, screen_off: jboolean, charging: jboolean, battery_saver: jboolean) {
     if let Ok(mut conditions) = CONDITIONS.lock() {
         *conditions = Conditions { screen_off: screen_off == JNI_TRUE, charging: charging == JNI_TRUE, battery_saver: battery_saver == JNI_TRUE, ..*conditions };
     }
@@ -69,7 +69,7 @@ extern "system" fn Java_io_github_santuzius_celeste_SyncService_nativeConditions
 
 /// Called by `Bridge.watchNetwork` in every process when the default network changes and whether it is metered: Preferences may hold syncing on metered networks.
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_Bridge_nativeMetered(_: JNIEnv, _: JClass, metered: jboolean) {
+extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeMetered(_: JNIEnv, _: JClass, metered: jboolean) {
     let metered = metered == JNI_TRUE;
     let changed = CONDITIONS.lock().map(|mut c| std::mem::replace(&mut c.metered, metered) != metered).unwrap_or(false);
     if changed {
@@ -82,7 +82,7 @@ extern "system" fn Java_io_github_santuzius_celeste_Bridge_nativeMetered(_: JNIE
 pub fn apply_power_state() {
     let cadence = PowerSettings::load(&crate::util::get_data_dir()).cadence(conditions());
     // Google Drive's and Dropbox's change logs in the same rhythm; hourly while held.
-    celeste_go::set_change_poll_interval(match cadence {
+    syncative_go::set_change_poll_interval(match cadence {
         Cadence::Full => None,
         Cadence::AtMost(floor) => Some(floor),
         Cadence::Held => Some(Duration::from_secs(60 * 60)),
@@ -92,7 +92,7 @@ pub fn apply_power_state() {
     }
 }
 
-/// Whether Android leaves Celeste out of battery optimization, so it may keep running in the background.
+/// Whether Android leaves Syncative out of battery optimization, so it may keep running in the background.
 pub fn ignores_battery_optimizations() -> bool {
     with_context(|env, context| {
         let class = bridge(env, context)?;
@@ -101,7 +101,7 @@ pub fn ignores_battery_optimizations() -> bool {
     .unwrap_or(true)
 }
 
-/// Opens Android's question whether Celeste may always run in the background, or the battery optimization list where that is missing.
+/// Opens Android's question whether Syncative may always run in the background, or the battery optimization list where that is missing.
 pub fn ask_to_ignore_battery_optimizations() {
     with_context(|env, context| {
         let class = bridge(env, context)?;
@@ -110,7 +110,7 @@ pub fn ask_to_ignore_battery_optimizations() {
     });
 }
 
-/// Whether Celeste may read and write anywhere in shared storage ("All files access"), which syncing folders there needs.
+/// Whether Syncative may read and write anywhere in shared storage ("All files access"), which syncing folders there needs.
 pub fn has_storage_access() -> bool {
     with_context(|env, context| {
         let class = bridge(env, context)?;
@@ -173,7 +173,7 @@ fn bridge<'local>(env: &mut JNIEnv<'local>, context: &JObject) -> jni::errors::R
     Ok(JClass::from(class))
 }
 
-/// Shows a notification in Celeste's "Problems" channel, e.g. when an account needs signing in again.
+/// Shows a notification in Syncative's "Problems" channel, e.g. when an account needs signing in again.
 pub fn notify(title: &str, text: &str) {
     with_context(|env, context| {
         let class = bridge(env, context)?;
@@ -203,7 +203,7 @@ pub fn open_url(url: &str) {
     });
 }
 
-/// Starts the foreground service that keeps the process, and with it syncing, alive while Celeste is not on screen, or updates its notification text.
+/// Starts the foreground service that keeps the process, and with it syncing, alive while Syncative is not on screen, or updates its notification text.
 /// `since_millis` (Unix time, 0 for none) is shown as the age of the status, e.g. of the last sync.
 pub fn show_sync_status(text: &str, since_millis: i64) {
     with_context(|env, context| {

@@ -34,7 +34,7 @@ import (
 	"sort"
 	"time"
 
-	"celeste/go/proton-ext"
+	"syncative/go/proton-ext"
 
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"

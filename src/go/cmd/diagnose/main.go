@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"celeste/go/drive"
+	"syncative/go/drive"
 
 	"github.com/ProtonMail/go-proton-api"
 )
@@ -19,13 +19,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "cannot find home dir: %v\n", err)
 		os.Exit(1)
 	}
-	// Celeste itself stores the session blob in the OS keyring under
-	// `Celeste Keys / proton-session-<remote>`; this tool still wants
+	// Syncative itself stores the session blob in the OS keyring under
+	// `Syncative Keys / proton-session-<remote>`; this tool still wants
 	// a JSON path. Pass one explicitly (e.g. exported with
 	// `secret-tool lookup` first), or fall back to the legacy file
 	// location for users who haven't yet upgraded past the keyring
 	// migration.
-	sessionPath := home + "/.local/share/celeste/proton-session-ProtonDrive.json"
+	sessionPath := home + "/.local/share/syncative/proton-session-ProtonDrive.json"
 	if len(os.Args) > 1 {
 		sessionPath = os.Args[1]
 	}
@@ -40,7 +40,7 @@ func main() {
 		mode = os.Args[3]
 	}
 
-	fmt.Printf("=== Celeste ProtonDrive Diagnostic Tool ===\n")
+	fmt.Printf("=== Syncative ProtonDrive Diagnostic Tool ===\n")
 	fmt.Printf("Session file: %s\n", sessionPath)
 	fmt.Printf("Target:       %q\n", targetName)
 	fmt.Printf("Mode:         %s\n\n", mode)
@@ -177,7 +177,7 @@ func replaceTest(ctx context.Context, sess *drive.Session, rootID, targetName st
 	fmt.Printf("\n--- Replace Test: upload %q twice with different content ---\n", targetName)
 
 	upload := func(label, content string) string {
-		tmpFile, err := os.CreateTemp("", "celeste-replace-*.txt")
+		tmpFile, err := os.CreateTemp("", "syncative-replace-*.txt")
 		if err != nil {
 			fmt.Printf("  ERROR creating temp file: %v\n", err)
 			return ""
@@ -202,8 +202,8 @@ func replaceTest(ctx context.Context, sess *drive.Session, rootID, targetName st
 	}
 
 	stamp := time.Now().UnixNano()
-	first := upload("first", fmt.Sprintf("celeste replace-test v1 — %d\n", stamp))
-	second := upload("second", fmt.Sprintf("celeste replace-test v2 — %d (longer body so SHA1 differs)\n", stamp))
+	first := upload("first", fmt.Sprintf("syncative replace-test v1 — %d\n", stamp))
+	second := upload("second", fmt.Sprintf("syncative replace-test v2 — %d (longer body so SHA1 differs)\n", stamp))
 
 	if first == "" || second == "" {
 		fmt.Printf("  Upload(s) failed; cannot inspect revisions.\n")
@@ -240,7 +240,7 @@ func uploadTest(ctx context.Context, sess *drive.Session, rootID, targetName str
 	fmt.Printf("\n--- Upload Test: uploading %q to root ---\n", targetName)
 
 	// Create a small temp file to upload
-	tmpFile, err := os.CreateTemp("", "celeste-diag-*.txt")
+	tmpFile, err := os.CreateTemp("", "syncative-diag-*.txt")
 	if err != nil {
 		fmt.Printf("  ERROR creating temp file: %v\n", err)
 		return
@@ -248,7 +248,7 @@ func uploadTest(ctx context.Context, sess *drive.Session, rootID, targetName str
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	_, err = tmpFile.WriteString("Celeste diagnostic upload test\n")
+	_, err = tmpFile.WriteString("Syncative diagnostic upload test\n")
 	if err != nil {
 		tmpFile.Close()
 		fmt.Printf("  ERROR writing temp file: %v\n", err)

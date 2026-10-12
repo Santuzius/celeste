@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use futures::future::Future;
 
-/// How the UI names the machine Celeste runs on.
+/// How the UI names the machine Syncative runs on.
 pub const THIS_DEVICE: &str = if cfg!(target_os = "android") { "this device" } else { "this computer" };
 
 /// Block the current thread on a future. Safe from any thread;
@@ -15,7 +15,7 @@ pub fn await_future<F: Future>(future: F) -> F::Output {
 #[cfg(not(target_os = "android"))]
 pub fn open_in_browser(url: &str) {
     if let Err(err) = std::process::Command::new("xdg-open").arg(url).spawn() {
-        eprintln!("celeste: couldn't open {url} ({err}).");
+        eprintln!("syncative: couldn't open {url} ({err}).");
     }
 }
 
@@ -71,9 +71,9 @@ pub fn fmt_home(dir: &str) -> String {
     }
 }
 
-/// `${XDG_DATA_HOME:-$HOME/.local/share}/celeste`.
+/// `${XDG_DATA_HOME:-$HOME/.local/share}/syncative`.
 ///
-/// We treat the celeste config dir as user data (the SQLite DB and
+/// We treat the data dir as user data (the SQLite DB and
 /// rclone config file count as state, not human-edited config), so
 /// XDG-wise it belongs under `$XDG_DATA_HOME`, not `$XDG_CONFIG_HOME`.
 pub fn get_data_dir() -> PathBuf {
@@ -86,7 +86,7 @@ pub fn get_data_dir() -> PathBuf {
             home
         }
     };
-    base.push("celeste");
+    base.push("syncative");
     base
 }
 
@@ -108,7 +108,7 @@ pub fn get_legacy_config_dir() -> PathBuf {
     base
 }
 
-/// `$XDG_RUNTIME_DIR/celeste`, or `None` when the variable is unset.
+/// `$XDG_RUNTIME_DIR/syncative`, or `None` when the variable is unset.
 ///
 /// `$XDG_RUNTIME_DIR` is a per-session tmpfs (RAM-backed, wiped on
 /// logout / reboot). It's where the on-disk `rclone.conf` lives at
@@ -119,7 +119,7 @@ pub fn get_runtime_dir() -> Option<PathBuf> {
     match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(path) if !path.is_empty() => {
             let mut base = PathBuf::from(path);
-            base.push("celeste");
+            base.push("syncative");
             Some(base)
         }
         _ => None,
@@ -135,7 +135,7 @@ pub fn strip_slashes(string: &str) -> String {
         .to_string()
 }
 
-/// Hands memory the allocator has freed but kept back to the OS. glibc keeps freed heap pages for reuse, so after the window and its GPU resources are gone Celeste would otherwise stay at its window-open size while sitting in the tray.
+/// Hands memory the allocator has freed but kept back to the OS. glibc keeps freed heap pages for reuse, so after the window and its GPU resources are gone Syncative would otherwise stay at its window-open size while sitting in the tray.
 pub fn release_freed_memory() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     // SAFETY: malloc_trim only walks the allocator's own free lists.

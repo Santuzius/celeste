@@ -1,9 +1,9 @@
-//! Celeste's combined Go archive — Rust side.
+//! Syncative's combined Go archive — Rust side.
 //!
 //! Raw bindings live in `ffi` (bindgen-generated at build time from
 //! `wrapper.go`'s `//export`s). The crate root also exposes small safe
 //! wrappers matching the upstream `librclone` crate's API (initialize,
-//! finalize, rpc) so the rest of Celeste can swap its `librclone` dep
+//! finalize, rpc) so the rest of Syncative can swap its `librclone` dep
 //! for this one with no code changes in the rclone path. New surface
 //! area (`proton_drive_version` and future native Drive calls) sits
 //! alongside.
@@ -38,7 +38,7 @@ pub fn finalize() {
 }
 
 /// Perform a single rclone RPC call. Identical signature to the
-/// upstream `librclone::rpc` so existing Celeste code needn't change.
+/// upstream `librclone::rpc` so existing Syncative code needn't change.
 ///
 /// - `method`: e.g. `operations/list` — see <https://rclone.org/rc/>.
 /// - `input`: a serialised JSON object.
@@ -81,7 +81,7 @@ pub fn authorize(kind: &str, client_id: &str, client_secret: &str) -> Result<Str
     let (Ok(kind), Ok(id), Ok(secret)) = (CString::new(kind), CString::new(client_id), CString::new(client_secret)) else {
         return Err("invalid client ID or secret".to_owned());
     };
-    let reply = unsafe { take_string(ffi::CelesteAuthorize(kind.as_ptr() as *mut c_char, id.as_ptr() as *mut c_char, secret.as_ptr() as *mut c_char)) };
+    let reply = unsafe { take_string(ffi::SyncativeAuthorize(kind.as_ptr() as *mut c_char, id.as_ptr() as *mut c_char, secret.as_ptr() as *mut c_char)) };
     match serde_json::from_str::<Reply>(&reply) {
         Ok(Reply { token: Some(token), .. }) => Ok(token),
         Ok(Reply { error: Some(error), .. }) => Err(error),
@@ -91,25 +91,25 @@ pub fn authorize(kind: &str, client_id: &str, client_secret: &str) -> Result<Str
 
 /// The authorization link of the running [`authorize`], once rclone has made it.
 pub fn authorize_url() -> Option<String> {
-    let url = unsafe { ffi::CelesteAuthorizeURL() };
+    let url = unsafe { ffi::SyncativeAuthorizeURL() };
     (!url.is_null()).then(|| unsafe { take_string(url) })
 }
 
 /// Make a running [`authorize`] return with an error.
 pub fn authorize_cancel() {
-    unsafe { ffi::CelesteAuthorizeCancel() };
+    unsafe { ffi::SyncativeAuthorizeCancel() };
 }
 
 /// Make rclone encrypt its config file with `password` (rclone's own config encryption) and decrypt it on loading. Call before anything reads the config.
 pub fn set_config_password(password: &str) -> Result<(), String> {
     let password = CString::new(password).map_err(|_| "invalid password".to_owned())?;
-    let err = unsafe { ffi::CelesteSetConfigPassword(password.as_ptr() as *mut c_char) };
+    let err = unsafe { ffi::SyncativeSetConfigPassword(password.as_ptr() as *mut c_char) };
     if err.is_null() { Ok(()) } else { Err(unsafe { take_string(err) }) }
 }
 
 /// Load rclone's config file and write it back, encrypted after [`set_config_password`]. A file rclone cannot read stays as it is.
 pub fn save_config() -> Result<(), String> {
-    let err = unsafe { ffi::CelesteSaveConfig() };
+    let err = unsafe { ffi::SyncativeSaveConfig() };
     if err.is_null() { Ok(()) } else { Err(unsafe { take_string(err) }) }
 }
 
@@ -426,7 +426,7 @@ pub mod proton {
     }
 
     /// Permanently delete the named link (no Trash recovery window).
-    /// Celeste's sync engine should NOT call this — mirror deletes
+    /// Syncative's sync engine should NOT call this — mirror deletes
     /// go through `trash_link` so the user keeps a restore window.
     /// Exposed so an explicit "empty trash for this item" UX can
     /// hook it later.

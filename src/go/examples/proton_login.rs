@@ -24,7 +24,7 @@
 
 use std::{env, path::PathBuf};
 
-use celeste_go::{self as native, proton};
+use syncative_go::{self as native, proton};
 
 fn main() {
     // One-time Go runtime + rclone/native init.
@@ -50,7 +50,7 @@ fn main() {
     eprintln!("  login OK — uid={}", cred.uid);
 
     let session_path: PathBuf = env::temp_dir().join(format!(
-        "celeste-proton-session-smoke-{}.json",
+        "syncative-proton-session-smoke-{}.json",
         std::process::id()
     ));
     if let Err(err) = proton::save_session(&cred.uid, &session_path) {
@@ -123,7 +123,7 @@ fn main() {
     }
     if let Some(first_file) = entries.iter().find(|e| !e.is_dir) {
         let dl_path = env::temp_dir().join(format!(
-            "celeste-proton-dl-smoke-{}",
+            "syncative-proton-dl-smoke-{}",
             std::process::id()
         ));
         eprintln!(
@@ -150,18 +150,18 @@ fn main() {
     // Opt-in write smoke. Skipped by default so the Drive doesn't
     // accumulate scratch folders between runs.
     if env::var("PROTON_WRITE_SMOKE").ok().as_deref() == Some("1") {
-        let folder_name = format!("celeste-native-smoke-{}", std::process::id());
+        let folder_name = format!("syncative-native-smoke-{}", std::process::id());
         eprintln!("  creating folder '{folder_name}' under root…");
         match proton::create_folder(&resumed.uid, "", &folder_name) {
             Ok(id) => {
                 eprintln!("    folder OK, link id = {id}");
                 // Upload a tiny scratch file into the new folder.
                 let payload = format!(
-                    "celeste native proton upload smoke — pid {} — hello from cgo!\n",
+                    "syncative native proton upload smoke — pid {} — hello from cgo!\n",
                     std::process::id()
                 );
                 let src = env::temp_dir().join(format!(
-                    "celeste-proton-upload-src-{}.txt",
+                    "syncative-proton-upload-src-{}.txt",
                     std::process::id()
                 ));
                 if let Err(err) = std::fs::write(&src, &payload) {

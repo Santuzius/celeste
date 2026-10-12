@@ -1,6 +1,6 @@
 //! OS keyring storage for credential blobs.
 //!
-//! All entries live under the `Celeste Keys` service so they group
+//! All entries live under the `Syncative Keys` service so they group
 //! together in Seahorse / KWallet / GNOME Keyring under one heading.
 //! Two kinds of blob are stored:
 //!
@@ -20,9 +20,9 @@
 #[cfg(not(target_os = "android"))]
 use keyring::Entry;
 
-/// Service name shown in password-manager UIs. All Celeste keyring
+/// Service name shown in password-manager UIs. All Syncative keyring
 /// entries share this so they appear as one group.
-pub const SERVICE: &str = "Celeste Keys";
+pub const SERVICE: &str = "Syncative Keys";
 
 /// Account name for the rclone config blob.
 pub const RCLONE_ACCOUNT: &str = "rclone-config";
@@ -52,12 +52,13 @@ pub fn store(account: &str, value: &str) -> Result<(), String> {
 }
 
 /// Read `account`. Returns `Ok(None)` when no entry exists yet (the
-/// caller treats that as "first run"); other errors propagate.
+/// caller treats that as "first run"); other errors propagate. An
+/// entry still under the service of the old name Celeste moves over.
 #[cfg(not(target_os = "android"))]
 pub fn load(account: &str) -> Result<Option<String>, String> {
     match entry(account)?.get_password() {
         Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(keyring::Error::NoEntry) => crate::infrastructure::persistence::migrations::celeste_to_syncative::take_celeste_key(account),
         Err(e) => Err(format!("keyring read failed: {e}")),
     }
 }
@@ -66,6 +67,7 @@ pub fn load(account: &str) -> Result<Option<String>, String> {
 /// remote-removal flow doesn't have to special-case never-saved remotes.
 #[cfg(not(target_os = "android"))]
 pub fn delete(account: &str) -> Result<(), String> {
+    crate::infrastructure::persistence::migrations::celeste_to_syncative::delete_celeste_key(account);
     match entry(account)?.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),

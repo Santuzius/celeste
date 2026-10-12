@@ -6,9 +6,9 @@ use iced::Task;
 
 use crate::{domain::remote::RemoteId, engine::Snapshot};
 
-use super::super::{CelesteApp, Message};
+use super::super::{SyncativeApp, Message};
 
-impl CelesteApp {
+impl SyncativeApp {
     /// Handle [`Message::Engine`] — take the engine's new state and refresh what depends on it.
     pub(in crate::app) fn handle_engine(&mut self, snapshot: Arc<Snapshot>) -> Task<Message> {
         let old = std::mem::replace(&mut self.snapshot, snapshot);

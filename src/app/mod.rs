@@ -4,7 +4,7 @@
 //!
 //! `update()` is a thin dispatch shell — every message variant routes to a
 //! handler method defined in `app::handlers::*` (or `app::log` for the
-//! per-sync_dir log buffer). Handler files own private fields of `CelesteApp`
+//! per-sync_dir log buffer). Handler files own private fields of `SyncativeApp`
 //! because they are descendants of this module.
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -82,14 +82,14 @@ pub enum Message {
     /// colour-scheme change. Forwarded to the tray so its rasterised
     /// glyphs flip tone with the panel.
     SystemThemeChanged(iced_theme::Mode),
-    /// User-initiated quit — only the tray "Quit Celeste" entry. Handled
+    /// User-initiated quit — only the tray "Quit Syncative" entry. Handled
     /// by an immediate `std::process::exit` so we don't wait for
     /// in-flight FFI calls (notably librclone listings, which expose no
     /// cancellation handle) to return.
     Quit,
     /// A window was destroyed (X button, Alt-F4, or our own
     /// `iced::window::close`). Lets us clear the cached window id so
-    /// the next "Open Celeste" creates a fresh window instead of
+    /// the next "Open Syncative" creates a fresh window instead of
     /// targeting the dead one.
     WindowClosed(window::Id),
     /// Escape pressed outside a text field — closes the topmost dialog / panel.
@@ -112,7 +112,7 @@ pub enum Message {
     CloseDrawer,
 }
 
-pub struct CelesteApp {
+pub struct SyncativeApp {
     repo: Arc<dyn Repository>,
     /// Client router — dispatches BackendClient calls per-remote.
     /// `Arc<ClientRouter>` rather than `Arc<dyn BackendClient>` so the
@@ -159,13 +159,13 @@ pub struct CelesteApp {
     autostart: bool,
     /// Colour choices for the window and the tray icon.
     appearance: Appearance,
-    /// The power mode, and whether Celeste asked to run in the background.
+    /// The power mode, and whether Syncative asked to run in the background.
     power: PowerSettings,
     /// "Run in background" (Android), as last read or written.
     background: bool,
-    /// Android leaves Celeste out of battery optimization; always on the desktop. Read again whenever the window comes back.
+    /// Android leaves Syncative out of battery optimization; always on the desktop. Read again whenever the window comes back.
     background_allowed: bool,
-    /// The question to leave Celeste out of battery optimization is shown.
+    /// The question to leave Syncative out of battery optimization is shown.
     background_dialog_open: bool,
     /// Android's All files access, which syncing needs; always on the desktop. Read again whenever the window comes back.
     storage_access: bool,
@@ -206,13 +206,13 @@ pub struct CelesteApp {
     pending_delete: Option<remote_page::PendingDelete>,
     /// Id of the live main window, or `None` when hidden-to-tray. We
     /// run as an `iced::daemon`: the runtime stays alive with no
-    /// windows, and the tray's "Open Celeste" entry opens (or focuses)
+    /// windows, and the tray's "Open Syncative" entry opens (or focuses)
     /// the window on demand. Tracked here so `Hide` knows what to
     /// close and `Open` can tell "no window" from "minimised".
     window_id: Option<window::Id>,
 }
 
-impl CelesteApp {
+impl SyncativeApp {
     fn new(
         repo: Arc<dyn Repository>,
         rclone: Arc<ClientRouter>,
@@ -284,7 +284,7 @@ impl CelesteApp {
     }
 
     fn title(&self, _id: window::Id) -> String {
-        "Celeste".to_string()
+        "Syncative".to_string()
     }
 
     /// The chosen size on top of the system's font size; iced's logical pixels already follow the display scaling.
@@ -293,7 +293,7 @@ impl CelesteApp {
     }
 
     fn theme(&self, _id: window::Id) -> Theme {
-        theme::celeste_theme(self.resolved_mode(self.appearance.window))
+        theme::syncative_theme(self.resolved_mode(self.appearance.window))
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -323,7 +323,7 @@ impl CelesteApp {
         // Notice when the window is destroyed (X button, Alt-F4, or
         // our own `Hide` action) so we can drop the cached id. The
         // daemon keeps running with no window — the next "Open
-        // Celeste" allocates a fresh one. We don't intercept
+        // Syncative" allocates a fresh one. We don't intercept
         // `CloseRequested`: iced's default `exit_on_close_request`
         // already destroys the window for us, and daemon mode doesn't
         // exit on the last-window destruction.
@@ -487,7 +487,7 @@ impl CelesteApp {
                     async move {
                         tokio::task::spawn_blocking(move || {
                             let text = settings_file::export(&*repo, &*router)?;
-                            crate::infrastructure::portal::save_file("Export Celeste's settings", "celeste-settings.json", text.as_bytes())
+                            crate::infrastructure::portal::save_file("Export Syncative's settings", "syncative-settings.json", text.as_bytes())
                         })
                         .await
                         .unwrap_or_else(|e| Err(e.to_string()))
@@ -503,10 +503,10 @@ impl CelesteApp {
                 Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
-                            let Some(bytes) = crate::infrastructure::portal::open_file("Import Celeste's settings")? else {
+                            let Some(bytes) = crate::infrastructure::portal::open_file("Import Syncative's settings")? else {
                                 return Ok(None);
                             };
-                            let text = String::from_utf8(bytes).map_err(|_| "Not a Celeste settings file.".to_owned())?;
+                            let text = String::from_utf8(bytes).map_err(|_| "Not a Syncative settings file.".to_owned())?;
                             settings_file::import(&text, &*repo, &*router).map(Some)
                         })
                         .await
@@ -610,7 +610,7 @@ impl CelesteApp {
                 self.close_topmost();
                 Task::none()
             }
-            // Back closes what is open; at the top it leaves Celeste like any Android app, which keeps syncing.
+            // Back closes what is open; at the top it leaves Syncative like any Android app, which keeps syncing.
             Message::Back => {
                 if !self.close_topmost() {
                     iced_android::move_to_background();
@@ -668,7 +668,7 @@ impl CelesteApp {
     }
 }
 
-impl CelesteApp {
+impl SyncativeApp {
     /// The window's content: the navigation pane beside the page, or in the compact layout the page alone with the navigation as a drawer.
     fn layout(&self, compact: bool, width: f32) -> Element<'_, Message> {
         let nav_width = if compact { Length::Fixed((width * 0.85).min(theme::NAV_WIDTH + 40.0)) } else { Length::Fixed(theme::NAV_WIDTH) };
@@ -989,9 +989,9 @@ pub(crate) fn map_domain_provider_to_add_remote(
 /// window, the X11/Wayland surface is fully destroyed, the taskbar
 /// entry disappears, and the tray icon remains as the sole UI surface
 /// (matching Signal / Telegram / WhatsApp behaviour). The tray's "Open
-/// Celeste" entry then opens a fresh window via [`window::open`].
+/// Syncative" entry then opens a fresh window via [`window::open`].
 ///
-/// Boot opens no window unless `show_window` (`--show`) is set: Celeste
+/// Boot opens no window unless `show_window` (`--show`) is set: Syncative
 /// typically autostarts at login, where a pop-up would steal focus. The
 /// user surfaces it through the tray or by launching the binary again.
 pub fn run(
@@ -1007,14 +1007,14 @@ pub fn run(
     let default_font = theme::UI_FONT;
 
     let mut builder = iced::daemon(
-        move || CelesteApp::new(repo.clone(), rclone.clone(), engine.clone(), show_window),
-        CelesteApp::update,
-        CelesteApp::view,
+        move || SyncativeApp::new(repo.clone(), rclone.clone(), engine.clone(), show_window),
+        SyncativeApp::update,
+        SyncativeApp::view,
     )
-    .title(CelesteApp::title)
-    .theme(CelesteApp::theme)
-    .scale_factor(CelesteApp::scale_factor)
-    .subscription(CelesteApp::subscription)
+    .title(SyncativeApp::title)
+    .theme(SyncativeApp::theme)
+    .scale_factor(SyncativeApp::scale_factor)
+    .subscription(SyncativeApp::subscription)
     .default_font(default_font);
 
     for font in fallback_fonts() {
@@ -1024,18 +1024,18 @@ pub fn run(
     builder.run()
 }
 
-/// Settings for the main Celeste window. Plants the brand icon on
-/// every freshly-opened surface (boot path and tray "Open Celeste")
+/// Settings for the main Syncative window. Plants the brand icon on
+/// every freshly-opened surface (boot path and tray "Open Syncative")
 /// so the compositor's titlebar / Wayland xdg-toplevel and the
-/// taskbar entry both pick up the bundled `assets/celeste-icon.svg`
+/// taskbar entry both pick up the bundled `assets/syncative-icon.svg`
 /// — sidesteps relying on a freedesktop hicolor install that may
 /// not exist outside the packaged build.
 pub(crate) fn main_window_settings() -> window::Settings {
     window::Settings {
         icon: crate::branding::window_icon(),
-        // Wayland has no per-window icon here; KWin / GNOME look the icon up via the app id in the matching `celeste.desktop` (X11: WM_CLASS).
+        // Wayland has no per-window icon here; KWin / GNOME look the icon up via the app id in the matching `syncative.desktop` (X11: WM_CLASS).
         #[cfg(not(target_os = "android"))]
-        platform_specific: window::settings::PlatformSpecific { application_id: "celeste".to_owned(), ..Default::default() },
+        platform_specific: window::settings::PlatformSpecific { application_id: "syncative".to_owned(), ..Default::default() },
         size: Size::new(1000.0, 700.0),
         min_size: Some(Size::new(720.0, 460.0)),
         ..window::Settings::default()

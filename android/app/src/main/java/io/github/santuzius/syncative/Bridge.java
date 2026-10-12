@@ -1,4 +1,4 @@
-package io.github.santuzius.celeste;
+package io.github.santuzius.syncative;
 
 import android.Manifest;
 import android.app.Activity;
@@ -41,14 +41,14 @@ import javax.crypto.spec.GCMParameterSpec;
  * They run on whatever native thread calls them; UI work is posted to the activity's UI thread.
  */
 public final class Bridge {
-    static final String TAG = "celeste";
+    static final String TAG = "syncative";
     static final int PICK_FOLDER = 1;
     private static final int ASK_STORAGE = 2;
     static final int SAVE_DOCUMENT = 4;
     static final int OPEN_DOCUMENT = 5;
     static final String CHANNEL_SYNC = "sync";
     private static final String CHANNEL_PROBLEMS = "problems";
-    private static final String KEY_ALIAS = "celeste-secrets";
+    private static final String KEY_ALIAS = "syncative-secrets";
     private static final int IV_LENGTH = 12;
 
     /** A long pass ends with this, should the engine never say it ended. */
@@ -102,9 +102,9 @@ public final class Bridge {
         manager.createNotificationChannel(new NotificationChannel(CHANNEL_PROBLEMS, "Problems", NotificationManager.IMPORTANCE_DEFAULT));
     }
 
-    /** Opens Celeste, or brings it back to the front. */
+    /** Opens Syncative, or brings it back to the front. */
     static PendingIntent openApp(Context context) {
-        Intent intent = new Intent(context, CelesteActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent intent = new Intent(context, SyncativeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
     }
 
@@ -139,7 +139,7 @@ public final class Bridge {
     /** Keeps the CPU running while a sync pass runs, so it finishes with the screen off; Android would otherwise suspend it halfway. */
     public static synchronized void keepAwake(Context context, boolean awake) {
         if (wakeLock == null) {
-            wakeLock = context.getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "celeste:sync");
+            wakeLock = context.getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "syncative:sync");
             wakeLock.setReferenceCounted(false);
         }
         if (awake) {
@@ -158,12 +158,12 @@ public final class Bridge {
         }
     }
 
-    /** Whether Android leaves Celeste out of battery optimization, so it is neither frozen nor cut off from the network in the background. */
+    /** Whether Android leaves Syncative out of battery optimization, so it is neither frozen nor cut off from the network in the background. */
     public static boolean ignoresBatteryOptimizations(Context context) {
         return context.getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(context.getPackageName());
     }
 
-    /** Asks whether Celeste may always run in the background; where that dialog is missing, opens the list of optimized apps. */
+    /** Asks whether Syncative may always run in the background; where that dialog is missing, opens the list of optimized apps. */
     public static void askToIgnoreBatteryOptimizations(Context context) {
         try {
             context.startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -290,7 +290,7 @@ public final class Bridge {
         return true;
     }
 
-    /** Whether Celeste may read and write anywhere in shared storage, which syncing folders there needs. */
+    /** Whether Syncative may read and write anywhere in shared storage, which syncing folders there needs. */
     public static boolean hasStorageAccess(Context context) {
         if (Build.VERSION.SDK_INT >= 30) {
             return Environment.isExternalStorageManager();

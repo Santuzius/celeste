@@ -1,4 +1,4 @@
-Celeste
+Syncative
 Copyright (C) 2022-2024 Hunter Wittenborn <hunter@hunterwittenborn.com>
 Copyright (C) 2026       Alexander Menzel  <menzel.alexander@proton.me>
 
@@ -7,8 +7,8 @@ under the terms of the GNU General Public License, version 3 or (at
 your option) any later version, as published by the Free Software
 Foundation. See the LICENSE file for the full text of the license.
 
-This is a modified fork of the original Celeste project
-(https://github.com/hwittenborn/celeste). Forked on 2026-04-16 from
+Syncative is a modified fork of the original Celeste project
+(https://github.com/hwittenborn/celeste), renamed in 2026. Forked on 2026-04-16 from
 upstream commit 9ce1e33 ("Clarify maintenance status", 2025-11-21).
 The full, dated record of modifications made in this fork is preserved
 in the git commit history; this notice exists only to satisfy section

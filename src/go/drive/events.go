@@ -2,7 +2,7 @@ package drive
 
 // Listing cache gated by Drive volume events.
 //
-// Proton asks third-party clients to follow the volume's event log instead of re-listing the tree on a timer. Every sync pass still asks for a full recursive listing, so the Session answers those from memory as long as the event log reports no change since the listing was taken. One cheap events request per pass replaces a ListChildren call per folder; the tree is only walked again after something actually changed (including Celeste's own uploads and deletes, which invalidate the cache directly).
+// Proton asks third-party clients to follow the volume's event log instead of re-listing the tree on a timer. Every sync pass still asks for a full recursive listing, so the Session answers those from memory as long as the event log reports no change since the listing was taken. One cheap events request per pass replaces a ListChildren call per folder; the tree is only walked again after something actually changed (including Syncative's own uploads and deletes, which invalidate the cache directly).
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"celeste/go/proton-ext"
+	"syncative/go/proton-ext"
 )
 
 const (
@@ -49,7 +49,7 @@ func (l *listingCache) clear() {
 	l.filledAt = time.Time{}
 }
 
-// invalidateListings forgets all cached listings. Called after every mutation Celeste makes itself, so the rest of the pass sees its own changes without waiting for the event.
+// invalidateListings forgets all cached listings. Called after every mutation Syncative makes itself, so the rest of the pass sees its own changes without waiting for the event.
 func (s *Session) invalidateListings() {
 	s.listings.mu.Lock()
 	defer s.listings.mu.Unlock()

@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn missing_file_follows_the_system_and_saved_choices_load_back() {
-        let dir = std::env::temp_dir().join(format!("celeste-appearance-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("syncative-appearance-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(Appearance::load(&dir), Appearance::default());
         let chosen = Appearance { window: ThemeChoice::Dark, tray_icon: TrayIconChoice::Reversed, size: SizeChoice::Larger };

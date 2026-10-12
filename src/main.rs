@@ -9,5 +9,5 @@ struct Cli {
 
 fn main() {
     let cli = <Cli as clap::Parser>::parse();
-    celeste::start(cli.show);
+    syncative::start(cli.show);
 }

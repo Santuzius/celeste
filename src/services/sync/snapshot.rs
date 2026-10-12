@@ -37,7 +37,7 @@ pub(super) struct Snapshot {
     /// file_type, or filename decoding failed). "Missing from `local`"
     /// under any of these ancestors is *not* a deletion signal — it's
     /// a walk glitch (most often a concurrent writer, e.g. Syncthing
-    /// racing Celeste on the same tree). The planner refuses to fire
+    /// racing Syncative on the same tree). The planner refuses to fire
     /// `DeleteRemote` for anything whose ancestor chain lands here.
     pub walk_unreliable: HashSet<String>,
     /// The first local directory the walk was not allowed to read. The pass stops there: everything below it would look missing.
@@ -298,8 +298,8 @@ fn walk_dir(
             }
         };
         if crate::services::editor_temp::is_editor_temp(&name) {
-            // A Proton download cut off by Celeste's end leaves its part file behind (src/go/drive/download.go); no download runs into this folder while it is walked.
-            if crate::services::editor_temp::is_celeste_part(&name) {
+            // A Proton download cut off by Syncative's end leaves its part file behind (src/go/drive/download.go); no download runs into this folder while it is walked.
+            if crate::services::editor_temp::is_syncative_part(&name) {
                 match fs::remove_file(entry.path()) {
                     Ok(()) => eprintln!("sync: removed the unfinished download '{}'.", entry.path().display()),
                     Err(err) => eprintln!("sync: could not remove the unfinished download '{}': {err}", entry.path().display()),

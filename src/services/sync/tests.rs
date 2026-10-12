@@ -284,7 +284,7 @@ fn a_changed_time_with_the_same_content_transfers_nothing() {
     let restored = tmp.write_file("restored.txt", b"also same");
     touch_mtime(&restored, 1_500_000_000);
     let repo = FakeRepo::new();
-    // Remote time differs from the row (an older Celeste recorded another one): would download.
+    // Remote time differs from the row (an older version recorded another one): would download.
     repo.insert_item(SyncDirId(1), pulled.to_str().unwrap(), "pulled.txt", 1_700_000_000, 1_700_000_500);
     // Local time differs from the row (put back from a backup): would upload.
     repo.insert_item(SyncDirId(1), restored.to_str().unwrap(), "restored.txt", 1_700_000_000, 1_700_000_000);
@@ -318,11 +318,11 @@ fn a_changed_time_with_the_same_content_transfers_nothing() {
     assert_eq!((row.last_local_timestamp, row.last_remote_timestamp), (1_600_000_000, 1_700_000_000));
 }
 
-/// The part file of a download cut off by Celeste's end is removed and never uploaded; other programs' part files stay untouched.
+/// The part file of a download cut off by Syncative's end is removed and never uploaded; other programs' part files stay untouched.
 #[test]
 fn an_unfinished_download_is_cleaned_up_and_not_uploaded() {
     let tmp = TempDir::new("sync_part");
-    let leftover = tmp.write_file(".celeste-123456.part", b"half");
+    let leftover = tmp.write_file(".syncative-123456.part", b"half");
     let foreign = tmp.write_file("movie.part", b"browser");
     let repo = FakeRepo::new();
     let client = FakeBackend::default();
@@ -358,7 +358,7 @@ fn rows_of_vanished_copies_under_a_nested_folder_are_forgotten() {
     assert!(repo.has_item(leftover.to_str().unwrap(), "Music/song.ogg"));
 }
 
-/// A sub-folder Celeste may not read stops the whole folder's pass: nothing below it may pass for deleted, and nothing else is done either.
+/// A sub-folder Syncative may not read stops the whole folder's pass: nothing below it may pass for deleted, and nothing else is done either.
 #[test]
 fn an_unreadable_sub_folder_stops_the_pass() {
     use std::os::unix::fs::PermissionsExt;
@@ -959,7 +959,7 @@ fn untracked_folder_on_both_sides_is_recorded() {
 /// without destructive calls to the client.
 ///
 /// This is the regression for the 2026-04-18 ProtonDrive incident
-/// where Syncthing was racing Celeste on the same tree: an entry's
+/// where Syncthing was racing Syncative on the same tree: an entry's
 /// `file_type()` returned ENOENT mid-walk, the entry got silently
 /// dropped, the child appeared "missing locally", and `DeleteRemote`
 /// trashed both.
@@ -1013,7 +1013,7 @@ fn walk_read_dir_error_blocks_delete_remote_under_subtree() {
         ]),
     );
 
-    // A directory Celeste may not read now stops the pass altogether (see `an_unreadable_sub_folder_stops_the_pass`).
+    // A directory Syncative may not read now stops the pass altogether (see `an_unreadable_sub_folder_stops_the_pass`).
     let (outcome, _events) = run_full(&tmp, &repo, &client);
     assert_eq!(outcome, Outcome::Aborted);
     assert!(

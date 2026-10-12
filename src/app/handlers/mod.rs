@@ -1,5 +1,5 @@
 //! Per-domain handler modules. Each defines `pub(super)` methods on
-//! [`super::CelesteApp`] that the root `update()` dispatch in
+//! [`super::SyncativeApp`] that the root `update()` dispatch in
 //! [`super`] (`app/mod.rs`) calls into.
 
 pub(super) mod conflicts;

@@ -494,7 +494,7 @@ fn record_upsert(
     save_row(repo, sync_dir, local_path, remote_path, local_ts as i64, rstat.mod_time.unix_timestamp());
 }
 
-/// After a download: give the local copy the remote's modification time, then record both. Celeste's own Proton client writes the file with the time of the download, which made the copy look newer than the original: after a fresh start without a database, a first pass then uploaded it again.
+/// After a download: give the local copy the remote's modification time, then record both. Syncative's own Proton client writes the file with the time of the download, which made the copy look newer than the original: after a fresh start without a database, a first pass then uploaded it again.
 fn record_download(
     repo: &dyn Repository,
     sync_dir: &SyncDir,

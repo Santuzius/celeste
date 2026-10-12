@@ -1,6 +1,6 @@
 package protonext
 
-// Drive volume events. Upstream has GetVolumeEvent, but its paging loop re-requests the first page's EventID on every iteration and spins forever once more than two pages are pending, so Celeste pages through the endpoint itself.
+// Drive volume events. Upstream has GetVolumeEvent, but its paging loop re-requests the first page's EventID on every iteration and spins forever once more than two pages are pending, so Syncative pages through the endpoint itself.
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 )
 
-// VolumeEventPage is one page of the volume's event log. The individual events are left undecoded: Celeste only needs to know whether anything changed, not what.
+// VolumeEventPage is one page of the volume's event log. The individual events are left undecoded: Syncative only needs to know whether anything changed, not what.
 type VolumeEventPage struct {
 	EventID string
 	Events  []json.RawMessage

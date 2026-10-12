@@ -6,9 +6,9 @@ use tokio::sync::mpsc;
 
 use crate::infrastructure::tray::{TrayAction, TrayUpdate};
 
-use super::super::{main_window_settings, CelesteApp, Message};
+use super::super::{main_window_settings, SyncativeApp, Message};
 
-impl CelesteApp {
+impl SyncativeApp {
     /// Handle [`Message::TrayReady`] — store the sender, push the
     /// cached colour-scheme so the rasteriser flips tone immediately,
     /// and push an initial status snapshot so the icon reflects
@@ -105,14 +105,14 @@ impl CelesteApp {
     }
 
     /// Handle [`Message::WindowClosed`] — drop the cached id when a
-    /// window is destroyed so the next "Open Celeste" allocates a
+    /// window is destroyed so the next "Open Syncative" allocates a
     /// fresh one. Fires for both our own `window::close` from `Hide`
     /// and external destroys (X button, Alt-F4, compositor-driven).
     pub(in crate::app) fn handle_window_closed(&mut self, id: window::Id) -> Task<Message> {
         if self.window_id == Some(id) {
             self.window_id = None;
             // Nobody can see the expanded logs any more; free their
-            // shaped text buffers while Celeste sits in the tray.
+            // shaped text buffers while Syncative sits in the tray.
             self.sync_dir_log_content.clear();
             crate::util::release_freed_memory();
         }

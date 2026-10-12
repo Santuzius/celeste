@@ -30,7 +30,7 @@ pub fn pick() -> Option<String> {
 }
 
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_Bridge_nativeFolderPicked(mut env: JNIEnv, _: JClass, path: JString) {
+extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeFolderPicked(mut env: JNIEnv, _: JClass, path: JString) {
     let path = if path.is_null() { None } else { env.get_string(&path).ok().map(String::from) };
     if let Some(sender) = ANSWER.lock().ok().and_then(|mut answer| answer.take()) {
         let _ = sender.send(path);

@@ -1,4 +1,4 @@
-package io.github.santuzius.celeste;
+package io.github.santuzius.syncative;
 
 import android.app.Notification;
 import android.app.NotificationManager;
@@ -16,7 +16,7 @@ import android.util.Log;
 
 import java.io.File;
 
-/** Keeps the process, and with it the sync engine, alive while Celeste is not on screen. Its silent notification shows the sync status. Started by the engine itself and after a reboot. */
+/** Keeps the process, and with it the sync engine, alive while Syncative is not on screen. Its silent notification shows the sync status. Started by the engine itself and after a reboot. */
 public class SyncService extends Service {
     private static final int NOTIFICATION_ID = 1;
 
@@ -64,9 +64,9 @@ public class SyncService extends Service {
         }
     }
 
-    /** The user turned off "Run in background": Celeste syncs only while it is open. The switch src/services/power.rs writes: $XDG_DATA_HOME/celeste/background-off. */
+    /** The user turned off "Run in background": Syncative syncs only while it is open. The switch src/services/power.rs writes: $XDG_DATA_HOME/syncative/background-off. */
     static boolean backgroundOff(Context context) {
-        return new File(context.getFilesDir(), "celeste/background-off").exists();
+        return new File(context.getFilesDir(), "syncative/background-off").exists();
     }
 
     static void start(Context context) {

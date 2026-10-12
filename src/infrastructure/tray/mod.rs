@@ -47,7 +47,7 @@ use self::icons::IconSet;
 /// of these to a window-lifecycle command.
 #[derive(Clone, Copy, Debug)]
 pub enum TrayAction {
-    /// Show the main window (left-click or "Open Celeste" menu entry).
+    /// Show the main window (left-click or "Open Syncative" menu entry).
     Open,
     /// Hide the main window; syncing continues in the background.
     Hide,
@@ -112,7 +112,7 @@ pub fn subscription() -> Subscription<TraySignal> {
             let (click_tx, mut click_rx) = mpsc::channel::<TrayAction>(32);
             let (update_tx, mut update_rx) = mpsc::channel::<TrayUpdate>(32);
 
-            let tray = CelesteTray {
+            let tray = SyncativeTray {
                 status: TrayStatus::Loading,
                 click_tx,
                 icons: IconSet::load(),
@@ -136,7 +136,7 @@ pub fn subscription() -> Subscription<TraySignal> {
                                 let _ = output.send(TraySignal::Action(action)).await;
                             }
                             Some(update) = update_rx.recv() => {
-                                let _ = handle.update(|t: &mut CelesteTray| match update {
+                                let _ = handle.update(|t: &mut SyncativeTray| match update {
                                     TrayUpdate::Status(s) => t.status = s,
                                     TrayUpdate::Theme(m) => t.theme = m,
                                 }).await;
@@ -147,7 +147,7 @@ pub fn subscription() -> Subscription<TraySignal> {
                 }
                 Err(err) => {
                     eprintln!(
-                        "celeste: tray service failed to start ({err}); running without tray icon."
+                        "syncative: tray service failed to start ({err}); running without tray icon."
                     );
                     // Deliver Ready anyway so the app's try_send path
                     // stays wired to *something*; drain the receiver
@@ -169,7 +169,7 @@ pub fn subscription() -> Subscription<TraySignal> {
 /// reported via `system::theme_changes`; the app pushes the initial
 /// value on the [`TraySignal::Ready`] handshake.
 #[cfg(not(target_os = "android"))]
-struct CelesteTray {
+struct SyncativeTray {
     status: TrayStatus,
     click_tx: mpsc::Sender<TrayAction>,
     icons: IconSet,
@@ -177,7 +177,7 @@ struct CelesteTray {
 }
 
 #[cfg(not(target_os = "android"))]
-impl CelesteTray {
+impl SyncativeTray {
     /// Pick the icon that matches the current status. `Loading`
     /// reuses the syncing glyph (mid-transition feel); `Disconnected`
     /// reuses the paused glyph (no remote to talk to).
@@ -194,13 +194,13 @@ impl CelesteTray {
 }
 
 #[cfg(not(target_os = "android"))]
-impl ksni::Tray for CelesteTray {
+impl ksni::Tray for SyncativeTray {
     fn id(&self) -> String {
-        "com.hunterwittenborn.Celeste".to_owned()
+        "io.github.santuzius.syncative".to_owned()
     }
 
     fn title(&self) -> String {
-        "Celeste".to_owned()
+        "Syncative".to_owned()
     }
 
     fn icon_name(&self) -> String {
@@ -220,7 +220,7 @@ impl ksni::Tray for CelesteTray {
         ToolTip {
             icon_name: String::new(),
             icon_pixmap: self.pixmap_for_current_status(),
-            title: "Celeste".to_owned(),
+            title: "Syncative".to_owned(),
             description: description_for(&self.status),
         }
     }
@@ -234,7 +234,7 @@ impl ksni::Tray for CelesteTray {
             }),
             MenuItem::Separator,
             MenuItem::Standard(StandardItem {
-                label: "Open Celeste".to_owned(),
+                label: "Open Syncative".to_owned(),
                 activate: Box::new(|t: &mut Self| {
                     let _ = t.click_tx.try_send(TrayAction::Open);
                 }),
@@ -249,7 +249,7 @@ impl ksni::Tray for CelesteTray {
             }),
             MenuItem::Separator,
             MenuItem::Standard(StandardItem {
-                label: "Quit Celeste".to_owned(),
+                label: "Quit Syncative".to_owned(),
                 activate: Box::new(|t: &mut Self| {
                     let _ = t.click_tx.try_send(TrayAction::Quit);
                 }),

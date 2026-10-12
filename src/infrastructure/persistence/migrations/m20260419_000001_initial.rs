@@ -1,7 +1,7 @@
 //! Fresh schema. The old migrations were deleted wholesale — if an
 //! existing data dir has any of the legacy `seaql_migrations` rows the
 //! startup check refuses to boot and tells the user to delete
-//! `~/.local/share/celeste/` manually. See
+//! `~/.local/share/syncative/` manually. See
 //! `infrastructure::persistence::mod`.
 
 use sea_orm::{ConnectionTrait, Statement};

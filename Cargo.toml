@@ -1,5 +1,5 @@
 [package]
-name = "celeste"
+name = "syncative"
 version.workspace = true
 edition = "2024"
 license = "GPL-3.0-or-later"
@@ -7,7 +7,7 @@ authors = [
     "Hunter Wittenborn <hunter@hunterwittenborn.com>",
     "Alexander Menzel <menzel.alexander@proton.me>",
 ]
-repository = "https://github.com/Santuzius/celeste"
+repository = "https://github.com/Santuzius/syncative"
 
 # The Go archive crate shares the app's version and lock file.
 [workspace]
@@ -18,7 +18,7 @@ version = "0.22.2"
 
 # cdylib for Android (loaded by IcedActivity), rlib for the desktop binary in src/main.rs.
 [lib]
-name = "celeste"
+name = "syncative"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
@@ -43,12 +43,12 @@ libc = "0.2"
 # recolour pipeline never touches them — it collapses the
 # Inkscape-era masked paths to a solid black square.
 resvg = { version = "0.47", default-features = false }
-# Celeste's combined Go archive — provides the librclone RPC surface
+# Syncative's combined Go archive — provides the librclone RPC surface
 # plus the native ProtonDrive entry points. See `src/go/` for the Go
 # side.
-celeste-go = { path = "src/go" }
+syncative-go = { path = "src/go" }
 sea-orm = { version = "0.10.7", features = ["sqlx-sqlite", "runtime-async-std-rustls", "macros"] }
-# Without the default `cli` feature: Celeste runs its migrations itself and never needs the command-line tool.
+# Without the default `cli` feature: Syncative runs its migrations itself and never needs the command-line tool.
 sea-orm-migration = { version = "0.10.7", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
@@ -76,6 +76,6 @@ android_logger = "0.15"
 jni = "0.21"
 log = "0.4"
 
-# Lets android_main outlive a destroyed activity, so the sync engine keeps running while Android has closed Celeste's window (branch `process-lifetime-0.6` on top of 0.6.1).
+# Lets android_main outlive a destroyed activity, so the sync engine keeps running while Android has closed Syncative's window (branch `process-lifetime-0.6` on top of 0.6.1).
 [patch.crates-io]
 android-activity = { git = "https://github.com/Santuzius/android-activity", branch = "process-lifetime-0.6" }

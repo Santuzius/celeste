@@ -13,9 +13,9 @@ use crate::{
     util::open_in_browser,
 };
 
-use super::super::{map_domain_provider_to_add_remote, CelesteApp, Message};
+use super::super::{map_domain_provider_to_add_remote, SyncativeApp, Message};
 
-impl CelesteApp {
+impl SyncativeApp {
     /// Handle [`Message::RemotesLoaded`] — refresh the in-memory list.
     pub(in crate::app) fn handle_remotes_loaded(
         &mut self,
@@ -414,7 +414,7 @@ impl CelesteApp {
         if let Some(draft) = self.add_remote_draft.as_mut() {
             draft.busy = false;
             draft.oauth = None;
-            match celeste_go::proton::HumanVerification::from_login_error(&msg) {
+            match syncative_go::proton::HumanVerification::from_login_error(&msg) {
                 Some(hv) => {
                     open_in_browser(&hv.url());
                     draft.hv = Some(hv);
@@ -508,7 +508,7 @@ impl CelesteApp {
             async move {
                 tokio::task::spawn_blocking(move || {
                     if let Err(err) = crate::services::remote_lifecycle::delete_remote(&name, &*repo_blocking, &*rclone) {
-                        eprintln!("celeste: could not remove '{name}': {err}");
+                        eprintln!("syncative: could not remove '{name}': {err}");
                     }
                 })
                 .await

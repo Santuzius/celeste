@@ -51,7 +51,7 @@ pub fn view<'a>() -> Element<'a, Msg> {
             row![
                 svg(branding::logo()).width(Length::Fixed(56.0)).height(Length::Fixed(56.0)),
                 column![
-                    text("Celeste").size(TITLE),
+                    text("Syncative").size(TITLE),
                     text(concat!("Version ", env!("CARGO_PKG_VERSION"))).size(CAPTION).style(theme::muted),
                 ]
                 .spacing(2),

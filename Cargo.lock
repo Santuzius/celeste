@@ -757,45 +757,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "celeste"
-version = "0.22.2"
-dependencies = [
- "android_logger",
- "celeste-go",
- "clap",
- "dbus",
- "futures",
- "iced",
- "iced_android",
- "icondata",
- "icondata_core",
- "jni 0.21.1",
- "keyring",
- "ksni",
- "libc",
- "log",
- "notify-rust",
- "resvg 0.47.0",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "sha1",
- "time",
- "tokio",
- "tr",
-]
-
-[[package]]
-name = "celeste-go"
-version = "0.22.2"
-dependencies = [
- "bindgen",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4991,6 +4952,45 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syncative"
+version = "0.22.2"
+dependencies = [
+ "android_logger",
+ "clap",
+ "dbus",
+ "futures",
+ "iced",
+ "iced_android",
+ "icondata",
+ "icondata_core",
+ "jni 0.21.1",
+ "keyring",
+ "ksni",
+ "libc",
+ "log",
+ "notify-rust",
+ "resvg 0.47.0",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha1",
+ "syncative-go",
+ "time",
+ "tokio",
+ "tr",
+]
+
+[[package]]
+name = "syncative-go"
+version = "0.22.2"
+dependencies = [
+ "bindgen",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

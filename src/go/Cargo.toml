@@ -1,9 +1,9 @@
 [package]
-name = "celeste-go"
+name = "syncative-go"
 version.workspace = true
 edition = "2024"
 license = "GPL-3.0-or-later"
-description = "Celeste's combined Go archive: rclone librclone RPC + native ProtonDrive (go-proton-api) shims."
+description = "Syncative's combined Go archive: rclone librclone RPC + native ProtonDrive (go-proton-api) shims."
 publish = false
 build = "build.rs"
 # Go sources + submodules live next to this manifest; exclude .git/.github
@@ -18,7 +18,7 @@ include = [
 ]
 
 [lib]
-name = "celeste_go"
+name = "syncative_go"
 path = "src/lib.rs"
 
 [dependencies]

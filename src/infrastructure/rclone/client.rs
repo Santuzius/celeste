@@ -7,7 +7,7 @@
 //!
 //! On every call that mutates the rclone config file (`create_config`,
 //! `delete_config`) we re-read the file from disk and stash its full
-//! text into the OS keyring under `Celeste Keys / rclone-config`. That
+//! text into the OS keyring under `Syncative Keys / rclone-config`. That
 //! way the on-disk file becomes a transient, regenerable artefact and
 //! the source of truth lives behind libsecret.
 
@@ -58,7 +58,7 @@ impl LibrcloneClient {
         Self { rclone_config_path, listings: Arc::default() }
     }
 
-    /// Drop the cached listings of `remote` after Celeste changed it itself, so the rest of the pass sees the change right away.
+    /// Drop the cached listings of `remote` after Syncative changed it itself, so the rest of the pass sees the change right away.
     fn invalidate(&self, remote: &str) {
         if let Ok(mut listings) = self.listings.lock() {
             listings.remove(remote);
@@ -74,14 +74,14 @@ impl LibrcloneClient {
             Ok(body) => body,
             Err(err) => {
                 eprintln!(
-                    "celeste: rclone config keyring sync skipped — couldn't read {}: {err}",
+                    "syncative: rclone config keyring sync skipped — couldn't read {}: {err}",
                     self.rclone_config_path.display(),
                 );
                 return;
             }
         };
         if let Err(err) = secrets::store(secrets::RCLONE_ACCOUNT, &body) {
-            eprintln!("celeste: rclone config keyring sync failed: {err}");
+            eprintln!("syncative: rclone config keyring sync failed: {err}");
         }
     }
 }
@@ -119,7 +119,7 @@ impl BackendClient for LibrcloneClient {
         _cancel: &Cancel,
     ) -> Result<Vec<RemoteItem>, String> {
         let key = (path.to_owned(), recursive, filter_key(filter));
-        let changed = celeste_go::remote_changed(remote);
+        let changed = syncative_go::remote_changed(remote);
         if let Ok(mut listings) = self.listings.lock() {
             let cached = listings.entry(remote.to_owned()).or_default();
             if changed || cached.filled_at.is_some_and(|at| at.elapsed() > LISTING_MAX_AGE) {
@@ -194,7 +194,7 @@ impl BackendClient for LibrcloneClient {
     fn delete_config(&self, remote: &str) -> Result<(), String> {
         let result = rpc::sync::delete_config(remote).map_err(|err| err.error);
         self.invalidate(remote);
-        celeste_go::forget_remote(remote);
+        syncative_go::forget_remote(remote);
         if result.is_ok() {
             self.sync_to_keyring();
         }
@@ -205,9 +205,9 @@ impl BackendClient for LibrcloneClient {
         // Reauthentication replaces an existing remote; start its change tracking over with the new credentials.
         if let Some(name) = serde_json::from_str::<serde_json::Value>(&payload_json).ok().and_then(|v| v.get("name")?.as_str().map(str::to_owned)) {
             self.invalidate(&name);
-            celeste_go::forget_remote(&name);
+            syncative_go::forget_remote(&name);
         }
-        let result = celeste_go::rpc("config/create", payload_json).map(|_| ());
+        let result = syncative_go::rpc("config/create", payload_json).map(|_| ());
         if result.is_ok() {
             self.sync_to_keyring();
         }
@@ -216,7 +216,7 @@ impl BackendClient for LibrcloneClient {
 
     fn remote_type(&self, remote: &str) -> Result<Option<String>, String> {
         let payload = serde_json::json!({ "name": remote }).to_string();
-        match celeste_go::rpc("config/get", payload) {
+        match syncative_go::rpc("config/get", payload) {
             Ok(body) => {
                 let parsed: serde_json::Value =
                     serde_json::from_str(&body).map_err(|e| e.to_string())?;
@@ -253,7 +253,7 @@ impl BackendClient for LibrcloneClient {
 
     fn config(&self, remote: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
         let payload = serde_json::json!({ "name": remote }).to_string();
-        let body = celeste_go::rpc("config/get", payload).ok()?;
+        let body = syncative_go::rpc("config/get", payload).ok()?;
         // `config/get` returns {} for unknown remotes.
         serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&body).ok().filter(|m| !m.is_empty())
     }

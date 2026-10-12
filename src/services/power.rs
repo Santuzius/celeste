@@ -1,4 +1,4 @@
-//! How much battery and mobile data syncing may use on Android: the power mode chosen in Preferences and what it means for the sync engine's [`Cadence`] given the screen, the charger, Android's battery saver and a metered network. Kept in `power.conf` in the data dir as `key=value` lines, together with whether to sync on metered networks and whether Celeste already asked to be exempted from battery optimization.
+//! How much battery and mobile data syncing may use on Android: the power mode chosen in Preferences and what it means for the sync engine's [`Cadence`] given the screen, the charger, Android's battery saver and a metered network. Kept in `power.conf` in the data dir as `key=value` lines, together with whether to sync on metered networks and whether Syncative already asked to be exempted from battery optimization.
 
 use std::{io, path::Path, time::Duration};
 
@@ -86,7 +86,7 @@ pub struct PowerSettings {
     pub mode: PowerMode,
     /// Sync on metered networks too; when off, scheduled passes wait for another network, but "Sync now" still syncs.
     pub sync_metered: bool,
-    /// Celeste asked once to be exempted from battery optimization, whatever the answer.
+    /// Syncative asked once to be exempted from battery optimization, whatever the answer.
     pub asked_battery: bool,
 }
 
@@ -151,12 +151,12 @@ pub fn held_on_metered(settings: PowerSettings) -> bool {
     }
 }
 
-/// Where "Run in background" is switched off: Celeste then syncs on Android only while it is open. Android's sync service and boot receiver check the same file.
+/// Where "Run in background" is switched off: Syncative then syncs on Android only while it is open. Android's sync service and boot receiver check the same file.
 fn background_off_path() -> std::path::PathBuf {
     crate::util::get_data_dir().join("background-off")
 }
 
-/// Whether Celeste keeps syncing on Android after leaving it.
+/// Whether Syncative keeps syncing on Android after leaving it.
 pub fn background_enabled() -> bool {
     !background_off_path().exists()
 }
@@ -177,7 +177,7 @@ pub fn set_background(enabled: bool) -> io::Result<()> {
     Ok(())
 }
 
-/// Whether Android leaves Celeste out of battery optimization; always elsewhere.
+/// Whether Android leaves Syncative out of battery optimization; always elsewhere.
 pub fn background_allowed() -> bool {
     #[cfg(target_os = "android")]
     return crate::infrastructure::android::ignores_battery_optimizations();
@@ -185,7 +185,7 @@ pub fn background_allowed() -> bool {
     true
 }
 
-/// Opens Android's question whether Celeste may always run in the background.
+/// Opens Android's question whether Syncative may always run in the background.
 pub fn allow_background() {
     #[cfg(target_os = "android")]
     crate::infrastructure::android::ask_to_ignore_battery_optimizations();
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn missing_file_is_balanced_and_saved_settings_load_back() {
-        let dir = std::env::temp_dir().join(format!("celeste-power-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("syncative-power-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(PowerSettings::load(&dir), PowerSettings::default());
         let chosen = PowerSettings { mode: PowerMode::PowerSave, sync_metered: false, asked_battery: true };

@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf, process::Command};
 
-/// Build `libceleste_go.a` + `libceleste_go.h` from the Go code
+/// Build `libsyncative_go.a` + `libsyncative_go.h` from the Go code
 /// in this crate's directory, then feed the header through bindgen to
 /// produce Rust FFI declarations. Mirrors librclone-sys's pattern, with
 /// the addition of our `ProtonDrive_*` surface and the drop of rclone's
@@ -45,14 +45,14 @@ fn main() {
         manifest_dir.join("rclonewatch").display()
     );
 
-    // Go supports c-archive on Android only for its own runtime, not for linking into a foreign binary, so Android gets a shared library that has to ship next to libceleste.so.
+    // Go supports c-archive on Android only for its own runtime, not for linking into a foreign binary, so Android gets a shared library that has to ship next to libsyncative.so.
     let android = target_triple.contains("android");
     let (build_mode, lib_path) = if android {
-        ("-buildmode=c-shared", out_dir.join("libceleste_go.so"))
+        ("-buildmode=c-shared", out_dir.join("libsyncative_go.so"))
     } else {
-        ("-buildmode=c-archive", out_dir.join("libceleste_go.a"))
+        ("-buildmode=c-archive", out_dir.join("libsyncative_go.a"))
     };
-    let header_path = out_dir.join("libceleste_go.h");
+    let header_path = out_dir.join("libsyncative_go.h");
 
     let mut go = Command::new("go");
     go.current_dir(&manifest_dir).args(["build", build_mode]);
@@ -67,11 +67,11 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     // Rust strips the `lib` prefix and `.a` suffix before passing to the
-    // linker, so `celeste_go` resolves to `libceleste_go.a`.
+    // linker, so `syncative_go` resolves to `libsyncative_go.a`.
     if android {
-        println!("cargo:rustc-link-lib=dylib=celeste_go");
+        println!("cargo:rustc-link-lib=dylib=syncative_go");
     } else {
-        println!("cargo:rustc-link-lib=static=celeste_go");
+        println!("cargo:rustc-link-lib=static=syncative_go");
     }
 
     // librclone-sys links these frameworks on macOS; mirror for parity.
@@ -94,11 +94,11 @@ fn main() {
         .allowlist_function("RcloneRemoteChanged")
         .allowlist_function("RcloneForgetRemote")
         .allowlist_function("RcloneSetChangePollSeconds")
-        .allowlist_function("CelesteAuthorize")
-        .allowlist_function("CelesteAuthorizeURL")
-        .allowlist_function("CelesteAuthorizeCancel")
-        .allowlist_function("CelesteSetConfigPassword")
-        .allowlist_function("CelesteSaveConfig")
+        .allowlist_function("SyncativeAuthorize")
+        .allowlist_function("SyncativeAuthorizeURL")
+        .allowlist_function("SyncativeAuthorizeCancel")
+        .allowlist_function("SyncativeSetConfigPassword")
+        .allowlist_function("SyncativeSaveConfig")
         .allowlist_function("ProtonDrive_Version")
         .allowlist_function("ProtonDrive_SetAppVersion")
         .allowlist_function("ProtonDrive_Login")
@@ -149,8 +149,8 @@ fn cross_compile_for_android(go: &mut Command, target_triple: &str) {
         None => cc,
     };
     go.env("GOOS", "android").env("GOARCH", goarch).env("CGO_ENABLED", "1").env("CC", cc);
-    // The soname lets Android's linker find the library in the APK's lib directory when it loads libceleste.so; -s -w leave out the symbol and debug tables, which only cost APK size.
-    go.args(["-ldflags", "-s -w -extldflags=-Wl,-soname,libceleste_go.so"]);
+    // The soname lets Android's linker find the library in the APK's lib directory when it loads libsyncative.so; -s -w leave out the symbol and debug tables, which only cost APK size.
+    go.args(["-ldflags", "-s -w -extldflags=-Wl,-soname,libsyncative_go.so"]);
     if goarch == "arm" {
         go.env("GOARM", "7");
     }

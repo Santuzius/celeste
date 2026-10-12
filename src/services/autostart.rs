@@ -1,13 +1,13 @@
-//! Start Celeste in the tray when the desktop session starts, through an XDG autostart entry in `${XDG_CONFIG_HOME:-~/.config}/autostart/celeste.desktop`.
+//! Start Syncative in the tray when the desktop session starts, through an XDG autostart entry in `${XDG_CONFIG_HOME:-~/.config}/autostart/syncative.desktop`.
 //!
-//! The entry itself is the setting: missing means "never chosen" and counts as on, so the first start creates it; switching off rewrites it with `Hidden=true` instead of deleting it. The file name matches the system-wide entry of the NixOS module (`/etc/xdg/autostart/celeste.desktop`), which a user entry of the same name overrides. In the Snap, `XDG_CONFIG_HOME` lies inside `~/snap/celeste/current`, where snapd's `autostart:` looks for it.
+//! The entry itself is the setting: missing means "never chosen" and counts as on, so the first start creates it; switching off rewrites it with `Hidden=true` instead of deleting it. The file name matches the system-wide entry of the NixOS module (`/etc/xdg/autostart/syncative.desktop`), which a user entry of the same name overrides. In the Snap, `XDG_CONFIG_HOME` lies inside `~/snap/syncative/current`, where snapd's `autostart:` looks for it.
 
 use std::{
     io,
     path::{Path, PathBuf},
 };
 
-const FILE_NAME: &str = "celeste.desktop";
+const FILE_NAME: &str = "syncative.desktop";
 
 /// Where the entry lives.
 pub fn entry_path() -> PathBuf {
@@ -20,7 +20,7 @@ pub fn entry_path() -> PathBuf {
     base
 }
 
-/// Whether Celeste starts at login.
+/// Whether Syncative starts at login.
 pub fn enabled() -> bool {
     enabled_at(&entry_path())
 }
@@ -52,7 +52,7 @@ fn write_at(path: &Path, enabled: bool, exec: &str) -> io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     let content = format!(
-        "[Desktop Entry]\nType=Application\nName=Celeste\nComment=Sync local folders with Google Drive or Proton Drive\nExec={exec}\nIcon=celeste-icon\nTerminal=false\nHidden={hidden}\nX-GNOME-Autostart-enabled={enabled}\n",
+        "[Desktop Entry]\nType=Application\nName=Syncative\nComment=Sync local folders with Google Drive or Proton Drive\nExec={exec}\nIcon=syncative-icon\nTerminal=false\nHidden={hidden}\nX-GNOME-Autostart-enabled={enabled}\n",
         hidden = !enabled,
     );
     // Write next to it and rename, so a crash never leaves a half-written entry that the desktop ignores.
@@ -61,25 +61,25 @@ fn write_at(path: &Path, enabled: bool, exec: &str) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// `celeste` when that name on `PATH` is this very binary (installed packages, the Snap), so the entry survives updates; the `.AppImage` file for an AppImage, whose binary lies in a mount point that changes with every start; otherwise the absolute path, e.g. for a development build.
+/// `syncative` when that name on `PATH` is this very binary (installed packages, the Snap), so the entry survives updates; the `.AppImage` file for an AppImage, whose binary lies in a mount point that changes with every start; otherwise the absolute path, e.g. for a development build.
 fn exec_command() -> String {
     if std::env::var_os("SNAP").is_some() {
-        return "celeste".to_owned();
+        return "syncative".to_owned();
     }
     if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|path| !path.is_empty()) {
         return quote(&appimage.to_string_lossy());
     }
     let Ok(exe) = std::env::current_exe().and_then(|p| p.canonicalize()) else {
-        return "celeste".to_owned();
+        return "syncative".to_owned();
     };
     let exe = nix_wrapper(&exe).unwrap_or(exe);
     let on_path = std::env::var_os("PATH")
-        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join("celeste").canonicalize().is_ok_and(|p| p == exe)))
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join("syncative").canonicalize().is_ok_and(|p| p == exe)))
         .unwrap_or(false);
-    if on_path { "celeste".to_owned() } else { quote(&exe.to_string_lossy()) }
+    if on_path { "syncative".to_owned() } else { quote(&exe.to_string_lossy()) }
 }
 
-/// The script `bin/celeste` that Nix's `wrapProgram` puts in front of the real binary `bin/.celeste-wrapped`. Only the script sets `LD_LIBRARY_PATH`, so started directly the binary finds no Wayland library and panics.
+/// The script `bin/syncative` that Nix's `wrapProgram` puts in front of the real binary `bin/.syncative-wrapped`. Only the script sets `LD_LIBRARY_PATH`, so started directly the binary finds no Wayland library and panics.
 fn nix_wrapper(exe: &Path) -> Option<PathBuf> {
     let name = exe.file_name()?.to_str()?.strip_prefix('.')?.strip_suffix("-wrapped")?;
     let wrapper = exe.with_file_name(name);
@@ -107,7 +107,7 @@ mod tests {
     use super::*;
 
     fn temp_entry(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("celeste-autostart-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("syncative-autostart-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir.join("autostart").join(FILE_NAME)
     }
@@ -120,29 +120,29 @@ mod tests {
     #[test]
     fn switching_off_keeps_a_hidden_entry() {
         let path = temp_entry("toggle");
-        write_at(&path, false, "celeste").unwrap();
+        write_at(&path, false, "syncative").unwrap();
         assert!(!enabled_at(&path));
         assert!(std::fs::read_to_string(&path).unwrap().contains("Hidden=true"));
-        write_at(&path, true, "celeste").unwrap();
+        write_at(&path, true, "syncative").unwrap();
         assert!(enabled_at(&path));
         let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
     }
 
     #[test]
     fn nix_binary_is_replaced_by_its_wrapper() {
-        let dir = std::env::temp_dir().join(format!("celeste-autostart-wrapper-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("syncative-autostart-wrapper-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let binary = dir.join(".celeste-wrapped");
+        let binary = dir.join(".syncative-wrapped");
         assert_eq!(nix_wrapper(&binary), None);
-        std::fs::write(dir.join("celeste"), "").unwrap();
-        assert_eq!(nix_wrapper(&binary), Some(dir.join("celeste")));
-        assert_eq!(nix_wrapper(&dir.join("celeste")), None);
+        std::fs::write(dir.join("syncative"), "").unwrap();
+        assert_eq!(nix_wrapper(&binary), Some(dir.join("syncative")));
+        assert_eq!(nix_wrapper(&dir.join("syncative")), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn exec_paths_with_spaces_are_quoted() {
-        assert_eq!(quote("/usr/bin/celeste"), "/usr/bin/celeste");
-        assert_eq!(quote("/home/a b/celeste"), "\"/home/a b/celeste\"");
+        assert_eq!(quote("/usr/bin/syncative"), "/usr/bin/syncative");
+        assert_eq!(quote("/home/a b/syncative"), "\"/home/a b/syncative\"");
     }
 }

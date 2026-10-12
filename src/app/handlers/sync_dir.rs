@@ -17,9 +17,9 @@ use crate::{
     services::leftovers,
 };
 
-use super::super::{local_paths_overlap, remote_page_auto_excluded, CelesteApp, Message};
+use super::super::{local_paths_overlap, remote_page_auto_excluded, SyncativeApp, Message};
 
-impl CelesteApp {
+impl SyncativeApp {
     /// Handle [`Message::SyncDirsLoaded`] — store the list and drop the
     /// UI state of deleted folders.
     pub(in crate::app) fn handle_sync_dirs_loaded(
@@ -229,7 +229,7 @@ impl CelesteApp {
         Task::perform(
             async move {
                 if let Err(err) = repo.cascade_delete_sync_dir(&local, &remote).await {
-                    eprintln!("celeste: could not remove the folder {local}: {err}");
+                    eprintln!("syncative: could not remove the folder {local}: {err}");
                 }
                 engine.send(Command::Reload);
                 id

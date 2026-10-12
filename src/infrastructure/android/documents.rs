@@ -40,14 +40,14 @@ fn ask(start: impl FnOnce(&mut JNIEnv, JClass) -> jni::errors::Result<bool>) -> 
         start(env, class)
     });
     if started != Some(true) {
-        return Err("Open Celeste's window to choose a file.".to_owned());
+        return Err("Open Syncative's window to choose a file.".to_owned());
     }
     receiver.recv_timeout(Duration::from_secs(30 * 60)).unwrap_or(Ok(None))
 }
 
 /// `error` non-null: what went wrong. Otherwise `data` null: cancelled; else the file's bytes (empty after saving).
 #[unsafe(no_mangle)]
-extern "system" fn Java_io_github_santuzius_celeste_Bridge_nativeDocumentDone(mut env: JNIEnv, _: JClass, data: JByteArray, error: JString) {
+extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeDocumentDone(mut env: JNIEnv, _: JClass, data: JByteArray, error: JString) {
     let answer = if !error.is_null() {
         Err(env.get_string(&error).map(String::from).unwrap_or_else(|_| "unknown error".to_owned()))
     } else if data.is_null() {

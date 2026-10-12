@@ -8,9 +8,9 @@ use crate::{
     screens::conflict,
 };
 
-use super::super::{CelesteApp, Message};
+use super::super::{SyncativeApp, Message};
 
-impl CelesteApp {
+impl SyncativeApp {
     /// The conflict lists changed: an open dialog follows its file or moves on to the one now at its position.
     pub(in crate::app) fn follow_conflict_dialog(&mut self) {
         let Some(dialog) = self.conflict_dialog.as_mut() else {

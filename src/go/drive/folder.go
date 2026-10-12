@@ -30,7 +30,7 @@ import (
 )
 
 // Entry is the per-child record returned by ListDirectory / Stat.
-// Shapes to match Celeste's `RemoteItem` domain type across the FFI
+// Shapes to match Syncative's `RemoteItem` domain type across the FFI
 // boundary without the domain crate pulling in anything Proton-
 // specific.
 type Entry struct {

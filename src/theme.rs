@@ -128,18 +128,18 @@ fn palette(t: &Tones) -> theme::Palette {
     }
 }
 
-static LIGHT_THEME: LazyLock<Theme> = LazyLock::new(|| Theme::custom("Celeste Light", palette(&LIGHT)));
-static DARK_THEME: LazyLock<Theme> = LazyLock::new(|| Theme::custom("Celeste Dark", palette(&DARK)));
+static LIGHT_THEME: LazyLock<Theme> = LazyLock::new(|| Theme::custom("Syncative Light", palette(&LIGHT)));
+static DARK_THEME: LazyLock<Theme> = LazyLock::new(|| Theme::custom("Syncative Dark", palette(&DARK)));
 
-/// `CELESTE_COLOR_SCHEME=light|dark` overrides the system colour scheme for the window (not the tray, which follows the panel). For desktops without the portal, and for reproducible screenshots.
-static FORCED_MODE: LazyLock<Option<theme::Mode>> = LazyLock::new(|| match std::env::var("CELESTE_COLOR_SCHEME").ok()?.as_str() {
+/// `SYNCATIVE_COLOR_SCHEME=light|dark` overrides the system colour scheme for the window (not the tray, which follows the panel). For desktops without the portal, and for reproducible screenshots.
+static FORCED_MODE: LazyLock<Option<theme::Mode>> = LazyLock::new(|| match std::env::var("SYNCATIVE_COLOR_SCHEME").ok()?.as_str() {
     "light" => Some(theme::Mode::Light),
     "dark" => Some(theme::Mode::Dark),
     _ => None,
 });
 
 /// Pick the theme that mirrors the system colour-scheme iced reports (freedesktop `color-scheme` portal), unless [`FORCED_MODE`] is set. `Mode::None` falls back to dark, matching the libadwaita default the GTK build inherited from upstream.
-pub fn celeste_theme(mode: theme::Mode) -> Theme {
+pub fn syncative_theme(mode: theme::Mode) -> Theme {
     match FORCED_MODE.unwrap_or(mode) {
         theme::Mode::Light => LIGHT_THEME.clone(),
         theme::Mode::Dark | theme::Mode::None => DARK_THEME.clone(),

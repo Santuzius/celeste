@@ -13,12 +13,12 @@ use resvg::{tiny_skia, usvg};
 /// SVG bundled with the binary so notifications and the iced window
 /// can render the brand icon without depending on an XDG-themed copy
 /// being installed.
-pub const CELESTE_ICON_SVG: &[u8] = include_bytes!("../assets/celeste-icon.svg");
+pub const SYNCATIVE_ICON_SVG: &[u8] = include_bytes!("../assets/syncative-icon.svg");
 
 /// The brand icon as an iced svg handle (in-window logo), parsed once.
 pub fn logo() -> iced::widget::svg::Handle {
     static CACHED: OnceLock<iced::widget::svg::Handle> = OnceLock::new();
-    CACHED.get_or_init(|| iced::widget::svg::Handle::from_memory(CELESTE_ICON_SVG)).clone()
+    CACHED.get_or_init(|| iced::widget::svg::Handle::from_memory(SYNCATIVE_ICON_SVG)).clone()
 }
 
 /// Pixel side length used when rasterising the brand icon for the
@@ -26,8 +26,8 @@ pub fn logo() -> iced::widget::svg::Handle {
 /// generous size beats repeatedly handing them a 32×32.
 const WINDOW_ICON_SIZE: u32 = 256;
 
-/// Materialise [`CELESTE_ICON_SVG`] to
-/// `$XDG_CACHE_HOME/celeste/celeste-icon.svg` the first time it's
+/// Materialise [`SYNCATIVE_ICON_SVG`] to
+/// `$XDG_CACHE_HOME/syncative/syncative-icon.svg` the first time it's
 /// asked for, then hand back the absolute path. notify-rust accepts
 /// either a freedesktop icon name or an absolute path; the path form
 /// sidesteps icon-theme lookup entirely so the brand icon shows up
@@ -43,13 +43,13 @@ pub fn icon_file_path() -> Option<&'static str> {
                     std::env::var_os("HOME")
                         .map(|h| std::path::PathBuf::from(h).join(".cache"))
                 })?;
-            let dir = cache_root.join("celeste");
+            let dir = cache_root.join("syncative");
             std::fs::create_dir_all(&dir).ok()?;
-            let path = dir.join("celeste-icon.svg");
+            let path = dir.join("syncative-icon.svg");
             // Re-write on every cold start: the embedded bytes are
             // the source of truth, and a stale copy after an upgrade
             // would otherwise stick around forever.
-            std::fs::write(&path, CELESTE_ICON_SVG).ok()?;
+            std::fs::write(&path, SYNCATIVE_ICON_SVG).ok()?;
             path.into_os_string().into_string().ok()
         })
         .as_deref()
@@ -57,7 +57,7 @@ pub fn icon_file_path() -> Option<&'static str> {
 
 /// Rasterise the brand icon to RGBA at [`WINDOW_ICON_SIZE`]² and wrap
 /// it in an [`iced::window::Icon`] suitable for `window::Settings::icon`.
-/// Cached so repeated calls (e.g. tray "Open Celeste" reopening the
+/// Cached so repeated calls (e.g. tray "Open Syncative" reopening the
 /// window) don't re-rasterise. Returns `None` if `usvg`/`resvg` fails;
 /// callers fall back to whatever icon the compositor picks.
 pub fn window_icon() -> Option<window::Icon> {
@@ -65,7 +65,7 @@ pub fn window_icon() -> Option<window::Icon> {
     CACHED
         .get_or_init(|| {
             let opts = usvg::Options::default();
-            let tree = usvg::Tree::from_data(CELESTE_ICON_SVG, &opts).ok()?;
+            let tree = usvg::Tree::from_data(SYNCATIVE_ICON_SVG, &opts).ok()?;
             let mut pixmap = tiny_skia::Pixmap::new(WINDOW_ICON_SIZE, WINDOW_ICON_SIZE)?;
             let svg_size = tree.size();
             let scale_x = WINDOW_ICON_SIZE as f32 / svg_size.width();

@@ -16,7 +16,7 @@
 //! Unix-only. `dup2` on fd 2 is the trick; spawning a reader thread on
 //! the read end of the pipe keeps the buffer warm. The original stderr
 //! is `dup`-saved first so lines are forwarded back — tests, other
-//! parts of Celeste, and any child process stay visible.
+//! parts of Syncative, and any child process stay visible.
 
 use std::{
     collections::VecDeque,
@@ -102,7 +102,7 @@ static GLOBAL: OnceLock<CaptureHandle> = OnceLock::new();
 
 /// Install the stderr tap. Call exactly once, from `main`, **before**
 /// any FFI layer touches fd 2 (in particular before
-/// `celeste_go::initialize`). Repeat calls return the previously-installed
+/// `syncative_go::initialize`). Repeat calls return the previously-installed
 /// handle.
 pub fn install() -> CaptureHandle {
     if let Some(existing) = GLOBAL.get() {

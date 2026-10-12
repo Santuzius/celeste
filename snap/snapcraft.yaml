@@ -1,36 +1,36 @@
-name: celeste
-title: Celeste
+name: syncative
+title: Syncative
 summary: Sync local folders with Google Drive and Proton Drive
 description: |
-  Celeste keeps local folders in sync with Google Drive and Proton Drive, in both directions.
+  Syncative keeps local folders in sync with Google Drive and Proton Drive, in both directions.
 
   - Several folders per account, each mapped to its own place in the cloud, with exclusions for sub-folders or files.
-  - Files changed on both sides are not overwritten silently: Celeste asks which version to keep, or keeps both.
-  - Proton Drive runs through Celeste's own end-to-end encrypted client; Google Drive through rclone's Drive backend.
+  - Files changed on both sides are not overwritten silently: Syncative asks which version to keep, or keeps both.
+  - Proton Drive runs through Syncative's own end-to-end encrypted client; Google Drive through rclone's Drive backend.
   - Sign-in data stays in the desktop keyring (Secret Service).
   - Runs in the system tray and syncs on a schedule.
 
   This is a third-party application not officially supported by Google or Proton.
 license: GPL-3.0-or-later
-website: https://github.com/Santuzius/celeste
-source-code: https://github.com/Santuzius/celeste
-issues: https://github.com/Santuzius/celeste/issues
-icon: assets/celeste-icon.svg
+website: https://github.com/Santuzius/syncative
+source-code: https://github.com/Santuzius/syncative
+issues: https://github.com/Santuzius/syncative/issues
+icon: assets/syncative-icon.svg
 base: core24
 grade: stable
 confinement: strict
-adopt-info: celeste
+adopt-info: syncative
 
 platforms:
   amd64:
   arm64:
 
 apps:
-  celeste:
-    command: usr/bin/celeste
-    desktop: usr/share/applications/celeste.desktop
-    # The entry Celeste writes to $XDG_CONFIG_HOME/autostart (on by default, Preferences switches it); snapd starts the app from it at login.
-    autostart: celeste.desktop
+  syncative:
+    command: usr/bin/syncative
+    desktop: usr/share/applications/syncative.desktop
+    # The entry Syncative writes to $XDG_CONFIG_HOME/autostart (on by default, Preferences switches it); snapd starts the app from it at login.
+    autostart: syncative.desktop
     # Wayland, X11, OpenGL/Vulkan through the GPU interface, portals (folder chooser, colour scheme), notifications and the GNOME runtime libraries.
     extensions: [gnome]
     plugs:
@@ -46,7 +46,7 @@ apps:
       - unity7
 
 parts:
-  celeste:
+  syncative:
     plugin: rust
     source: .
     rust-channel: stable
@@ -75,10 +75,10 @@ parts:
     override-build: |
       craftctl default
       # The rust plugin installs to bin/; the desktop file expects usr/bin like other packages.
-      install -Dm755 "$CRAFT_PART_INSTALL/bin/celeste" "$CRAFT_PART_INSTALL/usr/bin/celeste"
+      install -Dm755 "$CRAFT_PART_INSTALL/bin/syncative" "$CRAFT_PART_INSTALL/usr/bin/syncative"
       rm -rf "$CRAFT_PART_INSTALL/bin"
-      install -Dm644 assets/celeste-icon.svg "$CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/celeste-icon.svg"
-      install -Dm644 snap/local/celeste.desktop "$CRAFT_PART_INSTALL/usr/share/applications/celeste.desktop"
+      install -Dm644 assets/syncative-icon.svg "$CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/syncative-icon.svg"
+      install -Dm644 snap/local/syncative.desktop "$CRAFT_PART_INSTALL/usr/share/applications/syncative.desktop"
     prime:
       - -usr/share/doc
       - -usr/share/man

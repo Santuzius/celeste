@@ -1,11 +1,11 @@
 The files in this directory are derived from rclone/Proton-API-Bridge
 (https://github.com/rclone/Proton-API-Bridge), originally authored by
-Chun-Hung Tseng. They have been ported and modified for use in Celeste;
+Chun-Hung Tseng. They have been ported and modified for use in Syncative;
 see the per-file headers and the project's git history for the scope of
 each port and subsequent changes. The original MIT copyright notice and
 permission notice are reproduced below in compliance with that license.
 
-The combined work (Celeste) is distributed under the GNU General Public
+The combined work (Syncative) is distributed under the GNU General Public
 License version 3 or later; see the LICENSE file at the repository root.
 
 ----------------------------------------------------------------------

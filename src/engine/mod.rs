@@ -173,7 +173,7 @@ fn spawn(repo: Arc<dyn Repository>, backend: Arc<dyn BackendClient>, stderr: Cap
     let logs = Logs::default();
     let core = Core::new(repo, backend, stderr, logs.clone(), tx.clone());
     std::thread::Builder::new()
-        .name("celeste-engine".to_owned())
+        .name("syncative-engine".to_owned())
         .spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("failed to start the engine's runtime");
             runtime.block_on(run(core, rx, snapshot_tx));

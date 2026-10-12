@@ -3,13 +3,13 @@ plugins {
 }
 
 android {
-    namespace 'io.github.santuzius.celeste'
+    namespace 'io.github.santuzius.syncative'
     compileSdk 36
     // Matches shell.nix; the SDK in the Nix store is read-only, so Gradle cannot fetch another version.
     buildToolsVersion '36.0.0'
 
     defaultConfig {
-        applicationId 'io.github.santuzius.celeste'
+        applicationId 'io.github.santuzius.syncative'
         minSdk 26
         targetSdk 36
         versionName cargoVersion()
@@ -50,7 +50,7 @@ android {
     }
 }
 
-/** `cargo metadata` of Celeste's Cargo.toml in the repository root. */
+/** `cargo metadata` of Syncative's Cargo.toml in the repository root. */
 def cargoMetadata() {
     def metadata = providers.exec {
         commandLine 'cargo', 'metadata', '--format-version', '1', '--manifest-path', "${rootDir}/../Cargo.toml"
@@ -58,7 +58,7 @@ def cargoMetadata() {
     return new groovy.json.JsonSlurper().parseText(metadata)
 }
 
-/** The java/ folder of the iced_android crate Celeste depends on. */
+/** The java/ folder of the iced_android crate Syncative depends on. */
 def icedAndroidJava() {
     def crate = cargoMetadata().packages.find { it.name == 'iced_android' }
 
@@ -69,7 +69,7 @@ def icedAndroidJava() {
     return new File(crate.manifest_path).parentFile.toPath().resolve('java').toString()
 }
 
-/** Celeste's version from Cargo.toml. */
+/** Syncative's version from Cargo.toml. */
 def cargoVersion() {
-    return cargoMetadata().packages.find { it.name == 'celeste' }.version
+    return cargoMetadata().packages.find { it.name == 'syncative' }.version
 }

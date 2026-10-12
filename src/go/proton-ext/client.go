@@ -5,7 +5,7 @@ package protonext
 // from outside the package (it's unexported), and we can't add methods
 // to `*proton.Client` from here either, so we run a parallel HTTP path
 // (stdlib net/http, no resty) whose auth headers are populated from
-// the same UID/access token Celeste already has on its own Session.
+// the same UID/access token Syncative already has on its own Session.
 //
 // Trade-off: this client doesn't share upstream's auto-refresh on 401,
 // status observers, or per-error-code handlers. For revision-lifecycle
@@ -28,7 +28,7 @@ import (
 )
 
 // Auth carries the credential bits a request needs. Populate from the
-// celeste/go/drive Session's exposed fields. HostURL is optional;
+// syncative/go/drive Session's exposed fields. HostURL is optional;
 // when blank we fall back to upstream's `proton.DefaultHostURL` so this
 // package and upstream stay pinned to the same endpoint.
 type Auth struct {

@@ -1,6 +1,6 @@
 package protonext
 
-// Crypto helpers Celeste needs around the upstream go-proton-api types.
+// Crypto helpers Syncative needs around the upstream go-proton-api types.
 // Kept out-of-tree so the proton-api submodule can stay pristine. All
 // helpers here are thin wrappers over gopenpgp + crypto/hmac that the
 // upstream package intentionally doesn't expose.

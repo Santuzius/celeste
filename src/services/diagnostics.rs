@@ -36,7 +36,7 @@ pub fn apply() {
 /// rclone names every file it copies or deletes from level INFO on; by default it only reports problems (NOTICE). Call once rclone is initialised.
 pub fn apply_to_rclone() {
     let level = if detailed_log() { "INFO" } else { "NOTICE" };
-    if let Err(err) = celeste_go::rpc("options/set", serde_json::json!({ "main": { "LogLevel": level } }).to_string()) {
-        eprintln!("celeste: could not set rclone's log level: {err}");
+    if let Err(err) = syncative_go::rpc("options/set", serde_json::json!({ "main": { "LogLevel": level } }).to_string()) {
+        eprintln!("syncative: could not set rclone's log level: {err}");
     }
 }

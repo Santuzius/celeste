@@ -1,14 +1,14 @@
-// Celeste's combined Go archive. Exposes both rclone's librclone RPC
+// Syncative's combined Go archive. Exposes both rclone's librclone RPC
 // surface (replacement for the upstream librclone-sys crate) and our
 // native ProtonDrive client's C entry points.
 //
 // Built as:
 //
-//	go build --buildmode=c-archive -o libceleste_go.a .
+//	go build --buildmode=c-archive -o libsyncative_go.a .
 //
 // One Go runtime, both feature sets. See the integration plan for
 // why we can't have two independent Go archives coexisting in the
-// Celeste binary.
+// Syncative binary.
 package main
 
 /*
@@ -28,12 +28,12 @@ import (
 	"time"
 	"unsafe"
 
-	"celeste/go/drive"
-	"celeste/go/rclonewatch"
+	"syncative/go/drive"
+	"syncative/go/rclonewatch"
 
 	"github.com/rclone/rclone/librclone/librclone"
 
-	// Only the rclone backends Celeste can talk to: drive for Google Drive, dropbox, pcloud and webdav for remotes added by older Celeste versions, and local for the copies between disk and remote. Every other backend (S3, Azure, …) only cost build time and binary size. Rclone's protondrive backend stays out in any case: it links henrybear327/go-proton-api, which collides with the ProtonMail/go-proton-api our own Drive layer (src/go/drive/) uses.
+	// Only the rclone backends Syncative can talk to: drive for Google Drive, dropbox, pcloud and webdav for remotes added by older versions, and local for the copies between disk and remote. Every other backend (S3, Azure, …) only cost build time and binary size. Rclone's protondrive backend stays out in any case: it links henrybear327/go-proton-api, which collides with the ProtonMail/go-proton-api our own Drive layer (src/go/drive/) uses.
 	_ "github.com/rclone/rclone/backend/drive"
 	_ "github.com/rclone/rclone/backend/dropbox"
 	_ "github.com/rclone/rclone/backend/local"
@@ -52,7 +52,7 @@ import (
 
 // ---------------- librclone ABI ----------------
 // These functions mirror upstream librclone-sys's C surface so any
-// existing Rust caller (celeste::infrastructure::rclone) keeps working
+// existing Rust caller (syncative::infrastructure::rclone) keeps working
 // unchanged after we swap the crate dep.
 
 //export RcloneInitialize
@@ -192,7 +192,7 @@ func ProtonDrive_Version() *C.char {
 	// Build a fresh Manager just to exercise the symbol path; we throw
 	// it away immediately. No network traffic.
 	_ = proton.New(proton.WithAppVersion(drive.AppVersion))
-	return C.CString("celeste-go proton-api bound")
+	return C.CString("syncative-go proton-api bound")
 }
 
 // ProtonDrive_SetAppVersion sets the `x-pm-appversion` header sent by every later session. Input `{"version":"..."}`; call once at startup, before any login or resume.
@@ -521,7 +521,7 @@ func ProtonDrive_TrashLink(paramsJSON *C.char) *C.char {
 }
 
 // ProtonDrive_PermanentDeleteLink removes a link outright (no trash
-// recovery window). Celeste's sync engine should NOT call this —
+// recovery window). Syncative's sync engine should NOT call this —
 // mirror deletes route through TrashLink so the user has a window
 // to restore. Exposed for completeness and for explicit
 // "empty trash" UX later.

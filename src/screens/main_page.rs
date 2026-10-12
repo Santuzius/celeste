@@ -49,7 +49,7 @@ pub fn nav<'a>(entries: Vec<NavEntry<'a>>, selected: Option<RemoteId>, width: Le
         flat_row(icondata::TbPlusOutline, "Add remote", Msg::AddRemote),
         flat_row(icondata::TbRefreshOutline, "Sync all now", Msg::RefreshAll),
         flat_row(icondata::TbAdjustmentsHorizontalOutline, "Preferences", Msg::OpenPreferences),
-        flat_row(icondata::TbInfoCircleOutline, "About Celeste", Msg::OpenAbout),
+        flat_row(icondata::TbInfoCircleOutline, "About Syncative", Msg::OpenAbout),
     ]
     .spacing(2);
 
@@ -139,7 +139,7 @@ pub fn compact_bar<'a>() -> Element<'a, Msg> {
     container(
         row![
             button(icon(icondata::TbMenu2Outline, 20.0)).padding(8).style(theme::button_flat).on_press(Msg::OpenDrawer),
-            text("Celeste").size(theme::HEADING),
+            text("Syncative").size(theme::HEADING),
         ]
         .spacing(6)
         .align_y(Alignment::Center),
@@ -178,7 +178,7 @@ pub fn storage_warning<'a>() -> Element<'a, Msg> {
     container(
         row![
             icon(icondata::TbAlertTriangleOutline, 16.0),
-            text("Celeste may not read your folders. Allow All files access to sync them.").size(CAPTION).width(Length::Fill),
+            text("Syncative may not read your folders. Allow All files access to sync them.").size(CAPTION).width(Length::Fill),
             button(text("Allow…").size(CAPTION)).padding([4, 10]).style(theme::button_secondary).on_press(Msg::AllowStorage),
         ]
         .spacing(8)

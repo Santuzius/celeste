@@ -1,4 +1,4 @@
-//! Local leftovers of an excluded path: files Celeste synced before the user excluded them, still sitting unchanged on this computer.
+//! Local leftovers of an excluded path: files Syncative synced before the user excluded them, still sitting unchanged on this computer.
 //!
 //! Only those are offered for deletion. Files added or edited after the exclusion have no unchanged DB record and stay untouched, so a deliberately local-only folder can't lose anything.
 

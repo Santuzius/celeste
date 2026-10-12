@@ -1,4 +1,4 @@
-package io.github.santuzius.celeste;
+package io.github.santuzius.syncative;
 
 import android.Manifest;
 import android.content.Intent;
@@ -8,8 +8,8 @@ import android.os.Bundle;
 
 import io.github.santuzius.icedandroid.IcedActivity;
 
-/** Celeste's window. The GUI itself is iced, drawn by the native library; this adds what only an activity can do: ask for permissions and show the folder picker and the file dialogs. */
-public class CelesteActivity extends IcedActivity {
+/** Syncative's window. The GUI itself is iced, drawn by the native library; this adds what only an activity can do: ask for permissions and show the folder picker and the file dialogs. */
+public class SyncativeActivity extends IcedActivity {
     private static final int ASK_NOTIFICATIONS = 3;
 
     @Override

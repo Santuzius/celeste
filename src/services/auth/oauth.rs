@@ -134,15 +134,15 @@ fn run_rclone_authorize(
     };
     // rclone's flow runs in-process (there is no rclone binary on Android) and waits for the browser on its own thread; this one opens the link and passes on a cancel.
     std::thread::scope(|scope| {
-        let flow = scope.spawn(|| celeste_go::authorize(provider.rclone_type(), client_id, client_secret));
+        let flow = scope.spawn(|| syncative_go::authorize(provider.rclone_type(), client_id, client_secret));
         let mut cancelled = false;
         while !flow.is_finished() {
             if handle.cancelled.load(Ordering::Acquire) {
                 // Repeated until it lands: rclone may not be listening yet.
-                celeste_go::authorize_cancel();
+                syncative_go::authorize_cancel();
                 cancelled = true;
             } else if handle.url().is_none()
-                && let Some(url) = celeste_go::authorize_url()
+                && let Some(url) = syncative_go::authorize_url()
             {
                 util::open_in_browser(&url);
                 if let Ok(mut slot) = handle.url.lock() {

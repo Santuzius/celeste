@@ -1,4 +1,4 @@
-package io.github.santuzius.celeste;
+package io.github.santuzius.syncative;
 
 import android.app.Application;
 import android.system.ErrnoException;
@@ -7,8 +7,8 @@ import android.util.Log;
 
 import java.io.File;
 
-/** Runs first in every Celeste process, whether the launcher, the sync service or the boot receiver started it: sets up the environment and loads the native library. */
-public class CelesteApplication extends Application {
+/** Runs first in every Syncative process, whether the launcher, the sync service or the boot receiver started it: sets up the environment and loads the native library. */
+public class SyncativeApplication extends Application {
     static native void nativeInit(Application application);
 
     @Override
@@ -21,7 +21,7 @@ public class CelesteApplication extends Application {
         cache.mkdirs();
         run.mkdirs();
 
-        // Celeste, rclone and Go look for their directories here, and Android sets none of them. Set before the library loads: the Go runtime copies the environment when it starts.
+        // Syncative, rclone and Go look for their directories here, and Android sets none of them. Set before the library loads: the Go runtime copies the environment when it starts.
         try {
             Os.setenv("HOME", files.getPath(), true);
             Os.setenv("XDG_DATA_HOME", files.getPath(), true);
@@ -31,10 +31,10 @@ public class CelesteApplication extends Application {
             // Go's os.TempDir falls back to /data/local/tmp, which apps cannot write.
             Os.setenv("TMPDIR", cache.getPath(), true);
         } catch (ErrnoException e) {
-            Log.e("celeste", "setenv failed", e);
+            Log.e("syncative", "setenv failed", e);
         }
 
-        System.loadLibrary("celeste");
+        System.loadLibrary("syncative");
         nativeInit(this);
         Bridge.watchNetwork(this);
     }

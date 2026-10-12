@@ -52,7 +52,7 @@ pub fn view(remote: &Remote, auth_needed: bool) -> Element<'_, Msg> {
     };
 
     let rows = column![
-        setting_row("Interval", "How often Celeste checks for changes on both sides.", interval_control.into()),
+        setting_row("Interval", "How often Syncative checks for changes on both sides.", interval_control.into()),
         rule::horizontal(1).style(theme::separator),
         setting_row(
             "Account",

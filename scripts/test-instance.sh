@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Launch a fully isolated Celeste instance for testing with throwaway/mock accounts.
+# Launch a fully isolated Syncative instance for testing with throwaway/mock accounts.
 #
-# Isolation: own HOME and XDG_* dirs under $CELESTE_TEST_DIR (default /tmp/celeste-test), own D-Bus session bus with its own unlocked gnome-keyring (aborts if anything else owns org.freedesktop.secrets), no Wayland socket. It never reads or writes ~/.local/share/celeste, ~/.config/celeste, the real keyring or $XDG_RUNTIME_DIR/celeste of the real instance.
+# Isolation: own HOME and XDG_* dirs under $SYNCATIVE_TEST_DIR (default /tmp/syncative-test), own D-Bus session bus with its own unlocked gnome-keyring (aborts if anything else owns org.freedesktop.secrets), no Wayland socket. It never reads or writes ~/.local/share/syncative, ~/.config/syncative, the real keyring or $XDG_RUNTIME_DIR/syncative of the real instance.
 #
 # Usage (from the repo root):
 #   scripts/test-instance.sh [xvfb|desktop] [--release]
 #     xvfb     headless X server on :99 (screenshots via scripts/test-screenshot.sh)
 #     desktop  window on the real desktop via XWayland (e.g. to log in throwaway accounts)
-#   CELESTE_TEST_RESET=1 wipes the test state first.
-#   CELESTE_TEST_BIN=/path/to/celeste runs another build (e.g. an older version for comparisons).
-#   CELESTE_TEST_SHOW=0 starts hidden (tray mode) instead of passing --show.
-#   CELESTE_COLOR_SCHEME=light|dark forces the window theme (e.g. for README screenshots); passed through to Celeste.
+#   SYNCATIVE_TEST_RESET=1 wipes the test state first.
+#   SYNCATIVE_TEST_BIN=/path/to/syncative runs another build (e.g. an older version for comparisons).
+#   SYNCATIVE_TEST_SHOW=0 starts hidden (tray mode) instead of passing --show.
+#   SYNCATIVE_COLOR_SCHEME=light|dark forces the window theme (e.g. for README screenshots); passed through to Syncative.
 set -euo pipefail
 
 MODE="${1:-xvfb}"
 PROFILE=debug
 [ "${2:-}" = "--release" ] && PROFILE=release
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-T="${CELESTE_TEST_DIR:-/tmp/celeste-test}"
-BIN="${CELESTE_TEST_BIN:-$REPO/target/$PROFILE/celeste}"
+T="${SYNCATIVE_TEST_DIR:-/tmp/syncative-test}"
+BIN="${SYNCATIVE_TEST_BIN:-$REPO/target/$PROFILE/syncative}"
 SHOW_ARG=--show
-[ "${CELESTE_TEST_SHOW:-1}" = 0 ] && SHOW_ARG=
+[ "${SYNCATIVE_TEST_SHOW:-1}" = 0 ] && SHOW_ARG=
 
 if [ -z "${IN_NIX_SHELL:-}" ]; then
   exec nix-shell "$REPO/shell.nix" --run "$(printf '%q ' "$0" "$@")"
@@ -30,7 +30,7 @@ fi
 pkg() { nix-build '<nixpkgs>' -A "$1" --no-out-link 2>/dev/null; }
 GKR="$(pkg gnome-keyring)/bin/gnome-keyring-daemon"
 
-# A previous run's processes (Celeste itself, services D-Bus-activated on its private bus) can outlive it; stop the ones whose HOME is our test home — never anything of the real session — and wait until they are gone.
+# A previous run's processes (Syncative itself, services D-Bus-activated on its private bus) can outlive it; stop the ones whose HOME is our test home — never anything of the real session — and wait until they are gone.
 test_pids() {
   for pid in $(pgrep -u "$USER"); do
     if { tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null | grep -qx "HOME=$T/home"; then echo "$pid"; fi
@@ -47,14 +47,14 @@ if [ "$MODE" = xvfb ]; then
   xvfb_running() { for p in $(pgrep -x Xvfb); do grep -qa ":99" "/proc/$p/cmdline" && return 0; done; return 1; }
   if ! xvfb_running; then
     rm -f /tmp/.X11-unix/X99 /tmp/.X99-lock
-    "$(pkg xorg.xvfb)/bin/Xvfb" :99 -screen 0 1280x860x24 -nolisten tcp >/tmp/celeste-test-xvfb.log 2>&1 &
+    "$(pkg xorg.xvfb)/bin/Xvfb" :99 -screen 0 1280x860x24 -nolisten tcp >/tmp/syncative-test-xvfb.log 2>&1 &
     sleep 1
   fi
 else
   DISPLAY_TO_USE="${REAL_DISPLAY:-:0}"
 fi
 
-[ "${CELESTE_TEST_RESET:-0}" = 1 ] && rm -rf "$T"
+[ "${SYNCATIVE_TEST_RESET:-0}" = 1 ] && rm -rf "$T"
 mkdir -p "$T/home/.local/share" "$T/home/.config" "$T/home/.cache" "$T/run"
 chmod 700 "$T/run"
 
@@ -85,6 +85,6 @@ exec dbus-run-session -- bash -c '
   pid=$(dbus-send --session --print-reply --dest=org.freedesktop.DBus / org.freedesktop.DBus.GetConnectionUnixProcessID string:org.freedesktop.secrets | awk "/uint32/{print \$2}")
   exe=$(readlink /proc/$pid/exe)
   case "$exe" in /nix/store/*gnome-keyring*) echo "isolated secret service: $exe";; *) echo "ABORT: org.freedesktop.secrets is owned by $exe"; exit 1;; esac
-  echo "data dir: $XDG_DATA_HOME/celeste"
+  echo "data dir: $XDG_DATA_HOME/syncative"
   exec "$BIN" $SHOW_ARG
 '

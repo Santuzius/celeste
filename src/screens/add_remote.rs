@@ -1,4 +1,4 @@
-//! Add-remote flow for every provider Celeste supports:
+//! Add-remote flow for every provider Syncative supports:
 //!
 //! - WebDAV / Nextcloud / Owncloud — raw username + password
 //! - Proton Drive — username + password + optional TOTP
@@ -13,7 +13,7 @@ use iced::{
 
 use std::sync::Arc;
 
-use celeste_go::proton::HumanVerification;
+use syncative_go::proton::HumanVerification;
 
 use crate::{
     services::auth::{AuthorizeHandle, OAuthProvider, WebDavVendor},
@@ -40,17 +40,17 @@ pub enum Msg {
     CopyAuthLink,
     /// Open rclone's guide for creating a Google Drive client ID.
     OpenClientIdGuide,
-    /// Copy Celeste's privacy policy link (for the Google consent screen's branding).
+    /// Copy Syncative's privacy policy link (for the Google consent screen's branding).
     CopyPrivacyLink,
 }
 
 /// rclone's step-by-step guide for creating a Google Drive OAuth client.
 pub const GDRIVE_CLIENT_ID_GUIDE: &str = "https://rclone.org/drive/#making-your-own-client-id";
 
-/// Celeste's privacy policy, usable as privacy policy link in the Google consent screen's branding.
-pub const PRIVACY_POLICY: &str = "https://github.com/Santuzius/celeste/blob/main/PRIVACY.md";
+/// Syncative's privacy policy, usable as privacy policy link in the Google consent screen's branding.
+pub const PRIVACY_POLICY: &str = "https://github.com/Santuzius/syncative/blob/main/PRIVACY.md";
 
-/// The set of backends Celeste's sync algorithm has been exercised
+/// The set of backends Syncative's sync algorithm has been exercised
 /// against. WebDAV / Nextcloud / Owncloud / Dropbox / pCloud are
 /// deliberately absent from the Add Remote picker: the snapshot
 /// algorithm is backend-agnostic so they should work, but none of them
@@ -216,7 +216,7 @@ fn instruction<'a>(s: &'a str) -> Element<'a, Msg> {
     text(s).size(TEXT).into()
 }
 
-/// Notice that Celeste isn't the provider's own app, with a blue info marker. Proton's guidelines for third-party Drive clients require this wording.
+/// Notice that Syncative isn't the provider's own app, with a blue info marker. Proton's guidelines for third-party Drive clients require this wording.
 fn third_party_notice<'a>(company: &str) -> Element<'a, Msg> {
     row![
         accent_icon(icondata::TbInfoCircleOutline, TEXT + 2.0),
@@ -262,7 +262,7 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
             body = body.push(field("Password", input("password", &draft.pass, Msg::PassChanged).secure(true)));
             body = body.push(field("2FA code", input("only if two-factor authentication is on", &draft.totp, Msg::TotpChanged)));
             body = body.push(hint(
-                "With 2FA enabled, Proton eventually expires the session and Celeste can't renew it on its own (the code is single-use). You'll then be asked to sign in again.",
+                "With 2FA enabled, Proton eventually expires the session and Syncative can't renew it on its own (the code is single-use). You'll then be asked to sign in again.",
             ));
         }
         Some(p) if p.needs_own_client_id() => {
@@ -272,7 +272,7 @@ pub fn view(draft: &Draft) -> Element<'_, Msg> {
                 column![
                     instruction("When the guide gets to the consent screen's Branding, enter:"),
                     bullet("Application home page: your website or social media profile, e.g. https://t.me/YourTelegramName"),
-                    bullet("Application privacy policy link: Celeste's privacy policy (copy it with the button below)"),
+                    bullet("Application privacy policy link: Syncative's privacy policy (copy it with the button below)"),
                 ]
                 .spacing(4),
             );

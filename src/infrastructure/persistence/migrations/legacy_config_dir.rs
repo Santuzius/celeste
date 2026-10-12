@@ -43,11 +43,11 @@ fn migrate_sqlite_db(legacy: &Path, data_dir: &Path) {
     }
     match std::fs::rename(&legacy_db, &new_db) {
         Ok(()) => eprintln!(
-            "celeste: migrated SQLite DB to {}",
+            "syncative: migrated SQLite DB to {}",
             new_db.display(),
         ),
         Err(err) => eprintln!(
-            "celeste: couldn't move {} → {}: {err}",
+            "syncative: couldn't move {} → {}: {err}",
             legacy_db.display(),
             new_db.display(),
         ),
@@ -76,16 +76,16 @@ fn migrate_proton_sessions(legacy: &Path) {
                     Ok(()) => {
                         let _ = std::fs::remove_file(&path);
                         eprintln!(
-                            "celeste: migrated proton session for '{name}' into the keyring",
+                            "syncative: migrated proton session for '{name}' into the keyring",
                         );
                     }
                     Err(err) => eprintln!(
-                        "celeste: keyring store of legacy proton session for '{name}' failed: {err}",
+                        "syncative: keyring store of legacy proton session for '{name}' failed: {err}",
                     ),
                 }
             }
             Err(err) => eprintln!(
-                "celeste: couldn't read legacy proton session {}: {err}",
+                "syncative: couldn't read legacy proton session {}: {err}",
                 path.display(),
             ),
         }
@@ -101,7 +101,7 @@ fn migrate_rclone_config(legacy: &Path) {
         Ok(body) => body,
         Err(err) => {
             eprintln!(
-                "celeste: couldn't read {}: {err}",
+                "syncative: couldn't read {}: {err}",
                 legacy_rclone.display(),
             );
             return;
@@ -110,8 +110,8 @@ fn migrate_rclone_config(legacy: &Path) {
     match secrets::store(secrets::RCLONE_ACCOUNT, &body) {
         Ok(()) => {
             let _ = std::fs::remove_file(&legacy_rclone);
-            eprintln!("celeste: migrated rclone config into the keyring");
+            eprintln!("syncative: migrated rclone config into the keyring");
         }
-        Err(err) => eprintln!("celeste: keyring store of legacy rclone.conf failed: {err}"),
+        Err(err) => eprintln!("syncative: keyring store of legacy rclone.conf failed: {err}"),
     }
 }

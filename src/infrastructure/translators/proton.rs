@@ -81,7 +81,7 @@ impl EventTranslator for ProtonTranslator {
 mod tests {
     use super::*;
 
-    /// The exact string go-proton-api produces when Celeste starts
+    /// The exact string go-proton-api produces when Syncative starts
     /// before DNS is up (autostart, or resume-from-suspend). Resuming a
     /// session needs an HTTPS round-trip, so this used to reach the
     /// startup resume path and get mistaken for a dead session —

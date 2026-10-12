@@ -5,13 +5,13 @@
 #   ProtonMock  native Proton remote without a session → "Not signed in" state
 # Run after the test instance has started once (so the DB exists) and has been stopped again.
 set -euo pipefail
-T="${CELESTE_TEST_DIR:-/tmp/celeste-test}"
-DB="$T/home/.local/share/celeste/data.sqlite"
+T="${SYNCATIVE_TEST_DIR:-/tmp/syncative-test}"
+DB="$T/home/.local/share/syncative/data.sqlite"
 [ -f "$DB" ] || { echo "no $DB — start scripts/test-instance.sh once first"; exit 1; }
 SQLITE="$(nix-build '<nixpkgs>' -A sqlite.bin --no-out-link 2>/dev/null)/bin/sqlite3"
 
-mkdir -p "$T/run/celeste" "$T/mock/local/Documents/Notes" "$T/mock/local/Photos" "$T/mock/remote/Documents" "$T/mock/local/Offline"
-cat > "$T/run/celeste/rclone.conf" <<EOF
+mkdir -p "$T/run/syncative" "$T/mock/local/Documents/Notes" "$T/mock/local/Photos" "$T/mock/remote/Documents" "$T/mock/local/Offline"
+cat > "$T/run/syncative/rclone.conf" <<EOF
 [LocalMock]
 type = alias
 remote = $T/mock/remote

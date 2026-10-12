@@ -5,7 +5,7 @@
 //! ProtonDrive link IDs by walking the tree from the session's root.
 //!
 //! Scope of this initial impl:
-//!   - One remote per Celeste instance. `remote` arg is accepted but only
+//!   - One remote per Syncative instance. `remote` arg is accepted but only
 //!     logged — every call routes to the single native session this client was
 //!     constructed with.
 //!   - No cache. Each call walks root → target, listing each intermediate
@@ -26,14 +26,14 @@ use std::path::Path;
 
 use time::OffsetDateTime;
 
-use celeste_go::proton as proton_ffi;
+use syncative_go::proton as proton_ffi;
 
 use crate::domain::{
     ports::{BackendClient, Cancel, is_cancelled},
     sync::{FileDetails, ListFilter, RemoteItem},
 };
 
-/// Native ProtonDrive adapter. Owns the session UID the celeste-go
+/// Native ProtonDrive adapter. Owns the session UID the syncative-go
 /// layer returns from `ProtonDrive_Login` / `ProtonDrive_ResumeSession`.
 #[derive(Clone, Debug)]
 pub struct NativeProtonClient {
@@ -299,18 +299,18 @@ impl BackendClient for NativeProtonClient {
     fn checkpoint_session(&self, remote: &str) {
         match crate::services::auth::persist_proton_session_if_rotated(remote, &self.uid) {
             Ok(true) => eprintln!(
-                "celeste: native-proton session for '{remote}' re-persisted after token rotation.",
+                "syncative: native-proton session for '{remote}' re-persisted after token rotation.",
             ),
             Ok(false) => {}
             Err(err) => eprintln!(
-                "celeste: failed to re-persist rotated proton session for '{remote}': {err}",
+                "syncative: failed to re-persist rotated proton session for '{remote}': {err}",
             ),
         }
     }
 }
 
 /// Adapter for a native-proton remote whose session couldn't be resumed
-/// at startup for a *recoverable* reason — no network yet (Celeste
+/// at startup for a *recoverable* reason — no network yet (Syncative
 /// autostarting before DNS is up, or a suspend/resume), or a transient
 /// keyring failure. Resuming needs an HTTPS round-trip (`GetUser`), so
 /// those conditions are indistinguishable from a dead session at the
@@ -360,7 +360,7 @@ impl PendingProtonClient {
     /// duplicate Go-side session.
     fn resolve(&self) -> Result<NativeProtonClient, String> {
         let mut state = self.state.lock().map_err(|_| {
-            format!("Proton Drive session state for '{}' is poisoned; restart Celeste.", self.remote_name)
+            format!("Proton Drive session state for '{}' is poisoned; restart Syncative.", self.remote_name)
         })?;
 
         match &*state {
@@ -378,7 +378,7 @@ impl PendingProtonClient {
         match crate::services::auth::resume_proton_session(&self.remote_name) {
             Ok(Some(cred)) => {
                 eprintln!(
-                    "celeste: native-proton session for '{}' resumed on retry.",
+                    "syncative: native-proton session for '{}' resumed on retry.",
                     self.remote_name,
                 );
                 let client = NativeProtonClient::new(cred.uid);
@@ -492,7 +492,7 @@ impl BackendClient for PendingProtonClient {
 
 /// Sentence every [`DisabledProtonClient`] reason ends with. The Proton
 /// translator keys on it so these errors count as auth failures.
-pub const REAUTH_HINT: &str = "Open the remote in Celeste and click Sign in again.";
+pub const REAUTH_HINT: &str = "Open the remote in Syncative and click Sign in again.";
 
 /// Placeholder adapter for native-proton remotes whose session couldn't
 /// be resumed at startup (blob missing, refresh token expired, etc.).

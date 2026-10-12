@@ -4,9 +4,9 @@ use iced::widget::text_editor::Content;
 
 use crate::domain::sync::SyncDirId;
 
-use super::CelesteApp;
+use super::SyncativeApp;
 
-impl CelesteApp {
+impl SyncativeApp {
     /// Materialise a log newest-first, so the freshest entry sits on the editor's top line — `text_editor` can't be pinned to the bottom.
     pub(in crate::app) fn build_log_content(&self, sync_dir_id: SyncDirId) -> Content {
         let joined = self

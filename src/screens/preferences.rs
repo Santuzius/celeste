@@ -21,7 +21,7 @@ pub enum Msg {
     SizeChanged(SizeChoice),
     PowerModeChanged(PowerMode),
     SyncMeteredToggled(bool),
-    /// Ask Android to leave Celeste out of battery optimization.
+    /// Ask Android to leave Syncative out of battery optimization.
     AllowBackground,
     BackgroundToggled(bool),
     /// "Not now" in [`background_dialog`].
@@ -47,7 +47,7 @@ pub struct Power {
     pub sync_metered: bool,
     /// "Run in background" is on.
     pub background: bool,
-    /// Android leaves Celeste out of battery optimization.
+    /// Android leaves Syncative out of battery optimization.
     pub background_allowed: bool,
 }
 
@@ -72,11 +72,11 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
     }
     let separator = || rule::horizontal(1).style(theme::separator);
     match power {
-        // Starting with the device only makes sense while Celeste may run in the background.
+        // Starting with the device only makes sense while Syncative may run in the background.
         Some(power) => {
             let mut background = column![setting_row(
                 "Run in background",
-                "Keep syncing after you leave Celeste, with its status in a silent notification.",
+                "Keep syncing after you leave Syncative, with its status in a silent notification.",
                 toggler(power.background).on_toggle(Msg::BackgroundToggled).size(20).into(),
             )];
             if power.background && !power.background_allowed {
@@ -100,7 +100,7 @@ pub fn view<'a>(appearance: Appearance, power: Option<Power>, autostart: bool, d
         }
         None => {
             rows = rows.push(separator()).push(setting_row(
-                "Start Celeste when you log in",
+                "Start Syncative when you log in",
                 "It starts hidden in the system tray and syncs in the background.",
                 toggler(autostart).on_toggle(Msg::AutostartToggled).size(20).into(),
             ));
@@ -156,7 +156,7 @@ fn row_note(note: &str) -> Element<'_, Msg> {
     container(text(note).size(CAPTION).style(theme::muted)).padding(iced::Padding { top: 0.0, right: 14.0, bottom: 12.0, left: 14.0 }).into()
 }
 
-/// The power mode with what it does, and a warning while Android may stop Celeste in the background.
+/// The power mode with what it does, and a warning while Android may stop Syncative in the background.
 fn power_row<'a>(power: Power) -> Element<'a, Msg> {
     let mut points = column![].spacing(4);
     for &point in power.mode.points() {
@@ -172,7 +172,7 @@ fn power_row<'a>(power: Power) -> Element<'a, Msg> {
     row.into()
 }
 
-/// Android's battery optimization may freeze Celeste or cut it off from the network in the background, whatever the power mode.
+/// Android's battery optimization may freeze Syncative or cut it off from the network in the background, whatever the power mode.
 fn background_warning<'a>() -> Element<'a, Msg> {
     container(
         row![
@@ -189,11 +189,11 @@ fn background_warning<'a>() -> Element<'a, Msg> {
     .into()
 }
 
-/// Asked once on Android while Celeste is subject to battery optimization.
+/// Asked once on Android while Syncative is subject to battery optimization.
 pub fn background_dialog<'a>() -> Element<'a, Msg> {
     let content = column![
         text("Keep syncing in the background?").size(HEADING + 2.0),
-        text("Android saves battery on apps by default. For Celeste that means:").size(TEXT),
+        text("Android saves battery on apps by default. For Syncative that means:").size(TEXT),
         column![bullet("It may be frozen a few minutes after you leave it."), bullet("In deep sleep it is cut off from the network until you unlock the phone.")].spacing(4),
         text("Allow it to run in the background to keep syncing. The power mode in Preferences decides how much battery it uses.").size(TEXT),
         row![

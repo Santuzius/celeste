@@ -355,7 +355,7 @@ fn plan_one(
         //      I/O error anywhere in this path's chain, the absence
         //      isn't a deletion signal — it's a walk glitch (most
         //      commonly a concurrent writer like Syncthing racing
-        //      Celeste mid-readdir). Refuse.
+        //      Syncative mid-readdir). Refuse.
         //   2. Sibling presence. Weaker backstop for paths whose
         //      ancestors look healthy but whose parent holds other
         //      DB-tracked rows that didn't make the walk either.

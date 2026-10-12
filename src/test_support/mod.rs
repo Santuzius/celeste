@@ -29,7 +29,7 @@ mod fake_repository;
 pub use fake_backend::FakeBackend;
 pub use fake_repository::FakeRepo;
 
-/// Scratch directory rooted under `$TMPDIR/celeste_test_*`. Dropped
+/// Scratch directory rooted under `$TMPDIR/syncative_test_*`. Dropped
 /// automatically; collisions across tests use the process ID + caller tag.
 pub struct TempDir {
     pub path: PathBuf,
@@ -41,7 +41,7 @@ impl TempDir {
         loop {
             let mut p = std::env::temp_dir();
             p.push(format!(
-                "celeste_test_{}_{}_{}",
+                "syncative_test_{}_{}_{}",
                 tag,
                 std::process::id(),
                 counter

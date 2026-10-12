@@ -13,7 +13,7 @@ package drive
 //
 // Ported from Proton-API-Bridge/delete.go, minus the cache
 // invalidation (we don't have a cache yet) and the EmptyTrash /
-// EmptyRootFolder paths (not on Celeste's sync engine's critical
+// EmptyRootFolder paths (not on Syncative's sync engine's critical
 // path; can come back if we want them).
 
 import (
@@ -53,7 +53,7 @@ func (s *Session) TrashLink(ctx context.Context, linkID string) error {
 	return s.c.TrashChildren(ctx, s.mainShare.ShareID, link.ParentLinkID, linkID)
 }
 
-// PermanentDeleteLink removes a trashed link outright. Celeste's
+// PermanentDeleteLink removes a trashed link outright. Syncative's
 // sync engine shouldn't call this — mirror-deletes go through
 // TrashLink so the user has a recovery window — but it's here for
 // completeness (integration code may expose it as an explicit

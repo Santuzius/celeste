@@ -1,4 +1,4 @@
-//! Start Celeste's sync service when the phone has booted. The setting is the file `autostart-off` in the data dir: missing means on. The app's boot receiver (android/…/BootReceiver.java) checks for the same file.
+//! Start Syncative's sync service when the phone has booted. The setting is the file `autostart-off` in the data dir: missing means on. The app's boot receiver (android/…/BootReceiver.java) checks for the same file.
 
 use std::{io, path::PathBuf};
 
@@ -7,7 +7,7 @@ pub fn entry_path() -> PathBuf {
     crate::util::get_data_dir().join("autostart-off")
 }
 
-/// Whether Celeste starts after booting.
+/// Whether Syncative starts after booting.
 pub fn enabled() -> bool {
     !entry_path().exists()
 }

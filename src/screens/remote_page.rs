@@ -160,7 +160,7 @@ pub fn view<'a>(page: Page<'a>) -> Element<'a, Msg> {
                 row![
                     icon(icondata::TbLockOutline, 20.0),
                     text(format!(
-                        "Celeste can no longer access {}. Sign in again to resume syncing — folders, exclusions and schedule are kept.",
+                        "Syncative can no longer access {}. Sign in again to resume syncing — folders, exclusions and schedule are kept.",
                         remote.name
                     ))
                     .size(TEXT)
@@ -350,7 +350,7 @@ fn backoff_hint<'a>(next_sync: Option<(Duration, bool)>) -> Element<'a, Msg> {
         container(row![icon(icondata::TbClockOutline, 16.0), text("Backing off").size(CAPTION)].spacing(4).align_y(Alignment::Center))
             .padding([4, 8]),
         container(
-            text("The provider reported rate-limit warnings on the last pass, so Celeste skips the next cycles before trying again. More consecutive warnings mean more skipped cycles; a clean pass resets it.")
+            text("The provider reported rate-limit warnings on the last pass, so Syncative skips the next cycles before trying again. More consecutive warnings mean more skipped cycles; a clean pass resets it.")
                 .size(CAPTION),
         )
         .padding(10)
@@ -688,7 +688,7 @@ pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg
     let (title, body, confirm) = match pending {
         PendingDelete::Remote(_id, name) => (
             format!("Remove {name}?"),
-            format!("Celeste stops syncing this remote and forgets its folders and exclusions. No files are deleted — neither on {} nor in the cloud.", crate::util::THIS_DEVICE),
+            format!("Syncative stops syncing this remote and forgets its folders and exclusions. No files are deleted — neither on {} nor in the cloud.", crate::util::THIS_DEVICE),
             "Remove remote",
         ),
         PendingDelete::Leftovers { .. } => unreachable!("handled above"),

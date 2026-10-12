@@ -12,7 +12,7 @@ use time::OffsetDateTime;
 pub fn get_remote<T: ToString>(remote: T) -> Option<Remote> {
     let remote = remote.to_string();
 
-    let config_str = celeste_go::rpc(
+    let config_str = syncative_go::rpc(
         "config/get",
         json!({ "name": remote }).to_string(),
     )
@@ -62,19 +62,19 @@ pub fn get_remote<T: ToString>(remote: T) -> Option<Remote> {
 /// Get all the remotes from the config file.
 pub fn get_remotes() -> Vec<Remote> {
     let configs_str =
-        celeste_go::rpc("config/listremotes", json!({}).to_string())
+        syncative_go::rpc("config/listremotes", json!({}).to_string())
             .unwrap_or_else(|_| unreachable!());
     let configs = {
         let config: HashMap<String, Vec<String>> = serde_json::from_str(&configs_str).unwrap();
         config.get(&"remotes".to_string()).unwrap().to_owned()
     };
-    let mut celeste_configs = vec![];
+    let mut syncative_configs = vec![];
 
     for config in configs {
-        celeste_configs.push(get_remote(&config).unwrap());
+        syncative_configs.push(get_remote(&config).unwrap());
     }
 
-    celeste_configs
+    syncative_configs
 }
 
 /// The types of remotes in the config.
@@ -246,7 +246,7 @@ pub mod sync {
     }
 
     fn run<T: ToString>(method: T, input: T) -> Result<String, String> {
-        celeste_go::rpc(method.to_string(), input.to_string())
+        syncative_go::rpc(method.to_string(), input.to_string())
     }
 
     /// Common function for some of the below command.

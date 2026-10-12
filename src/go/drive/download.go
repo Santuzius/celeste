@@ -3,7 +3,7 @@ package drive
 // File download, ported from Proton-API-Bridge/file_download.go with
 // three trims:
 //
-//   1. `FileDownloadReader` becomes a private helper — Celeste downloads
+//   1. `FileDownloadReader` becomes a private helper — Syncative downloads
 //      whole files to local paths, not partial reads, so we don't need
 //      to plumb an `io.ReadCloser` across the FFI boundary.
 //   2. Bridge's offset/seek logic is gone for the same reason. If the
@@ -27,7 +27,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
 
-	"celeste/go/proton-ext"
+	"syncative/go/proton-ext"
 )
 
 // Errors specific to the download path.
@@ -121,7 +121,7 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
-	out, err := os.CreateTemp(filepath.Dir(destPath), ".celeste-*.part")
+	out, err := os.CreateTemp(filepath.Dir(destPath), ".syncative-*.part")
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-# Nix dev-shell for building Celeste on NixOS without a global toolchain
+# Nix dev-shell for building Syncative on NixOS without a global toolchain
 # install. Enter with `nix-shell` (or `nix-shell --run 'cargo build --release'`).
 { pkgs ? import <nixpkgs> { } }:
 

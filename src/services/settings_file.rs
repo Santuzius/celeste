@@ -1,4 +1,4 @@
-//! Export and import of Celeste's setup as a JSON file: remotes with their interval, folders and exclusions, and the preferences. Sign-ins stay out: imported remotes wait for the user to sign in again, and the database's record of synced files starts afresh (the first pass compares both sides).
+//! Export and import of Syncative's setup as a JSON file: remotes with their interval, folders and exclusions, and the preferences. Sign-ins stay out: imported remotes wait for the user to sign in again, and the database's record of synced files starts afresh (the first pass compares both sides).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -14,13 +14,16 @@ use crate::{
 };
 
 /// What the file starts with; an import refuses anything else.
-const FORMAT: &str = "celeste-settings";
+const FORMAT: &str = "syncative-settings";
+
+/// What files exported before the rename to Syncative start with.
+const CELESTE_FORMAT: &str = "celeste-settings";
 const VERSION: u32 = 1;
 
 /// rclone parameters worth keeping per backend type: where the remote is, never how to get in.
 const KEPT_PARAMETERS: &[(&str, &[&str])] = &[("webdav", &["url", "vendor", "user"])];
 
-/// The rclone type the file uses for Celeste's own Proton client.
+/// The rclone type the file uses for Syncative's own Proton client.
 const NATIVE_PROTON: &str = "native-proton";
 
 #[derive(Serialize, Deserialize)]
@@ -121,12 +124,12 @@ pub fn export(repo: &dyn Repository, client: &dyn BackendClient) -> Result<Strin
 
 /// Adds the file's remotes, signed out, and takes over its preferences. Remotes whose name is taken are left out.
 pub fn import(text: &str, repo: &dyn Repository, router: &ClientRouter) -> Result<Imported, String> {
-    let file: File = serde_json::from_str(text).map_err(|e| format!("Not a Celeste settings file: {e}"))?;
-    if file.format != FORMAT {
-        return Err("Not a Celeste settings file.".to_owned());
+    let file: File = serde_json::from_str(text).map_err(|e| format!("Not a Syncative settings file: {e}"))?;
+    if file.format != FORMAT && file.format != CELESTE_FORMAT {
+        return Err("Not a Syncative settings file.".to_owned());
     }
     if file.version > VERSION {
-        return Err("The settings file is from a newer Celeste. Update Celeste first.".to_owned());
+        return Err("The settings file is from a newer Syncative. Update Syncative first.".to_owned());
     }
 
     let existing = util::await_future(repo.list_remotes()).map_err(|e| e.to_string())?;
@@ -178,7 +181,7 @@ fn apply_preferences(preferences: &Preferences) -> std::io::Result<()> {
         Appearance::parse(&map_to_conf(&preferences.appearance)).save(&data_dir)?;
     }
     if preferences.power_mode.is_some() || preferences.sync_metered.is_some() {
-        // Whether Celeste asked about battery optimization belongs to this device.
+        // Whether Syncative asked about battery optimization belongs to this device.
         let current = power::PowerSettings::load(&data_dir);
         let mode = preferences.power_mode.as_ref().map_or(current.mode, |mode| power::PowerSettings::parse(&format!("mode={mode}\n")).mode);
         let sync_metered = preferences.sync_metered.unwrap_or(current.sync_metered);
@@ -222,6 +225,14 @@ mod tests {
         let repo = crate::test_support::FakeRepo::default();
         assert!(import("{}", &repo, &router).is_err());
         assert!(import(r#"{"format":"other","version":1,"remotes":[],"preferences":{}}"#, &repo, &router).is_err());
+        assert!(import(r#"{"format":"syncative-settings","version":99,"remotes":[],"preferences":{}}"#, &repo, &router).unwrap_err().contains("newer"));
+    }
+
+    #[test]
+    fn files_exported_by_celeste_pass_the_format_check() {
+        let router = ClientRouter::new(std::sync::Arc::new(crate::test_support::FakeBackend::default()));
+        let repo = crate::test_support::FakeRepo::default();
+        // Version 99 stops the import right after the format check, before it writes any preferences.
         assert!(import(r#"{"format":"celeste-settings","version":99,"remotes":[],"preferences":{}}"#, &repo, &router).unwrap_err().contains("newer"));
     }
 }

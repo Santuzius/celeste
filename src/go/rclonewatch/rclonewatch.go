@@ -1,4 +1,4 @@
-// Package rclonewatch tracks remote-side changes of rclone remotes through the backend's change notification (Google Drive's and Dropbox's change logs), so Celeste can reuse a remote listing until something actually changed.
+// Package rclonewatch tracks remote-side changes of rclone remotes through the backend's change notification (Google Drive's and Dropbox's change logs), so Syncative can reuse a remote listing until something actually changed.
 package rclonewatch
 
 import (

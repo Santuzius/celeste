@@ -2,7 +2,7 @@ package drive
 
 // Session lifecycle for the native Proton Drive client. Handles the
 // login flow (username + password [+ TOTP]), keyring unlock, and
-// token persistence in a small on-disk file Celeste owns. Ported and
+// token persistence in a small on-disk file Syncative owns. Ported and
 // trimmed from Proton-API-Bridge/common/user.go + keyring.go.
 //
 // Phase 2 scope: in-memory session + opaque UID handle exposed over
@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"celeste/go/proton-ext"
+	"syncative/go/proton-ext"
 
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
@@ -31,7 +31,7 @@ import (
 // upstream proton.Manager via WithTransport. Defaults from
 // http.DefaultTransport leave ResponseHeaderTimeout at 0 and rely on
 // the kernel's TCP keepalive (~5–12 min) to notice a dead peer, which
-// surfaces as a multi-minute Celeste "Listing remote…" hang after
+// surfaces as a multi-minute Syncative "Listing remote…" hang after
 // suspend/resume — TCP is still alive from our side until the OS
 // finally returns ENETUNREACH. The HTTP/2 ping pair forces the
 // transport to actively probe an idle conn so a dead one is recycled
@@ -51,8 +51,8 @@ func newProtonHTTPTransport() *http.Transport {
 	return t
 }
 
-// AppVersion is sent as `x-pm-appversion` on every Proton API call. Proton's guidelines for third-party Drive clients ask for `external-drive-{name}@{semver}-{channel}`; Celeste sets its real version through SetAppVersion at startup, before any session exists.
-var AppVersion = "external-drive-celeste@0.0.0-dev"
+// AppVersion is sent as `x-pm-appversion` on every Proton API call. Proton's guidelines for third-party Drive clients ask for `external-drive-{name}@{semver}-{channel}`; Syncative sets its real version through SetAppVersion at startup, before any session exists.
+var AppVersion = "external-drive-syncative@0.0.0-dev"
 
 // SetAppVersion replaces AppVersion. Call it before the first Login or Resume.
 func SetAppVersion(v string) {
@@ -395,7 +395,7 @@ func (s *Session) registerAuthHandler() {
 }
 
 // Save writes the session's reusable credential to `path`. Permissions
-// are 0600 — only Celeste's user should be able to read the file.
+// are 0600 — only Syncative's user should be able to read the file.
 func (s *Session) Save(path string) error {
 	data, err := json.MarshalIndent(s.AsCredential(), "", "  ")
 	if err != nil {

@@ -22,7 +22,7 @@ pub fn pick_folder(title: &str) -> Option<String> {
     match choose("OpenFile", title, options) {
         Ok(path) => path,
         Err(err) => {
-            eprintln!("celeste: folder chooser unavailable ({err}).");
+            eprintln!("syncative: folder chooser unavailable ({err}).");
             None
         }
     }
@@ -52,7 +52,7 @@ fn choose(method: &str, title: &str, mut options: PropMap) -> Result<Option<Stri
     let conn = Connection::new_session()?;
     // The portal answers on a request object whose path is derived from our bus name and a token we choose; subscribe before calling so the response can't race us.
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
-    let token = format!("celeste_{}_{nanos}", std::process::id());
+    let token = format!("syncative_{}_{nanos}", std::process::id());
     let sender = conn.unique_name().trim_start_matches(':').replace('.', "_");
     let request_path = format!("/org/freedesktop/portal/desktop/request/{sender}/{token}");
     let rule = MatchRule::new_signal("org.freedesktop.portal.Request", "Response")
