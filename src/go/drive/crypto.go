@@ -141,12 +141,8 @@ func decryptBlockIntoBuffer(
 	addrKR, nodeKR *crypto.KeyRing,
 	originalHash, encSignature string,
 	buffer io.ReaderFrom,
-	block io.ReadCloser,
+	data []byte,
 ) error {
-	data, err := io.ReadAll(block)
-	if err != nil {
-		return err
-	}
 	plainMessage, err := sessionKey.Decrypt(data)
 	if err != nil {
 		return err

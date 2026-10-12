@@ -163,6 +163,11 @@ pub mod proton {
         Ok(())
     }
 
+    /// Close every connection to Proton after a network change: requests cut off by it fail at once instead of waiting for data that never comes, and their retries dial over the new network.
+    pub fn reset_connections() {
+        unsafe { ffi::ProtonDrive_ResetConnections() };
+    }
+
     /// Credentials required for a fresh login. `mailbox_password` is
     /// only needed for two-password accounts; `two_fa` only for those
     /// with TOTP enabled — when required and missing, `login` returns

@@ -209,6 +209,13 @@ func ProtonDrive_SetAppVersion(paramsJSON *C.char) *C.char {
 	return okResult(nil)
 }
 
+// ProtonDrive_ResetConnections closes every connection to Proton after a network change, so cut-off requests fail at once and retry over the new network.
+//
+//export ProtonDrive_ResetConnections
+func ProtonDrive_ResetConnections() {
+	drive.ResetConnections()
+}
+
 // ProtonDrive_Login performs a full username+password (+ optional
 // TOTP / mailbox password) login. Input JSON follows
 // `drive.LoginParams`; on success the result data is a

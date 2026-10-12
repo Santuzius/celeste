@@ -21,8 +21,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
+	"time"
 
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
@@ -42,6 +45,12 @@ var (
 // fork pins 500. Leave generous headroom and we'll tune if we hit
 // server-side limits.
 const getRevisionPageSize = 500
+
+// blockAttempts and blockStallTimeout bound how a block download rides out a network change; see fetchBlock.
+const (
+	blockAttempts     = 3
+	blockStallTimeout = 30 * time.Second
+)
 
 // getRevisionAllBlocks returns a Revision with every block populated,
 // paginated by `GetRevision`. Upstream go-proton-api only exposes
@@ -141,7 +150,7 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 	var written int64
 	for i := range revision.Blocks {
 		block := &revision.Blocks[i]
-		blockBody, err := s.c.GetBlock(ctx, block.BareURL, block.Token)
+		blockData, err := s.fetchBlock(ctx, block)
 		if err != nil {
 			return err
 		}
@@ -153,9 +162,8 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 			block.Hash,
 			block.EncSignature,
 			buf,
-			blockBody,
+			blockData,
 		)
-		blockBody.Close()
 		if err != nil {
 			return err
 		}
@@ -184,6 +192,59 @@ func (s *Session) DownloadFile(ctx context.Context, linkID, destPath string) err
 	}
 	done = true
 	return nil
+}
+
+// fetchBlock downloads one encrypted block. A network change cuts the connection mid-block ("unexpected EOF") or leaves it open without data, so a block gets several attempts, each given up after blockStallTimeout without a byte.
+func (s *Session) fetchBlock(ctx context.Context, block *proton.Block) ([]byte, error) {
+	var err error
+	for attempt := 1; attempt <= blockAttempts; attempt++ {
+		var data []byte
+		data, err = s.fetchBlockOnce(ctx, block)
+		if err == nil || ctx.Err() != nil {
+			return data, err
+		}
+		logf("drive: block %d, attempt %d of %d: %v", block.Index, attempt, blockAttempts, err)
+	}
+	return nil, err
+}
+
+func (s *Session) fetchBlockOnce(ctx context.Context, block *proton.Block) ([]byte, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	body, err := s.c.GetBlock(ctx, block.BareURL, block.Token)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	return readAllStalling(body, blockStallTimeout, cancel)
+}
+
+// readAllStalling reads r to the end like io.ReadAll, but calls cancel, which must abort the read, once timeout passes without a byte.
+func readAllStalling(r io.Reader, timeout time.Duration, cancel func()) ([]byte, error) {
+	var stalled atomic.Bool
+	timer := time.AfterFunc(timeout, func() {
+		stalled.Store(true)
+		cancel()
+	})
+	defer timer.Stop()
+	data, err := io.ReadAll(&progressReader{r: r, progress: func() { timer.Reset(timeout) }})
+	if err != nil && stalled.Load() {
+		return nil, fmt.Errorf("no data for %v", timeout)
+	}
+	return data, err
+}
+
+type progressReader struct {
+	r        io.Reader
+	progress func()
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.progress()
+	}
+	return n, err
 }
 
 // plainSize is the plaintext size the uploader recorded in the revision's extended attributes; false when the revision has none.

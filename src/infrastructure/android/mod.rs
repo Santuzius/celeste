@@ -78,6 +78,13 @@ extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeMetered(_: JN
     }
 }
 
+/// Called by `Bridge.watchNetwork` in every process when the default network switches: connections opened over the old one may hang without ever failing.
+#[unsafe(no_mangle)]
+extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeNetworkChanged(_: JNIEnv, _: JClass) {
+    log::info!("network changed");
+    syncative_go::proton::reset_connections();
+}
+
 /// Hands the cadence for the saved power mode and the current conditions to the engine, if it runs yet; it starts asynchronously and calls this once it does, and Preferences after a change.
 pub fn apply_power_state() {
     let cadence = PowerSettings::load(&crate::util::get_data_dir()).cadence(conditions());

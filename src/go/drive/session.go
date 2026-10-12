@@ -38,10 +38,17 @@ import (
 // before the next listing batch fans out across it.
 func newProtonHTTPTransport() *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.DialContext = (&net.Dialer{
+	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 15 * time.Second,
-	}).DialContext
+	}
+	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dialer.DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		return liveConns.add(conn), nil
+	}
 	t.IdleConnTimeout = 30 * time.Second
 	t.ResponseHeaderTimeout = 30 * time.Second
 	t.HTTP2 = &http.HTTP2Config{
@@ -49,6 +56,58 @@ func newProtonHTTPTransport() *http.Transport {
 		PingTimeout:     15 * time.Second,
 	}
 	return t
+}
+
+// liveConns holds every connection the Proton transports dialed. After a network change they may stay open without ever delivering another byte, so ResetConnections closes them all.
+var liveConns = &connSet{conns: map[*trackedConn]struct{}{}}
+
+type connSet struct {
+	mu    sync.Mutex
+	conns map[*trackedConn]struct{}
+}
+
+type trackedConn struct {
+	net.Conn
+	set  *connSet
+	once sync.Once
+}
+
+func (s *connSet) add(conn net.Conn) net.Conn {
+	tracked := &trackedConn{Conn: conn, set: s}
+	s.mu.Lock()
+	s.conns[tracked] = struct{}{}
+	s.mu.Unlock()
+	return tracked
+}
+
+func (c *trackedConn) Close() error {
+	c.once.Do(func() {
+		c.set.mu.Lock()
+		delete(c.set.conns, c)
+		c.set.mu.Unlock()
+	})
+	return c.Conn.Close()
+}
+
+// closeAll closes every connection in the set; reads and writes on them fail right away. Returns how many there were.
+func (s *connSet) closeAll() int {
+	s.mu.Lock()
+	conns := make([]*trackedConn, 0, len(s.conns))
+	for c := range s.conns {
+		conns = append(conns, c)
+	}
+	s.mu.Unlock()
+	for _, c := range conns {
+		c.Close()
+	}
+	return len(conns)
+}
+
+// ResetConnections closes every connection to Proton, so that requests cut off by a network change fail at once and their retries dial over the new network.
+func ResetConnections() {
+	if n := liveConns.closeAll(); n > 0 {
+		logf("drive: network changed; closed %d connection(s) to Proton.", n)
+	}
 }
 
 // AppVersion is sent as `x-pm-appversion` on every Proton API call. Proton's guidelines for third-party Drive clients ask for `external-drive-{name}@{semver}-{channel}`; Syncative sets its real version through SetAppVersion at startup, before any session exists.

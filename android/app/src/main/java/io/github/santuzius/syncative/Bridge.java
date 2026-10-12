@@ -70,9 +70,23 @@ public final class Bridge {
     /** Whether the default network is metered; reported by {@link #watchNetwork}. */
     static native void nativeMetered(boolean metered);
 
-    /** Reports whether the default network is metered, right away and on every change, for as long as the process lives. Without a network the last answer stands: syncing fails anyway, and the next network reports itself. */
+    /** The default network switched, e.g. from Wi-Fi to mobile data; reported by {@link #watchNetwork}. */
+    static native void nativeNetworkChanged();
+
+    /** Reports whether the default network is metered, right away and on every change, and when it switches to another network, for as long as the process lives. Without a network the last answer stands: syncing fails anyway, and the next network reports itself. */
     static void watchNetwork(Context context) {
         context.getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+            private Network current;
+
+            @Override
+            public void onAvailable(Network network) {
+                // The first network is the one Syncative started on; nothing was cut off yet.
+                if (current != null && !current.equals(network)) {
+                    nativeNetworkChanged();
+                }
+                current = network;
+            }
+
             @Override
             public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                 // Android 11+ marks networks unmetered for a while, e.g. 5G on an unlimited plan.
