@@ -6,7 +6,7 @@
 Two-way file sync between folders on your Linux computer or Android phone and Google Drive or Proton Drive.
 
 > [!NOTE]
-> This is a third-party application not officially supported by Google or Proton. Built and tested only on Linux and Android.
+> This is a third-party application not officially supported by Google or Proton. Built and tested only on Linux and Android ([other platforms](https://github.com/Santuzius/syncative/issues/1)).
 
 ![Syncative's main window in the dark theme, with two remotes and several synced folders](doc/img/Screenshot_dark.png)
 
@@ -125,22 +125,19 @@ No global `rustup`, `go`, or system headers are required — everything is pulle
 - **Releases:** see [doc/release.md](doc/release.md).
 
 ## Used components
-- [rclone](https://rclone.org/) for Google Drive (other rclone-supported providers would be possible, but are not implemented)
+- [rclone](https://rclone.org/) for Google Drive (other rclone-supported providers would be possible, see [Provider Support](https://github.com/Santuzius/syncative/issues/2))
 - [go-proton-api](https://github.com/ProtonMail/go-proton-api) for Proton Drive
 - [iced](https://iced.rs/) for the GUI, on Android through [iced_android](https://github.com/Santuzius/iced_android)
 
 ## FAQ
-### Why not also add other providers?
-- I test Proton Drive and Google Drive extensively in everyday use with my own personal data. I cannot ensure that an untested integration of another provider would keep your data as safe as these two.
-- Many of them already have good Linux clients:
-  - OneDrive: [abraunegg/onedrive](https://abraunegg.github.io)
-  - [Dropbox](https://www.dropbox.com/install-linux)
-  - [Nextcloud](https://nextcloud.com/install/)
-  - etc.
-- As the sole maintainer, I have little time for the project.
+### What about other platforms like Windows?
+See [Platform Support](https://github.com/Santuzius/syncative/issues/1).
+
+### What about other drives / providers?
+See [Provider Support](https://github.com/Santuzius/syncative/issues/2), which also explains how to request one.
 
 ### Why not Flatpak, F-Droid or distribution packages?
-This is my first published app, and packaging takes time. The AppImage runs on most distributions, and the Snap package is the next step.
+See [Platform Support](https://github.com/Santuzius/syncative/issues/1), which lists the state of each store.
 
 ## Privacy
 Syncative runs entirely on your computer or phone and sends nothing to the developer. See the [privacy policy](./PRIVACY.md).
