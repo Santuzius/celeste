@@ -63,8 +63,9 @@ func SetPollInterval(d time.Duration) {
 // Changed reports whether `remote` may have changed since the previous call. The first call starts watching the remote; remotes whose backend has no change notification always report a change.
 func Changed(remote string) bool {
 	mu.Lock()
-	defer mu.Unlock()
-	if w, ok := watchers[remote]; ok {
+	w, ok := watchers[remote]
+	mu.Unlock()
+	if ok {
 		if w == nil {
 			return true
 		}
@@ -72,17 +73,25 @@ func Changed(remote string) bool {
 		return dirty || time.Since(w.started) < startupGrace
 	}
 
+	// Without the lock: creating the backend may go over the network and, offline, retry for a long time, while SetPollInterval is called from Android's main thread.
 	f, err := cache.Get(context.Background(), remote+":")
 	if err != nil {
 		// Not recorded: try again on the next call.
 		return true
 	}
 	notify := f.Features().ChangeNotify
+
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := watchers[remote]; ok {
+		// Another call started watching meanwhile.
+		return true
+	}
 	if notify == nil {
 		watchers[remote] = nil
 		return true
 	}
-	w := &watcher{started: time.Now(), intervals: make(chan time.Duration, 1)}
+	w = &watcher{started: time.Now(), intervals: make(chan time.Duration, 1)}
 	w.intervals <- pollInterval
 	notify(context.Background(), func(string, fs.EntryType) { w.dirty.Store(true) }, w.intervals)
 	watchers[remote] = w
