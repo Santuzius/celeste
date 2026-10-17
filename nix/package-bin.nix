@@ -16,7 +16,7 @@ let
   release = lib.importJSON ./release.json;
   inherit (release) version;
 
-  appimage = appimageTools.extractType2 {
+  appimage = appimageTools.extract {
     pname = "syncative";
     inherit version;
     src = fetchurl {
