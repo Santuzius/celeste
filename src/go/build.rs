@@ -90,6 +90,7 @@ fn main() {
         .allowlist_function("RcloneInitialize")
         .allowlist_function("RcloneFinalize")
         .allowlist_function("RcloneRPC")
+        .allowlist_function("RcloneRPCCancellable")
         .allowlist_function("RcloneFreeString")
         .allowlist_function("RcloneRemoteChanged")
         .allowlist_function("RcloneForgetRemote")

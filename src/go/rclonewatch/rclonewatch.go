@@ -60,8 +60,8 @@ func SetPollInterval(d time.Duration) {
 	}
 }
 
-// Changed reports whether `remote` may have changed since the previous call. The first call starts watching the remote; remotes whose backend has no change notification always report a change.
-func Changed(remote string) bool {
+// Changed reports whether `remote` may have changed since the previous call. The first call starts watching the remote; remotes whose backend has no change notification always report a change. Cancelling `ctx` stops waiting for the backend to be created.
+func Changed(ctx context.Context, remote string) bool {
 	mu.Lock()
 	w, ok := watchers[remote]
 	mu.Unlock()
@@ -73,8 +73,24 @@ func Changed(remote string) bool {
 		return dirty || time.Since(w.started) < startupGrace
 	}
 
-	// Without the lock: creating the backend may go over the network and, offline, retry for a long time, while SetPollInterval is called from Android's main thread.
-	f, err := cache.Get(context.Background(), remote+":")
+	// Without the lock: creating the backend may go over the network and, offline, retry for a long time, while SetPollInterval is called from Android's main thread. rclone detaches the creation from the caller's context, so give up waiting on cancel instead; the creation finishes in the background and lands in rclone's cache.
+	type created struct {
+		f   fs.Fs
+		err error
+	}
+	done := make(chan created, 1)
+	go func() {
+		f, err := cache.Get(context.Background(), remote+":")
+		done <- created{f, err}
+	}()
+	var f fs.Fs
+	var err error
+	select {
+	case c := <-done:
+		f, err = c.f, c.err
+	case <-ctx.Done():
+		return true
+	}
 	if err != nil {
 		// Not recorded: try again on the next call.
 		return true

@@ -11,6 +11,7 @@ pub mod autostart;
 pub mod diagnostics;
 pub mod editor_temp;
 pub mod leftovers;
+pub mod network;
 pub mod power;
 pub mod remote_lifecycle;
 pub mod secrets;

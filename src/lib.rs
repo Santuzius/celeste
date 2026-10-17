@@ -164,13 +164,12 @@ fn set_up() -> Option<Services> {
     // the UID is registered before the first sync tick fires.
     let default_client: Arc<dyn BackendClient> = Arc::new(LibrcloneClient::new(rclone_config));
     let router = Arc::new(ClientRouter::new(default_client));
+    #[cfg(not(target_os = "android"))]
+    infrastructure::network_monitor::start();
     resume_native_sessions(&*repo, &router);
     let engine = engine::start(repo.clone(), router.clone(), stderr).clone();
     #[cfg(target_os = "android")]
-    {
-        infrastructure::android::apply_power_state();
-        infrastructure::android::apply_network_state();
-    }
+    infrastructure::android::apply_power_state();
     Some(Services { repo, router, engine })
 }
 
@@ -322,8 +321,7 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
             continue;
         }
         // Offline, resuming would only time out, four times over, while the window waits for it. The pending client tries again once a pass runs, and passes wait for the network.
-        #[cfg(target_os = "android")]
-        if !infrastructure::android::online() {
+        if !services::network::online() {
             let reason = format!("Proton Drive session for '{}' not resumed yet (network is unreachable). Retrying automatically — no action needed.", remote.name);
             eprintln!("syncative: {reason}");
             router.register(remote.name.clone(), Arc::new(PendingProtonClient::new(remote.name.clone(), reason)));

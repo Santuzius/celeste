@@ -176,11 +176,10 @@ fn spawn(repo: Arc<dyn Repository>, backend: Arc<dyn BackendClient>, stderr: Cap
     let (snapshot_tx, snapshot) = watch::channel(Arc::new(Snapshot::default()));
     let logs = Logs::default();
     let core = Core::new(repo, backend, stderr, logs.clone(), tx.clone());
-    // Before the first pass: whether the phone is online and how often the power mode lets it sync.
+    // Before the first pass: whether the device is online, and on Android how often the power mode lets it sync.
+    let _ = tx.send(Input::Command(Command::Online(crate::services::network::online())));
     #[cfg(target_os = "android")]
-    for command in crate::infrastructure::android::initial_commands() {
-        let _ = tx.send(Input::Command(command));
-    }
+    let _ = tx.send(Input::Command(Command::Cadence(crate::infrastructure::android::initial_cadence())));
     std::thread::Builder::new()
         .name("syncative-engine".to_owned())
         .spawn(move || {

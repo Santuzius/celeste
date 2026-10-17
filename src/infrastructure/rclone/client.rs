@@ -108,8 +108,8 @@ fn map_filter(filter: ListFilter) -> BackendListFilter {
 }
 
 impl BackendClient for LibrcloneClient {
-    fn stat(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<Option<RemoteItem>, String> {
-        rpc::sync::stat(remote, path)
+    fn stat(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<RemoteItem>, String> {
+        rpc::sync::stat(remote, path, cancel)
             .map(|opt| opt.map(map_item))
             .map_err(|err| err.error)
     }
@@ -120,10 +120,10 @@ impl BackendClient for LibrcloneClient {
         path: &str,
         recursive: bool,
         filter: ListFilter,
-        _cancel: &Cancel,
+        cancel: &Cancel,
     ) -> Result<Vec<RemoteItem>, String> {
         let key = (path.to_owned(), recursive, filter_key(filter));
-        let changed = syncative_go::remote_changed(remote);
+        let changed = syncative_go::remote_changed(remote, cancel);
         if let Ok(mut listings) = self.listings.lock() {
             let cached = listings.entry(remote.to_owned()).or_default();
             if changed || cached.filled_at.is_some_and(|at| at.elapsed() > LISTING_MAX_AGE) {
@@ -136,7 +136,7 @@ impl BackendClient for LibrcloneClient {
                 let items = items.clone();
                 drop(listings);
                 // One small request instead of the whole tree. Only a missing connection counts; a backend without `about` keeps the cache.
-                match rpc::sync::about(remote) {
+                match rpc::sync::about(remote, cancel) {
                     Err(err) if crate::infrastructure::translators::is_offline(&err.error) => return Err(err.error),
                     _ => {
                         if let Ok(mut listings) = self.listings.lock() {
@@ -148,7 +148,7 @@ impl BackendClient for LibrcloneClient {
             }
         }
 
-        let items: Vec<RemoteItem> = rpc::sync::list(remote, path, recursive, map_filter(filter))
+        let items: Vec<RemoteItem> = rpc::sync::list(remote, path, recursive, map_filter(filter), cancel)
             .map(|items| items.into_iter().map(map_item).collect())
             .map_err(|err| err.error)?;
         // A change landing during the listing raises the change flag again, so the next call drops this entry.
@@ -161,8 +161,8 @@ impl BackendClient for LibrcloneClient {
         Ok(items)
     }
 
-    fn details(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<Option<FileDetails>, String> {
-        let item = rpc::sync::details(remote, path).map_err(|err| err.error)?;
+    fn details(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<Option<FileDetails>, String> {
+        let item = rpc::sync::details(remote, path, cancel).map_err(|err| err.error)?;
         Ok(item.filter(|item| !item.is_dir).map(|item| FileDetails {
             size: u64::try_from(item.size).ok(),
             mod_time: item.mod_time,
@@ -170,20 +170,20 @@ impl BackendClient for LibrcloneClient {
         }))
     }
 
-    fn mkdir(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<(), String> {
-        let result = rpc::sync::mkdir(remote, path).map_err(|err| err.error);
+    fn mkdir(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
+        let result = rpc::sync::mkdir(remote, path, cancel).map_err(|err| err.error);
         self.invalidate(remote);
         result
     }
 
-    fn delete_file(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<(), String> {
-        let result = rpc::sync::delete(remote, path).map_err(|err| err.error);
+    fn delete_file(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
+        let result = rpc::sync::delete(remote, path, cancel).map_err(|err| err.error);
         self.invalidate(remote);
         result
     }
 
-    fn purge(&self, remote: &str, path: &str, _cancel: &Cancel) -> Result<(), String> {
-        let result = rpc::sync::purge(remote, path).map_err(|err| err.error);
+    fn purge(&self, remote: &str, path: &str, cancel: &Cancel) -> Result<(), String> {
+        let result = rpc::sync::purge(remote, path, cancel).map_err(|err| err.error);
         self.invalidate(remote);
         result
     }
@@ -193,9 +193,9 @@ impl BackendClient for LibrcloneClient {
         local_path: &str,
         remote: &str,
         remote_path: &str,
-        _cancel: &Cancel,
+        cancel: &Cancel,
     ) -> Result<(), String> {
-        let result = rpc::sync::copy_to_remote(local_path, remote, remote_path).map_err(|err| err.error);
+        let result = rpc::sync::copy_to_remote(local_path, remote, remote_path, cancel).map_err(|err| err.error);
         self.invalidate(remote);
         result
     }
@@ -205,9 +205,9 @@ impl BackendClient for LibrcloneClient {
         local_path: &str,
         remote: &str,
         remote_path: &str,
-        _cancel: &Cancel,
+        cancel: &Cancel,
     ) -> Result<(), String> {
-        rpc::sync::copy_to_local(local_path, remote, remote_path).map_err(|err| err.error)
+        rpc::sync::copy_to_local(local_path, remote, remote_path, cancel).map_err(|err| err.error)
     }
 
     fn delete_config(&self, remote: &str) -> Result<(), String> {

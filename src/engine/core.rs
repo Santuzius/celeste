@@ -59,6 +59,8 @@ pub(crate) struct Core {
     cadence: Cadence,
     /// See [`Command::Online`].
     offline: bool,
+    /// Remotes whose running pass was stopped because the provider couldn't be reached; their folders show Offline when it ends.
+    unreachable: HashSet<RemoteId>,
 }
 
 impl Core {
@@ -86,6 +88,7 @@ impl Core {
             last_status: None,
             cadence: Cadence::Full,
             offline: false,
+            unreachable: HashSet::new(),
         }
     }
 
@@ -319,7 +322,10 @@ impl Core {
             return;
         }
         self.state.finish_pass(id);
-        // A pass cut off by the network leaves its folders Offline, not Waiting.
+        // A pass cut off by the network leaves its folders Offline, not Waiting, also those it didn't get to.
+        if self.unreachable.remove(&id) {
+            self.state.remote_went_offline(id);
+        }
         if self.offline {
             self.state.went_offline();
         }
@@ -351,6 +357,12 @@ impl Core {
                 // HTTP 401 and the matching rclone phrasing mean the session is dead and only reauth fixes it. Flag the whole remote (the session is per remote) and stop the running pass. The flag alone keeps the scheduler off the remote; the user's Enabled setting stays, so a successful reauth resumes syncing without a detour through the settings.
                 let auth_failure = matches!(&error, SyncError::General(_, msg) if is_auth_failure(msg));
                 let offline = matches!(&error, SyncError::General(_, msg) if crate::infrastructure::translators::is_offline(msg));
+                // A call cut short because the pass was stopped (network gone, remote paused or deleted) says nothing about the file.
+                let stopped = self.cancel_flags.get(&remote_id).is_some_and(|flag| flag.load(Ordering::Acquire));
+                if stopped && !auth_failure {
+                    self.push_log_line(sync_dir_id, format!("Stopped: {}", line.trim_start_matches('⚠').trim_start()));
+                    return;
+                }
                 if offline && !auth_failure {
                     // Not a problem with the file: logged without ⚠, so it doesn't stay as the folder's problem once the connection is back.
                     self.push_log_line(sync_dir_id, format!("Offline: {}", line.trim_start_matches('⚠').trim_start()));
@@ -359,6 +371,7 @@ impl Core {
                     if let Some(flag) = self.cancel_flags.get(&remote_id) {
                         flag.store(true, Ordering::Release);
                     }
+                    self.unreachable.insert(remote_id);
                     return;
                 }
                 self.push_log_line(sync_dir_id, line);

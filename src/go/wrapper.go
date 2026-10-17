@@ -80,11 +80,23 @@ func RcloneRPC(method *C.char, input *C.char) (result C.struct_RcloneRPCResult) 
 	return result
 }
 
+// RcloneRPCCancellable is RcloneRPC with a cancel flag: once the byte at `cancelled` turns non-zero, the call's context is cancelled, so rclone stops retrying and returns. Offline, a single Google Drive call otherwise retries for minutes. `cancelled` must stay valid until the call returns.
+//
+//export RcloneRPCCancellable
+func RcloneRPCCancellable(method *C.char, input *C.char, cancelled *C.uchar) (result C.struct_RcloneRPCResult) {
+	output, status := rpcWithCancel(C.GoString(method), C.GoString(input), (*uint8)(unsafe.Pointer(cancelled)))
+	result.Output = C.CString(output)
+	result.Status = C.int(status)
+	return result
+}
+
 // RcloneRemoteChanged reports (1/0) whether the rclone remote `remote` (name without colon) may have changed since the previous call; see rclonewatch.Changed.
 //
 //export RcloneRemoteChanged
-func RcloneRemoteChanged(remote *C.char) C.int {
-	if rclonewatch.Changed(C.GoString(remote)) {
+func RcloneRemoteChanged(remote *C.char, cancelled *C.uchar) C.int {
+	ctx, stop := cancelledBy((*uint8)(unsafe.Pointer(cancelled)))
+	defer stop()
+	if rclonewatch.Changed(ctx, C.GoString(remote)) {
 		return 1
 	}
 	return 0

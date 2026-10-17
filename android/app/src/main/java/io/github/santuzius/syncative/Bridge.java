@@ -114,6 +114,11 @@ public final class Bridge {
                 }
             }
         });
+        // A network lost between the first look and registering would never be reported as lost.
+        synchronized (physicalNetworks) {
+            physicalNetworks.removeIf(network -> connectivity.getNetworkCapabilities(network) == null);
+            nativeOnline(!physicalNetworks.isEmpty());
+        }
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             private String current;
 

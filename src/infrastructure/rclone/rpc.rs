@@ -234,7 +234,7 @@ pub enum BackendListFilter {
 /// RPC — the caller is expected to be on a blocking tokio task.
 pub mod sync {
     use super::{RcloneError, BackendList, BackendListFilter, BackendRemoteItem, BackendStat};
-    use crate::util;
+    use crate::{domain::ports::Cancel, util};
     use serde_json::json;
 
     /// Get a remote name.
@@ -249,15 +249,21 @@ pub mod sync {
         syncative_go::rpc(method.to_string(), input.to_string())
     }
 
+    /// [`run`] for calls a pass makes: setting `cancel` makes rclone give up at once, e.g. when the network is gone.
+    fn run_cancellable(method: &str, input: &str, cancel: &Cancel) -> Result<String, String> {
+        syncative_go::rpc_cancellable(method, input, cancel)
+    }
+
     /// Common function for some of the below command.
-    fn common(command: &str, remote_name: &str, path: &str) -> Result<(), RcloneError> {
-        let resp = run(
+    fn common(command: &str, remote_name: &str, path: &str, cancel: &Cancel) -> Result<(), RcloneError> {
+        let resp = run_cancellable(
             command,
             &json!({
                 "fs": get_remote_name(remote_name),
                 "remote": util::strip_slashes(path),
             })
             .to_string(),
+            cancel,
         );
 
         match resp {
@@ -277,14 +283,15 @@ pub mod sync {
     }
 
     /// Get statistics about a file or folder.
-    pub fn stat(remote_name: &str, path: &str) -> Result<Option<BackendRemoteItem>, RcloneError> {
-        let resp = run(
+    pub fn stat(remote_name: &str, path: &str, cancel: &Cancel) -> Result<Option<BackendRemoteItem>, RcloneError> {
+        let resp = run_cancellable(
             "operations/stat",
             &json!({
                 "fs": get_remote_name(remote_name),
                 "remote": util::strip_slashes(path)
             })
             .to_string(),
+            cancel,
         );
 
         match resp {
@@ -294,8 +301,8 @@ pub mod sync {
     }
 
     /// Like [`stat`], with the SHA-1 of the content where the backend has one (Google Drive does).
-    pub fn details(remote_name: &str, path: &str) -> Result<Option<BackendRemoteItem>, RcloneError> {
-        let resp = run(
+    pub fn details(remote_name: &str, path: &str, cancel: &Cancel) -> Result<Option<BackendRemoteItem>, RcloneError> {
+        let resp = run_cancellable(
             "operations/stat",
             &json!({
                 "fs": get_remote_name(remote_name),
@@ -303,6 +310,7 @@ pub mod sync {
                 "opt": { "showHash": true, "hashTypes": ["sha1"] }
             })
             .to_string(),
+            cancel,
         );
         match resp {
             Ok(json_str) => Ok(serde_json::from_str::<BackendStat>(&json_str).unwrap().item),
@@ -311,8 +319,8 @@ pub mod sync {
     }
 
     /// The remote's quota: a single small request, to learn whether the provider can be reached.
-    pub fn about(remote_name: &str) -> Result<(), RcloneError> {
-        match run("operations/about", &json!({ "fs": get_remote_name(remote_name) }).to_string()) {
+    pub fn about(remote_name: &str, cancel: &Cancel) -> Result<(), RcloneError> {
+        match run_cancellable("operations/about", &json!({ "fs": get_remote_name(remote_name) }).to_string(), cancel) {
             Ok(_) => Ok(()),
             Err(json_str) => Err(serde_json::from_str(&json_str).unwrap()),
         }
@@ -324,6 +332,7 @@ pub mod sync {
         path: &str,
         recursive: bool,
         filter: BackendListFilter,
+        cancel: &Cancel,
     ) -> Result<Vec<BackendRemoteItem>, RcloneError> {
         let opts = match filter {
             BackendListFilter::All => json!({ "recurse": recursive }),
@@ -331,7 +340,7 @@ pub mod sync {
             BackendListFilter::Files => json!({"filesOnly": true, "recurse": recursive}),
         };
 
-        let resp = run(
+        let resp = run_cancellable(
             "operations/list",
             &json!({
                 "fs": get_remote_name(remote_name),
@@ -339,6 +348,7 @@ pub mod sync {
                 "opt": opts
             })
             .to_string(),
+            cancel,
         );
 
         match resp {
@@ -348,8 +358,8 @@ pub mod sync {
     }
 
     /// make a directory on the remote.
-    pub fn mkdir(remote_name: &str, path: &str) -> Result<(), RcloneError> {
-        common("operations/mkdir", remote_name, path)
+    pub fn mkdir(remote_name: &str, path: &str, cancel: &Cancel) -> Result<(), RcloneError> {
+        common("operations/mkdir", remote_name, path, cancel)
     }
 
     /// Delete a single file.
@@ -360,12 +370,12 @@ pub mod sync {
     /// parameter is silently ignored and `Delete(ctx, f)` lists
     /// and deletes every object in the entire `fs` root. Passing
     /// a per-file path to it wipes the whole remote.
-    pub fn delete(remote_name: &str, path: &str) -> Result<(), RcloneError> {
-        common("operations/deletefile", remote_name, path)
+    pub fn delete(remote_name: &str, path: &str, cancel: &Cancel) -> Result<(), RcloneError> {
+        common("operations/deletefile", remote_name, path, cancel)
     }
     /// Remove a directory and all of its contents.
-    pub fn purge(remote_name: &str, path: &str) -> Result<(), RcloneError> {
-        common("operations/purge", remote_name, path)
+    pub fn purge(remote_name: &str, path: &str, cancel: &Cancel) -> Result<(), RcloneError> {
+        common("operations/purge", remote_name, path, cancel)
     }
 
     /// Utility for copy functions.
@@ -374,8 +384,9 @@ pub mod sync {
         src_remote: &str,
         dst_fs: &str,
         dst_remote: &str,
+        cancel: &Cancel,
     ) -> Result<(), RcloneError> {
-        let resp = run(
+        let resp = run_cancellable(
             "operations/copyfile",
             &json!({
                 "srcFs": src_fs,
@@ -384,6 +395,7 @@ pub mod sync {
                 "dstRemote": util::strip_slashes(dst_remote)
             })
             .to_string(),
+            cancel,
         );
 
         match resp {
@@ -397,12 +409,14 @@ pub mod sync {
         local_file: &str,
         remote_name: &str,
         remote_destination: &str,
+        cancel: &Cancel,
     ) -> Result<(), RcloneError> {
         copy(
             "/",
             local_file,
             &get_remote_name(remote_name),
             remote_destination,
+            cancel,
         )
     }
 
@@ -411,12 +425,14 @@ pub mod sync {
         local_destination: &str,
         remote_name: &str,
         remote_file: &str,
+        cancel: &Cancel,
     ) -> Result<(), RcloneError> {
         copy(
             &get_remote_name(remote_name),
             remote_file,
             "/",
             local_destination,
+            cancel,
         )
     }
 }

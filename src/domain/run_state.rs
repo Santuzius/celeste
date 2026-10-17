@@ -244,6 +244,13 @@ impl AppState {
         }
     }
 
+    /// `remote_id`'s provider couldn't be reached (see [`RemoteState::went_offline`]).
+    pub fn remote_went_offline(&mut self, remote_id: RemoteId) {
+        if let Some(rs) = self.remotes.get_mut(&remote_id) {
+            rs.went_offline();
+        }
+    }
+
     /// Mark `remote_id`'s session as dead.
     pub fn auth_failure(&mut self, remote_id: RemoteId) {
         self.remote_mut(remote_id).auth_needed = true;

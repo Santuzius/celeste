@@ -71,6 +71,19 @@ pub fn rpc<S1: Into<String>, S2: Into<String>>(method: S1, input: S2) -> Result<
     }
 }
 
+/// Like [`rpc`], but the call returns early once `cancel` turns `true`: rclone stops retrying and the error starts with "cancelled". Offline, a single Google Drive call otherwise retries for minutes.
+pub fn rpc_cancellable(method: &str, input: &str, cancel: &std::sync::atomic::AtomicBool) -> Result<String, String> {
+    let (Ok(method), Ok(input)) = (CString::new(method), CString::new(input)) else {
+        return Err(r#"{"error":"invalid RPC input"}"#.to_owned());
+    };
+    // AtomicBool has the layout of a u8; the Go side only reads it.
+    let flag = cancel.as_ptr() as *mut std::os::raw::c_uchar;
+    let result = unsafe { ffi::RcloneRPCCancellable(method.as_ptr() as *mut c_char, input.as_ptr() as *mut c_char, flag) };
+    let output = unsafe { CStr::from_ptr(result.Output) }.to_string_lossy().into_owned();
+    unsafe { ffi::RcloneFreeString(result.Output) };
+    if result.Status == 200 { Ok(output) } else { Err(output) }
+}
+
 /// Run rclone's OAuth flow for the backend `kind` (`drive`, `dropbox`, `pcloud`) in-process, like `rclone authorize`, with the given client ID and secret unless empty. Blocks until the browser has come back to rclone's local web server or [`authorize_cancel`] is called; returns the token JSON. Instead of opening a browser, rclone leaves the link to [`authorize_url`].
 pub fn authorize(kind: &str, client_id: &str, client_secret: &str) -> Result<String, String> {
     #[derive(Deserialize)]
@@ -127,11 +140,13 @@ pub fn set_change_poll_interval(interval: Option<std::time::Duration>) {
 }
 
 /// Whether the rclone remote `remote` (name without colon) may have changed on the provider's side since the previous call. Cheap: no network, the backend polls its change log in the background. Always `true` for backends without change notification.
-pub fn remote_changed(remote: &str) -> bool {
+/// The first call creates the backend, which may go over the network; setting `cancel` makes that give up.
+pub fn remote_changed(remote: &str, cancel: &std::sync::atomic::AtomicBool) -> bool {
     let Ok(c_remote) = CString::new(remote) else {
         return true;
     };
-    unsafe { ffi::RcloneRemoteChanged(c_remote.as_ptr() as *mut c_char) != 0 }
+    let flag = cancel.as_ptr() as *mut std::os::raw::c_uchar;
+    unsafe { ffi::RcloneRemoteChanged(c_remote.as_ptr() as *mut c_char, flag) != 0 }
 }
 
 /// Stop change tracking for `remote`, e.g. after its config was replaced or deleted.
