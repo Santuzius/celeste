@@ -93,9 +93,17 @@ Alternatively add `inputs.syncative.packages.${system}.default` to `environment.
 
 ### Android
 > [!WARNING]
-> **Free and open-source Android is under threat.**
+> **Starting in 2027, you may no longer be able to install or update Syncative on Android.**
 >
-> Starting in 2027, Google plans to block every app on certified Android devices whose developer has not registered with Google and handed over a government ID. Syncative is published only outside Google Play, so this concerns it directly. Make your voice heard: [**Keep Android Open**](https://keepandroidopen.org/).
+> <details>
+> <summary><b>Read more about it and how to avoid it…</b></summary>
+>
+> Starting in 2027, certified Android devices (nearly every phone with Google Play) install only apps whose developer has registered with Google. No such registration is planned for Syncative.
+>
+> [Keep Android Open](https://keepandroidopen.org/) explains the issue in more detail and what you can do against it. It also describes how you can still install Syncative without the registration, under Google's conditions: developer options, a restart and a day of waiting.
+>
+> Alternatively, you can install a custom ROM such as [GrapheneOS](https://en.wikipedia.org/w/index.php?title=GrapheneOS&oldid=1379390574) (the author's choice), [CalyxOS](https://en.wikipedia.org/w/index.php?title=CalyxOS&oldid=1379220896), [LineageOS](https://en.wikipedia.org/w/index.php?title=LineageOS&oldid=1380360026), [/e/](https://en.wikipedia.org/w/index.php?title=/e/_(operating_system)&oldid=1376732642) or [others](https://en.wikipedia.org/wiki/List_of_custom_Android_distributions). However, they all build on Google's Android Open Source Project and are at Google's mercy for reliable security fixes. Also check how well they support Google Play Services, which many everyday apps need (Syncative doesn't).
+> </details>
 
 For phones with Android 8 or newer and a 64-bit ARM processor (`arm64-v8a`, nearly every phone since 2017).
 
