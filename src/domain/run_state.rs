@@ -165,6 +165,15 @@ impl RemoteState {
         }
     }
 
+    /// The network is back, or a new pass starts: folders still marked Offline wait for their turn.
+    pub fn back_online(&mut self) {
+        for state in self.dirs.values_mut() {
+            if *state == RunState::Offline {
+                *state = RunState::Waiting;
+            }
+        }
+    }
+
     /// Reauthentication succeeded. The `Error`s left by the failed attempts are stale now.
     pub fn reauth_complete(&mut self) {
         self.auth_needed = false;
@@ -241,6 +250,15 @@ impl AppState {
     pub fn went_offline(&mut self) {
         for rs in self.remotes.values_mut() {
             rs.went_offline();
+        }
+    }
+
+    /// See [`RemoteState::back_online`]; every remote when `remote_id` is `None`.
+    pub fn back_online(&mut self, remote_id: Option<RemoteId>) {
+        for (id, rs) in &mut self.remotes {
+            if remote_id.is_none_or(|r| r == *id) {
+                rs.back_online();
+            }
         }
     }
 

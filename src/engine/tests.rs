@@ -151,6 +151,7 @@ async fn offline_holds_the_schedule_and_coming_back_syncs_at_once() {
     assert!(rig.snap().syncing.is_empty(), "synced while offline");
 
     rig.send(Command::Online(true)).await;
+    assert_eq!(rig.snap().state.roll_up(R1), Some(RunState::Waiting));
     rig.core.start_due(Instant::now());
     assert_eq!(rig.snap().syncing.len(), 2);
     rig.settle().await;

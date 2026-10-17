@@ -136,6 +136,7 @@ impl Core {
                     }
                     self.state.went_offline();
                 } else if was_offline {
+                    self.state.back_online(None);
                     // Back online: sync everything now instead of at the next interval.
                     for id in self.remotes.iter().map(|r| r.id).collect::<Vec<_>>() {
                         self.last_sync_at.remove(&id);
@@ -294,6 +295,8 @@ impl Core {
         let cancel = self.cancel_flags.entry(id).or_insert_with(|| Arc::new(AtomicBool::new(false))).clone();
         cancel.store(false, Ordering::Release);
         self.syncing.insert(id);
+        // Folders after the first would show Offline from the last pass until their turn.
+        self.state.back_online(Some(id));
         let events = self.tx.clone();
         let pass = Pass {
             remote_id: id,
