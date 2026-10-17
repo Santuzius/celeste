@@ -59,7 +59,7 @@ pub enum Message {
     SyncDirsLoaded(RemoteId, Vec<SyncDir>),
     AllSyncDirsRefreshed(Vec<SyncDir>),
     /// Exclusions of a sync_dir plus, per exclusion, how many synced files are still on this computer.
-    ExclusionsLoaded(SyncDirId, Vec<SyncDirExclusion>, HashMap<String, usize>),
+    ExclusionsLoaded(SyncDirId, Vec<SyncDirExclusion>, HashMap<String, leftovers::Found>),
     /// Leftovers of an excluded path were deleted (or not); carries the path relative to the sync_dir for the log.
     LeftoversCleaned(SyncDirId, String, Result<leftovers::Cleaned, String>),
     /// Result of the desktop folder chooser (`None` = cancelled / no portal).
@@ -143,7 +143,7 @@ pub struct SyncativeApp {
     /// Loaded user-defined exclusions per sync_dir.
     sync_dir_exclusions: HashMap<SyncDirId, Vec<SyncDirExclusion>>,
     /// Synced files still on this computer under an excluded path, by sync_dir and path relative to it; only non-zero counts.
-    exclusion_leftovers: HashMap<SyncDirId, HashMap<String, usize>>,
+    exclusion_leftovers: HashMap<SyncDirId, HashMap<String, leftovers::Found>>,
     /// Draft remote sub-path for the "add exclusion" form per sync_dir.
     draft_exclusion: HashMap<SyncDirId, String>,
     /// In-progress (local_path, remote_path) inputs for the Add sync_dir form

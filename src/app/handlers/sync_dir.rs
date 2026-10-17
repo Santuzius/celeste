@@ -271,7 +271,7 @@ impl SyncativeApp {
         &mut self,
         sd_id: SyncDirId,
         excls: Vec<SyncDirExclusion>,
-        leftovers: HashMap<String, usize>,
+        leftovers: HashMap<String, leftovers::Found>,
     ) -> Task<Message> {
         self.exclusion_leftovers.insert(sd_id, leftovers);
         self.sync_dir_exclusions.insert(sd_id, excls);
@@ -299,7 +299,7 @@ impl SyncativeApp {
                     let items = repo.list_sync_items(sd_id).await.unwrap_or_default();
                     for relative in excls.iter().map(|e| &e.remote_path).chain(&auto) {
                         let n = leftovers::count(&items, &format!("{root}/{relative}"));
-                        if n > 0 {
+                        if !n.is_empty() {
                             counts.insert(relative.clone(), n);
                         }
                     }
@@ -340,8 +340,8 @@ impl SyncativeApp {
     /// Handle [`Message::LeftoversCleaned`] — report in the folder's log and refresh the button.
     pub(in crate::app) fn handle_leftovers_cleaned(&mut self, sd_id: SyncDirId, relative: String, res: Result<leftovers::Cleaned, String>) -> Task<Message> {
         let line = match res {
-            Ok(leftovers::Cleaned { deleted, kept: 0 }) => tr::tr!("Deleted {} leftover files of '{}'.", deleted, relative),
-            Ok(leftovers::Cleaned { deleted, kept }) => tr::tr!("Deleted {} leftover files of '{}'; kept {} added or changed since.", deleted, relative, kept),
+            Ok(leftovers::Cleaned { deleted, kept: 0 }) => tr::tr!("Deleted the leftovers of '{}': {}.", relative, deleted.describe()),
+            Ok(leftovers::Cleaned { deleted, kept }) => tr::tr!("Deleted the leftovers of '{}': {}; kept {} files added or changed since.", relative, deleted.describe(), kept),
             Err(err) => format!("⚠ {}", tr::tr!("Couldn't delete the leftovers of '{}': {}", relative, err)),
         };
         self.engine.send(Command::Log(sd_id, line));

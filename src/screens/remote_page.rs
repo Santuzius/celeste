@@ -81,7 +81,7 @@ pub enum PendingDelete {
     /// `remote_label` is the display form (`Name:/path`) for the dialog text.
     SyncDir { local: String, remote: String, remote_label: String },
     /// Synced files still on this computer under an excluded path. `root` is the absolute local path, `relative` the exclusion as the user typed it.
-    Leftovers { sync_dir: SyncDirId, root: String, relative: String, remote_name: String, count: usize },
+    Leftovers { sync_dir: SyncDirId, root: String, relative: String, remote_name: String, count: crate::services::leftovers::Found },
 }
 
 /// Everything the page renders, prepared by the app.
@@ -118,7 +118,7 @@ pub struct Folder<'a> {
     pub custom_excluded: &'a [SyncDirExclusion],
     pub draft_exclusion: &'a str,
     /// Synced files still on this computer, by excluded path relative to the folder (only non-zero counts).
-    pub leftovers: Option<&'a HashMap<String, usize>>,
+    pub leftovers: Option<&'a HashMap<String, crate::services::leftovers::Found>>,
     /// Files that changed on both sides and wait for a decision.
     pub conflicts: &'a [Conflict],
 }
@@ -496,7 +496,7 @@ fn exclusion_panel<'a>(
     remote_display: &str,
     auto_excl: &[&'a SyncDir],
     custom_excl: &'a [SyncDirExclusion],
-    leftovers: Option<&HashMap<String, usize>>,
+    leftovers: Option<&HashMap<String, crate::services::leftovers::Found>>,
     draft: &'a str,
 ) -> Element<'a, Msg> {
     let mut list = column![].spacing(2);
@@ -506,7 +506,7 @@ fn exclusion_panel<'a>(
         leftovers.and_then(|m| m.get(relative)).map(|&n| {
             tooltip(
                 button(on_fill_icon(icondata::MdiBroom, 14.0)).padding(4).style(theme::button_warning).on_press(Msg::RequestCleanLeftovers(sd.id, relative.to_owned())),
-                container(text(format!("Delete the {n} synced files still on {}", crate::util::THIS_DEVICE)).size(CAPTION)).padding([4, 8]).style(theme::card),
+                container(text(format!("Delete what is left on {}: {}", crate::util::THIS_DEVICE, n.describe())).size(CAPTION)).padding([4, 8]).style(theme::card),
                 tooltip::Position::Top,
             )
         })
@@ -675,14 +675,14 @@ pub fn confirm_delete_overlay<'a>(pending: &'a PendingDelete) -> Element<'a, Msg
         return confirm_card(
             format!("Delete the leftovers of '{relative}'?"),
             column![
-                text(format!("'{relative}' is no longer synced here, but {} still holds {count} files from when it was.", fmt_home(root))).size(TEXT),
+                text(format!("'{relative}' is no longer synced here, but {} still holds {} from when it was.", fmt_home(root), count.describe())).size(TEXT),
                 bullet(format!("Only these copies are deleted; {remote_name} keeps its own.")),
                 bullet("Files added or changed there since the exclusion are kept."),
                 bullet("Folders left empty are removed."),
             ]
             .spacing(6)
             .into(),
-            format!("Delete {count} files"),
+            format!("Delete {}", count.describe()),
         );
     }
     let (title, body, confirm) = match pending {
