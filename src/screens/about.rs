@@ -28,7 +28,6 @@ pub fn view<'a>() -> Element<'a, Msg> {
     let mut credits = column![
         text("Credits").size(TEXT),
         bullet("Hunter Wittenborn (hwittenborn): idea and original code of Celeste"),
-        bullet("Adrien Facélina: app icon, adapted for this fork"),
         bullet("Proton AG: go-proton-api"),
         bullet("Chun-Hung Tseng: Proton-API-Bridge"),
         bullet("rclone, iced, Tabler Icons, Material Design Icons and Ionicons"),
