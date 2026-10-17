@@ -5,6 +5,11 @@
 
 Two-way file sync between folders on your Linux computer or Android phone and Google Drive or Proton Drive.
 
+<p>
+  <a href="https://github.com/Santuzius/syncative/releases/latest"><img src="assets/badge-appimage.svg" alt="Download as an AppImage" height="56"></a>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22io.github.santuzius.syncative%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FSantuzius%2Fsyncative%22%2C%22author%22%3A%22Santuzius%22%2C%22name%22%3A%22Syncative%22%7D"><img src="assets/badge-obtainium.png" alt="Get it on Obtainium" height="56"></a>
+</p>
+
 > [!NOTE]
 > This is a third-party application not officially supported by Google or Proton. Built and tested only on Linux and Android ([other platforms](https://github.com/Santuzius/syncative/issues/1)).
 
@@ -146,6 +151,17 @@ See [Provider Support](https://github.com/Santuzius/syncative/issues/2), which a
 
 ### Why not Flatpak, F-Droid or distribution packages?
 See [Platform Support](https://github.com/Santuzius/syncative/issues/1), which lists the state of each store.
+
+## Supporting Syncative
+If Syncative is useful to you, recommend it on AlternativeTo, or buy me a coffee.
+
+<p>
+  <a href="https://alternativeto.net/software/syncative/about/?utm_source=badge&utm_medium=referral"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://alternativeto.net/static/badges/badge-compact-dark.svg">
+    <img src="https://alternativeto.net/static/badges/badge-compact-light.svg" alt="Syncative | AlternativeTo" width="171" height="58">
+  </picture></a>
+  <a href="https://buymeacoffee.com/santuzius"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="58"></a>
+</p>
 
 ## Privacy
 Syncative runs entirely on your computer or phone and sends nothing to the developer. See the [privacy policy](./PRIVACY.md).
