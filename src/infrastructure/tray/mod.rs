@@ -74,6 +74,8 @@ pub enum TrayStatus {
     /// These remotes ended their last pass with errors / warnings or
     /// are backing off after provider rate-limiting.
     Warning { remotes: Vec<String> },
+    /// Enabled remotes can't reach their provider; syncing resumes once the connection is back.
+    Offline,
     /// All enabled remotes are idle and up to date. The age is rounded
     /// down to whole minutes so the tooltip (and the D-Bus traffic it
     /// causes) changes at most once a minute.
@@ -184,7 +186,7 @@ impl SyncativeTray {
     fn pixmap_for_current_status(&self) -> Vec<Icon> {
         let icon = match &self.status {
             TrayStatus::Loading | TrayStatus::Syncing { .. } => &self.icons.syncing,
-            TrayStatus::Disconnected | TrayStatus::Paused => &self.icons.paused,
+            TrayStatus::Disconnected | TrayStatus::Paused | TrayStatus::Offline => &self.icons.paused,
             TrayStatus::AuthNeeded { .. } => &self.icons.auth_needed,
             TrayStatus::Warning { .. } => &self.icons.warning,
             TrayStatus::Done { .. } => &self.icons.synced,
@@ -289,6 +291,7 @@ pub fn description_for(status: &TrayStatus) -> String {
             }
         }
         TrayStatus::Warning { remotes } => format!("Sync problems: {}", remotes.join(", ")),
+        TrayStatus::Offline => "Offline — syncs when the connection is back".to_owned(),
         TrayStatus::Done { last_sync_ago } => match last_sync_ago {
             Some(age) => format!("Up to date — last sync {}", format_ago(*age)),
             None => "Up to date".to_owned(),
@@ -313,7 +316,7 @@ fn format_ago(age: Duration) -> String {
 ///
 /// Priority: reauth (blocks syncing) > problems (sticky until a clean
 /// pass, so they don't flicker with every scheduled pass) > syncing >
-/// all paused > up to date.
+/// all paused > offline > up to date.
 pub fn compute_status(
     state: &AppState,
     remotes: &[Remote],
@@ -343,6 +346,9 @@ pub fn compute_status(
     }
     if remotes.iter().all(|r| !r.policy.enabled) {
         return TrayStatus::Paused;
+    }
+    if remotes.iter().any(|r| r.policy.enabled && state.roll_up(r.id) == Some(RunState::Offline)) {
+        return TrayStatus::Offline;
     }
     let now = Instant::now();
     let last_sync_ago = last_sync_at

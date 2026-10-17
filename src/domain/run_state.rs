@@ -23,7 +23,7 @@ pub enum SyncActivity {
 
 /// Coarse run-state for a sync directory (or its roll-up at remote/app level).
 ///
-/// Severity ordering (low → high): Waiting < Paused < Synced < Syncing < Warning < Error < AuthNeeded. Roll-up at the remote level takes the maximum over the children; the remote-level conditions (auth, disabled) override it.
+/// Severity ordering (low → high): Waiting < Paused < Synced < Offline < Syncing < Warning < Error < AuthNeeded. Roll-up at the remote level takes the maximum over the children; the remote-level conditions (auth, disabled) override it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunState {
     /// Fresh before the first pass, or a pass was interrupted.
@@ -43,6 +43,8 @@ pub enum RunState {
     Error,
     /// Idle, but scheduled passes wait for a network that isn't metered (Preferences → Sync on metered networks). Only the GUI shows it, in place of `Synced` or `Waiting`; the engine never sets it.
     Held,
+    /// The provider couldn't be reached: the device has no network, or the last pass failed for want of a connection. Sticky like `Warning`.
+    Offline,
 }
 
 impl RunState {
@@ -51,17 +53,18 @@ impl RunState {
             Self::Waiting => 0,
             Self::Paused => 1,
             Self::Synced | Self::Held => 2,
-            Self::Syncing(_) => 3,
-            Self::Warning => 4,
-            Self::Error => 5,
-            Self::AuthNeeded => 6,
+            Self::Offline => 3,
+            Self::Syncing(_) => 4,
+            Self::Warning => 5,
+            Self::Error => 6,
+            Self::AuthNeeded => 7,
         }
     }
 
     /// Whether `self` should remain instead of being replaced by `next`.
-    /// Warning and Error survive a later Synced — a clean apply step does not erase a per-file error that fired earlier in the same pass.
+    /// Warning and Error survive a later Synced — a clean apply step does not erase a per-file error that fired earlier in the same pass. Offline also survives the Warning its failed actions end the pass with.
     fn is_sticky_over(self, next: RunState) -> bool {
-        matches!((self, next), (RunState::Warning | RunState::Error, RunState::Synced))
+        matches!((self, next), (RunState::Warning | RunState::Error | RunState::Offline, RunState::Synced) | (RunState::Offline, RunState::Warning))
     }
 
     /// Something the user should look at.
@@ -153,6 +156,15 @@ impl RemoteState {
         }
     }
 
+    /// The device lost its network: idle folders show it until the next pass, which starts once the network is back.
+    pub fn went_offline(&mut self) {
+        for state in self.dirs.values_mut() {
+            if !matches!(state, RunState::Syncing(_)) {
+                *state = RunState::Offline;
+            }
+        }
+    }
+
     /// Reauthentication succeeded. The `Error`s left by the failed attempts are stale now.
     pub fn reauth_complete(&mut self) {
         self.auth_needed = false;
@@ -223,6 +235,13 @@ impl AppState {
     /// Transition `dir_id` inside `remote_id` to `next`, respecting the stickiness rule.
     pub fn transition_dir(&mut self, remote_id: RemoteId, dir_id: SyncDirId, next: RunState) {
         self.remote_mut(remote_id).transition_dir(dir_id, next);
+    }
+
+    /// The device lost its network (see [`RemoteState::went_offline`]).
+    pub fn went_offline(&mut self) {
+        for rs in self.remotes.values_mut() {
+            rs.went_offline();
+        }
     }
 
     /// Mark `remote_id`'s session as dead.
@@ -316,6 +335,7 @@ mod tests {
             RunState::Waiting,
             RunState::Paused,
             RunState::Synced,
+            RunState::Offline,
             RunState::Syncing(SyncActivity::Listing),
             RunState::Warning,
             RunState::Error,
@@ -333,6 +353,27 @@ mod tests {
         assert!(!RunState::Syncing(SyncActivity::Listing).is_sticky_over(RunState::Synced));
         assert!(!RunState::Warning.is_sticky_over(RunState::Error));
         assert!(!RunState::Error.is_sticky_over(RunState::Syncing(SyncActivity::Listing)));
+    }
+
+    #[test]
+    fn offline_outlasts_the_end_of_its_pass() {
+        let mut rs = RemoteState::new(true);
+        rs.transition_dir(dir(1), RunState::Offline);
+        rs.transition_dir(dir(1), RunState::Warning);
+        rs.transition_dir(dir(1), RunState::Synced);
+        assert_eq!(rs.dirs[&dir(1)], RunState::Offline);
+        rs.transition_dir(dir(1), RunState::Syncing(SyncActivity::Listing));
+        assert_eq!(rs.dirs[&dir(1)], RunState::Syncing(SyncActivity::Listing));
+    }
+
+    #[test]
+    fn going_offline_leaves_running_folders_alone() {
+        let mut rs = RemoteState::new(true);
+        rs.transition_dir(dir(1), RunState::Synced);
+        rs.transition_dir(dir(2), RunState::Syncing(SyncActivity::Uploading));
+        rs.went_offline();
+        assert_eq!(rs.dirs[&dir(1)], RunState::Offline);
+        assert_eq!(rs.dirs[&dir(2)], RunState::Syncing(SyncActivity::Uploading));
     }
 
     #[test]

@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -29,6 +30,8 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.security.KeyStore;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -70,12 +73,48 @@ public final class Bridge {
     /** Whether the default network is metered; reported by {@link #watchNetwork}. */
     static native void nativeMetered(boolean metered);
 
+    /** Whether the device has a default network that reaches the internet; reported by {@link #watchNetwork}. */
+    static native void nativeOnline(boolean online);
+
     /** The default network switched, e.g. from Wi-Fi to mobile data; reported by {@link #watchNetwork}. */
     static native void nativeNetworkChanged();
 
-    /** Reports whether the default network is metered, right away and on every change, and when it switches to another network, for as long as the process lives. Without a network the last answer stands: syncing fails anyway, and the next network reports itself. */
+    /** Networks that reach the internet without a VPN; see {@link #watchNetwork}. */
+    private static final Set<Network> physicalNetworks = new HashSet<>();
+
+    /** Reports whether there is a network and whether it is metered, right away and on every change, and when it switches to another network, for as long as the process lives. Without a network the last answer about metering stands; the next network reports itself. */
     static void watchNetwork(Context context) {
-        context.getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+        ConnectivityManager connectivity = context.getSystemService(ConnectivityManager.class);
+        // Online means a Wi-Fi, mobile or other network below any VPN: a VPN such as RethinkDNS stays the default network after Wi-Fi and mobile data are gone. Not whether Android validated the network: some never are, e.g. behind a firewall that blocks Android's check, and a network wrongly taken for offline would stop syncing. Failed connections show as Offline anyway.
+        synchronized (physicalNetworks) {
+            for (Network network : connectivity.getAllNetworks()) {
+                NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(network);
+                if (capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                    physicalNetworks.add(network);
+                }
+            }
+            nativeOnline(!physicalNetworks.isEmpty());
+        }
+        // A request leaves out VPNs unless it asks for them.
+        NetworkRequest internet = new NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build();
+        connectivity.registerNetworkCallback(internet, new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                synchronized (physicalNetworks) {
+                    physicalNetworks.add(network);
+                    nativeOnline(true);
+                }
+            }
+
+            @Override
+            public void onLost(Network network) {
+                synchronized (physicalNetworks) {
+                    physicalNetworks.remove(network);
+                    nativeOnline(!physicalNetworks.isEmpty());
+                }
+            }
+        });
+        connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             private String current;
 
             @Override

@@ -310,6 +310,14 @@ pub mod sync {
         }
     }
 
+    /// The remote's quota: a single small request, to learn whether the provider can be reached.
+    pub fn about(remote_name: &str) -> Result<(), RcloneError> {
+        match run("operations/about", &json!({ "fs": get_remote_name(remote_name) }).to_string()) {
+            Ok(_) => Ok(()),
+            Err(json_str) => Err(serde_json::from_str(&json_str).unwrap()),
+        }
+    }
+
     /// List the files/folders in a path.
     pub fn list(
         remote_name: &str,

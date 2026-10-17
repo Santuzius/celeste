@@ -59,6 +59,7 @@ pub fn status_icon<'a, Msg: 'a>(state: RunState, size: f32) -> Element<'a, Msg> 
         RunState::Warning => icondata::TbAlertTriangleOutline,
         RunState::Error => icondata::TbAlertCircleOutline,
         RunState::Held => crate::icons::SPEEDOMETER_OUTLINE,
+        RunState::Offline => icondata::TbCloudOffOutline,
     };
     icon(glyph, size)
         .style(move |theme: &Theme, _| svg::Style { color: Some(theme::status_color(theme, state)) })

@@ -57,6 +57,8 @@ pub(crate) struct Core {
     last_status: Option<TrayStatus>,
     /// See [`Command::Cadence`].
     cadence: Cadence,
+    /// See [`Command::Online`].
+    offline: bool,
 }
 
 impl Core {
@@ -83,6 +85,7 @@ impl Core {
             passes_finished: 0,
             last_status: None,
             cadence: Cadence::Full,
+            offline: false,
         }
     }
 
@@ -99,6 +102,9 @@ impl Core {
             Command::Reload => self.reload().await,
             Command::SyncNow(id) => self.sync_now(id),
             Command::SyncAll => {
+                if self.offline {
+                    return;
+                }
                 let ids: Vec<RemoteId> = self.remotes.iter().map(|r| r.id).filter(|id| self.is_schedulable(*id)).collect();
                 for id in ids {
                     self.start_sync(id);
@@ -116,6 +122,17 @@ impl Core {
             }
             Command::Resolve { remote_id, sync_dir_id, resolution } => self.resolve(remote_id, sync_dir_id, resolution),
             Command::Log(sync_dir_id, line) => self.push_log_line(sync_dir_id, line),
+            Command::Online(online) => {
+                let was_offline = std::mem::replace(&mut self.offline, !online);
+                if !online {
+                    self.state.went_offline();
+                } else if was_offline {
+                    // Back online: sync everything now instead of at the next interval.
+                    for id in self.remotes.iter().map(|r| r.id).collect::<Vec<_>>() {
+                        self.last_sync_at.remove(&id);
+                    }
+                }
+            }
             Command::Cadence(cadence) => {
                 let woke = cadence.looser_than(self.cadence);
                 self.cadence = cadence;
@@ -131,8 +148,11 @@ impl Core {
         }
     }
 
-    /// A remote's interval under the current cadence; `None` while held.
+    /// A remote's interval under the current cadence; `None` while held or offline.
     fn interval(&self, remote: &Remote) -> Option<std::time::Duration> {
+        if self.offline {
+            return None;
+        }
         self.cadence.floor().map(|floor| remote.policy.interval.duration().max(floor))
     }
 
@@ -204,6 +224,14 @@ impl Core {
 
     /// Start a pass now, or queue one behind the running pass.
     fn sync_now(&mut self, id: RemoteId) {
+        // Without any network a pass can only wait for timeouts, which take minutes with Google Drive. Coming back online syncs everything anyway.
+        if self.offline {
+            let dirs: Vec<SyncDirId> = self.sync_dirs.iter().filter(|d| d.remote_id == id).map(|d| d.id).collect();
+            for sd in dirs {
+                self.push_log_line(sd, "Offline — syncs as soon as the connection is back.".to_owned());
+            }
+            return;
+        }
         if !self.syncing.contains(&id) {
             self.start_sync(id);
             return;
@@ -312,6 +340,13 @@ impl Core {
                 };
                 // HTTP 401 and the matching rclone phrasing mean the session is dead and only reauth fixes it. Flag the whole remote (the session is per remote) and stop the running pass. The flag alone keeps the scheduler off the remote; the user's Enabled setting stays, so a successful reauth resumes syncing without a detour through the settings.
                 let auth_failure = matches!(&error, SyncError::General(_, msg) if is_auth_failure(msg));
+                let offline = matches!(&error, SyncError::General(_, msg) if crate::infrastructure::translators::is_offline(msg));
+                if offline && !auth_failure {
+                    // Not a problem with the file: logged without ⚠, so it doesn't stay as the folder's problem once the connection is back.
+                    self.push_log_line(sync_dir_id, format!("Offline: {}", line.trim_start_matches('⚠').trim_start()));
+                    self.state.transition_dir(remote_id, sync_dir_id, RunState::Offline);
+                    return;
+                }
                 self.push_log_line(sync_dir_id, line);
                 if auth_failure {
                     self.state.auth_failure(remote_id);
@@ -399,6 +434,7 @@ impl Core {
             log_version: self.log_version,
             conflicts_version: self.conflicts_version,
             passes_finished: self.passes_finished,
+            offline: self.offline,
         }
     }
 

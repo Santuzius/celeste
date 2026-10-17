@@ -93,6 +93,8 @@ pub struct Page<'a> {
     pub next_sync: Option<(Duration, bool)>,
     /// Scheduled passes wait for an unmetered network (Preferences → Sync on metered networks).
     pub held_on_metered: bool,
+    /// The device has no network; nothing is scheduled until it has.
+    pub device_offline: bool,
     pub dirs: Vec<Folder<'a>>,
     pub draft_local: &'a str,
     pub draft_remote: &'a str,
@@ -318,6 +320,8 @@ fn status_line(page: &Page<'_>) -> String {
         _ if page.syncing => "Syncing…".to_owned(),
         _ if page.dirs.is_empty() => format!("{NO_FOLDERS} — add one below to start syncing"),
         RunState::Held => "Held — the network is metered".to_owned(),
+        RunState::Offline if page.device_offline => "Offline — waiting for a connection".to_owned(),
+        RunState::Offline => next("Offline — couldn't reach the provider"),
         RunState::Waiting => next("Waiting for the first sync"),
         state if page.held_on_metered => format!("{} · held (metered)", status_label(state)),
         state => next(status_label(state)),

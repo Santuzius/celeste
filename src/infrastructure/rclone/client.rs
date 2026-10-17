@@ -34,11 +34,15 @@ pub struct LibrcloneClient {
 
 /// Forces a fresh listing now and then, in case a change notification was missed.
 const LISTING_MAX_AGE: Duration = Duration::from_secs(60 * 60);
+/// A cached listing is handed out only if the provider answered within this time. Offline, the change log can't report anything, and an old listing would read as "up to date".
+const REACHED_WITHIN: Duration = Duration::from_secs(60);
 
 /// Listings of one remote, reused while the provider's change log (polled by the Go side, see `rclonewatch`) reports no change. Saves the full tree walk on every sync pass; backends without change notification never hit this cache.
 #[derive(Default)]
 struct Listings {
     filled_at: Option<Instant>,
+    /// When the provider last answered, see [`REACHED_WITHIN`].
+    reached_at: Option<Instant>,
     entries: HashMap<(String, bool, u8), Vec<RemoteItem>>,
 }
 
@@ -126,7 +130,21 @@ impl BackendClient for LibrcloneClient {
                 *cached = Listings::default();
             }
             if let Some(items) = cached.entries.get(&key) {
-                return Ok(items.clone());
+                if cached.reached_at.is_some_and(|at| at.elapsed() < REACHED_WITHIN) {
+                    return Ok(items.clone());
+                }
+                let items = items.clone();
+                drop(listings);
+                // One small request instead of the whole tree. Only a missing connection counts; a backend without `about` keeps the cache.
+                match rpc::sync::about(remote) {
+                    Err(err) if crate::infrastructure::translators::is_offline(&err.error) => return Err(err.error),
+                    _ => {
+                        if let Ok(mut listings) = self.listings.lock() {
+                            listings.entry(remote.to_owned()).or_default().reached_at = Some(Instant::now());
+                        }
+                        return Ok(items);
+                    }
+                }
             }
         }
 
@@ -137,6 +155,7 @@ impl BackendClient for LibrcloneClient {
         if let Ok(mut listings) = self.listings.lock() {
             let cached = listings.entry(remote.to_owned()).or_default();
             cached.filled_at.get_or_insert_with(Instant::now);
+            cached.reached_at = Some(Instant::now());
             cached.entries.insert(key, items.clone());
         }
         Ok(items)

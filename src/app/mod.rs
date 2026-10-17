@@ -828,8 +828,9 @@ impl SyncativeApp {
             state: self.display_state(remote),
             syncing: self.snapshot.syncing.contains(&remote.id),
             // No countdown while held: nothing is scheduled until the network changes.
-            next_sync: if held_on_metered { None } else { self.next_sync_eta(remote.id) },
+            next_sync: if held_on_metered || self.snapshot.offline { None } else { self.next_sync_eta(remote.id) },
             held_on_metered,
+            device_offline: self.snapshot.offline,
             dirs: folders,
             draft_local,
             draft_remote,

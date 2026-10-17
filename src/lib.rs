@@ -167,7 +167,10 @@ fn set_up() -> Option<Services> {
     resume_native_sessions(&*repo, &router);
     let engine = engine::start(repo.clone(), router.clone(), stderr).clone();
     #[cfg(target_os = "android")]
-    infrastructure::android::apply_power_state();
+    {
+        infrastructure::android::apply_power_state();
+        infrastructure::android::apply_network_state();
+    }
     Some(Services { repo, router, engine })
 }
 
@@ -316,6 +319,14 @@ fn resume_native_sessions(repo: &dyn Repository, router: &ClientRouter) {
                 remote.name.clone(),
                 Arc::new(DisabledProtonClient::new(reason)),
             );
+            continue;
+        }
+        // Offline, resuming would only time out, four times over, while the window waits for it. The pending client tries again once a pass runs, and passes wait for the network.
+        #[cfg(target_os = "android")]
+        if !infrastructure::android::online() {
+            let reason = format!("Proton Drive session for '{}' not resumed yet (network is unreachable). Retrying automatically — no action needed.", remote.name);
+            eprintln!("syncative: {reason}");
+            router.register(remote.name.clone(), Arc::new(PendingProtonClient::new(remote.name.clone(), reason)));
             continue;
         }
         match crate::services::auth::resume_proton_session(&remote.name) {

@@ -135,6 +135,39 @@ async fn a_cadence_stretches_or_holds_the_interval_and_loosening_it_syncs_at_onc
 }
 
 #[tokio::test]
+async fn offline_holds_the_schedule_and_coming_back_syncs_at_once() {
+    let mut rig = rig().await;
+    rig.core.start_due(Instant::now());
+    rig.settle().await;
+
+    rig.send(Command::Online(false)).await;
+    let snap = rig.snap();
+    assert!(snap.offline);
+    assert_eq!(snap.state.roll_up(R1), Some(RunState::Offline));
+    assert_eq!(rig.core.next_due(), None);
+    rig.core.start_due(Instant::now() + Duration::from_secs(3600));
+    rig.send(Command::SyncNow(R1)).await;
+    assert!(rig.snap().syncing.is_empty(), "synced while offline");
+
+    rig.send(Command::Online(true)).await;
+    rig.core.start_due(Instant::now());
+    assert_eq!(rig.snap().syncing.len(), 2);
+    rig.settle().await;
+    assert_eq!(rig.snap().state.roll_up(R1), Some(RunState::Synced));
+}
+
+#[tokio::test]
+async fn an_unreachable_provider_shows_offline_not_a_problem() {
+    let mut rig = rig().await;
+    let msg = "received no response from API: Get \"https://mail.proton.me/api/x\": dial tcp 185.70.42.37:443: connect: connection refused";
+    rig.event(SyncEvent::SyncDirError { remote_id: R1, sync_dir_id: D1, error: SyncError::General("a".into(), msg.into()) }).await;
+    rig.event(SyncEvent::SyncDirStateChanged { remote_id: R1, sync_dir_id: D1, state: RunState::Warning }).await;
+    let snap = rig.snap();
+    assert_eq!(snap.state.roll_up(R1), Some(RunState::Offline));
+    assert!(!snap.problems.contains_key(&D1));
+}
+
+#[tokio::test]
 async fn sync_now_while_syncing_queues_one_more_pass() {
     let mut rig = rig().await;
     rig.send(Command::SyncNow(R1)).await;

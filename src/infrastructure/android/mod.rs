@@ -7,7 +7,10 @@ pub mod folders;
 pub mod secrets;
 
 use std::{
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, OnceLock,
+    },
     time::Duration,
 };
 
@@ -76,6 +79,39 @@ extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeMetered(_: JN
         log::info!("network {}", if metered { "metered" } else { "unmetered" });
         apply_power_state();
     }
+}
+
+/// Whether the device has a network that reaches the internet, as `Bridge.watchNetwork` last reported it. Online until told otherwise.
+static ONLINE: AtomicBool = AtomicBool::new(true);
+
+/// Called by `Bridge.watchNetwork` in every process when the device gets or loses a network that reaches the internet.
+#[unsafe(no_mangle)]
+extern "system" fn Java_io_github_santuzius_syncative_Bridge_nativeOnline(_: JNIEnv, _: JClass, online: jboolean) {
+    let online = online == JNI_TRUE;
+    if ONLINE.swap(online, Ordering::AcqRel) != online {
+        log::info!("{}", if online { "online" } else { "offline" });
+        apply_network_state();
+    }
+}
+
+/// Whether the device has a network below any VPN, as far as Android said so far.
+pub fn online() -> bool {
+    ONLINE.load(Ordering::Acquire)
+}
+
+/// Tells the engine, if it runs yet, whether the device is online; it starts asynchronously and calls this once it does.
+pub fn apply_network_state() {
+    if let Some(engine) = crate::engine::get() {
+        engine.send(crate::engine::Command::Online(ONLINE.load(Ordering::Acquire)));
+    }
+}
+
+/// What the engine needs to know before its first pass, as [`apply_power_state`] and [`apply_network_state`] would tell it.
+pub fn initial_commands() -> [crate::engine::Command; 2] {
+    [
+        crate::engine::Command::Cadence(PowerSettings::load(&crate::util::get_data_dir()).cadence(conditions())),
+        crate::engine::Command::Online(ONLINE.load(Ordering::Acquire)),
+    ]
 }
 
 /// Called by `Bridge.watchNetwork` in every process when the default network switches: connections opened over the old one may hang without ever failing.

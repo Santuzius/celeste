@@ -130,6 +130,12 @@ where
 
     let snapshot = match snapshot_result {
         Ok(s) => s,
+        Err(err) if crate::infrastructure::translators::is_offline(&err) => {
+            eprintln!("sync: offline, list failed for {}: {err}", remote.name);
+            emit_status(tr::tr!("Offline — couldn't reach {}; trying again later.", remote.name));
+            emit_state(RunState::Offline);
+            return Outcome::Aborted;
+        }
         Err(err) => {
             eprintln!("sync: list failed for {}: {err}", remote.name);
             // The error line + Error icon already tell the user what

@@ -54,6 +54,8 @@ pub enum Command {
     Log(SyncDirId, String),
     /// How often to sync to save battery, e.g. less often with the phone's screen off (see [`crate::services::power`]). A less restrictive cadence syncs everything right away.
     Cadence(Cadence),
+    /// Whether the device has a network that reaches the internet, as Android reports it. While it hasn't, scheduled passes wait and idle folders show Offline; "Sync now" still tries. Once it is back, everything syncs right away.
+    Online(bool),
 }
 
 /// How the remotes' own intervals apply right now.
@@ -116,6 +118,8 @@ pub struct Snapshot {
     pub conflicts_version: u64,
     /// Bumped when a pass ends.
     pub passes_finished: u64,
+    /// The device has no network (see [`Command::Online`]); nothing is scheduled until it has.
+    pub offline: bool,
 }
 
 /// One log entry: local `HH:MM:SS` plus the message.
@@ -172,6 +176,11 @@ fn spawn(repo: Arc<dyn Repository>, backend: Arc<dyn BackendClient>, stderr: Cap
     let (snapshot_tx, snapshot) = watch::channel(Arc::new(Snapshot::default()));
     let logs = Logs::default();
     let core = Core::new(repo, backend, stderr, logs.clone(), tx.clone());
+    // Before the first pass: whether the phone is online and how often the power mode lets it sync.
+    #[cfg(target_os = "android")]
+    for command in crate::infrastructure::android::initial_commands() {
+        let _ = tx.send(Input::Command(command));
+    }
     std::thread::Builder::new()
         .name("syncative-engine".to_owned())
         .spawn(move || {
@@ -185,6 +194,9 @@ fn spawn(repo: Arc<dyn Repository>, backend: Arc<dyn BackendClient>, stderr: Cap
 /// The engine loop: sleeps until an input arrives or a remote is due, handles everything that is ready, starts due passes and publishes one snapshot per round.
 async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Input>, snapshot_tx: watch::Sender<Arc<Snapshot>>) {
     core.reload().await;
+    while let Ok(input) = rx.try_recv() {
+        core.handle(input).await;
+    }
     let mut busy = false;
     loop {
         core.start_due(Instant::now());
