@@ -125,6 +125,12 @@ impl Core {
             Command::Online(online) => {
                 let was_offline = std::mem::replace(&mut self.offline, !online);
                 if !online {
+                    // A running pass stops after its current action instead of letting every further one time out; downloads in progress go to a part file, so nothing half-written is left.
+                    for id in &self.syncing {
+                        if let Some(flag) = self.cancel_flags.get(id) {
+                            flag.store(true, Ordering::Release);
+                        }
+                    }
                     self.state.went_offline();
                 } else if was_offline {
                     // Back online: sync everything now instead of at the next interval.
@@ -313,6 +319,10 @@ impl Core {
             return;
         }
         self.state.finish_pass(id);
+        // A pass cut off by the network leaves its folders Offline, not Waiting.
+        if self.offline {
+            self.state.went_offline();
+        }
         self.last_sync_at.insert(id, Instant::now());
         match verdict {
             PassVerdict::Clean => self.state.on_clean_pass(id),
@@ -345,6 +355,10 @@ impl Core {
                     // Not a problem with the file: logged without ⚠, so it doesn't stay as the folder's problem once the connection is back.
                     self.push_log_line(sync_dir_id, format!("Offline: {}", line.trim_start_matches('⚠').trim_start()));
                     self.state.transition_dir(remote_id, sync_dir_id, RunState::Offline);
+                    // The remaining actions would each wait out the backend's retries (minutes per call with rclone); stop the pass after this one.
+                    if let Some(flag) = self.cancel_flags.get(&remote_id) {
+                        flag.store(true, Ordering::Release);
+                    }
                     return;
                 }
                 self.push_log_line(sync_dir_id, line);

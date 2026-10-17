@@ -141,6 +141,7 @@ async fn offline_holds_the_schedule_and_coming_back_syncs_at_once() {
     rig.settle().await;
 
     rig.send(Command::Online(false)).await;
+    rig.settle().await;
     let snap = rig.snap();
     assert!(snap.offline);
     assert_eq!(snap.state.roll_up(R1), Some(RunState::Offline));
@@ -154,6 +155,18 @@ async fn offline_holds_the_schedule_and_coming_back_syncs_at_once() {
     assert_eq!(rig.snap().syncing.len(), 2);
     rig.settle().await;
     assert_eq!(rig.snap().state.roll_up(R1), Some(RunState::Synced));
+}
+
+#[tokio::test]
+async fn losing_the_network_stops_the_running_pass() {
+    let mut rig = rig().await;
+    rig.send(Command::SyncNow(R1)).await;
+    rig.send(Command::Online(false)).await;
+    rig.settle().await;
+    let snap = rig.snap();
+    // Stopped before its folder: nothing synced, and the folder shows Offline rather than Waiting.
+    assert_eq!(snap.state.roll_up(R1), Some(RunState::Offline));
+    assert_eq!(snap.passes_finished, 1);
 }
 
 #[tokio::test]

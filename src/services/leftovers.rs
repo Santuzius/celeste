@@ -21,7 +21,7 @@ impl Found {
         self.files == 0 && self.folders == 0
     }
 
-    /// "3 files", "1 folder", "3 files and 1 folder".
+    /// "3 files", "1 folder", "1 folder and 3 files".
     pub fn describe(self) -> String {
         let files = match self.files {
             0 => None,
@@ -34,7 +34,7 @@ impl Found {
             n => Some(format!("{n} folders")),
         };
         match (files, folders) {
-            (Some(f), Some(d)) => format!("{f} and {d}"),
+            (Some(f), Some(d)) => format!("{d} and {f}"),
             (Some(x), None) | (None, Some(x)) => x,
             (None, None) => "nothing".to_owned(),
         }
